@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { NumberingService } from '../../numbering/numbering.service';
 import { CreateCanteenOrderDto } from './dto/create-canteen-order.dto';
+import { UpdateCanteenOrderDto } from './dto/update-canteen-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { CanteenOrderItemDto } from './dto/canteen-order-item.dto';
 import { CanteenOrderStatus, CanteenPaymentStatus, DocumentType } from '@prisma/client';
@@ -233,6 +234,138 @@ export class CanteenOrdersService {
     return order;
   }
 
+  async updateOrder(id: string, dto: UpdateCanteenOrderDto, actorUserId?: string) {
+    const order = await this.getOrderById(id);
+
+    if (order.paymentStatus === CanteenPaymentStatus.PAID || order.status === CanteenOrderStatus.COMPLETED) {
+      throw new BadRequestException('Paid or completed orders cannot be modified.');
+    }
+
+    if (order.status === CanteenOrderStatus.CANCELLED) {
+      throw new BadRequestException('Cancelled orders cannot be modified.');
+    }
+
+    // Validate member if provided
+    if (dto.memberId) {
+      const member = await this.prisma.canteenMember.findUnique({
+        where: { id: dto.memberId },
+      });
+      if (!member) {
+        throw new NotFoundException('Member profile not found.');
+      }
+    }
+
+    // Validate terminal if provided
+    if (dto.terminalId) {
+      const terminal = await this.prisma.canteenPosTerminal.findUnique({
+        where: { id: dto.terminalId },
+      });
+      if (!terminal) {
+        throw new NotFoundException('POS terminal not found.');
+      }
+    }
+
+    // Validate and process items if provided
+    let processedItems: {
+      itemId: string;
+      quantity: number;
+      unitPrice: number;
+      subtotal: number;
+    }[] = [];
+    let subtotal = 0;
+    let taxAmount = 0;
+
+    if (dto.items && dto.items.length > 0) {
+      const itemIds = dto.items.map((i) => i.itemId);
+      const dbItems = await this.prisma.canteenMenuItem.findMany({
+        where: { id: { in: itemIds } },
+      });
+
+      if (dbItems.length !== itemIds.length) {
+        throw new NotFoundException('One or more menu items were not found.');
+      }
+
+      const itemMap = new Map(dbItems.map((item) => [item.id, item]));
+
+      for (const line of dto.items) {
+        const item = itemMap.get(line.itemId)!;
+        if (!item.isAvailable) {
+          throw new BadRequestException(`Menu item '${item.name}' is currently unavailable.`);
+        }
+        if (line.quantity <= 0) {
+          throw new BadRequestException(`Quantity for '${item.name}' must be greater than 0.`);
+        }
+
+        const price = Number(item.price);
+        const taxRate = Number(item.taxRate || 0);
+        const itemSubtotal = price * line.quantity;
+        const itemTax = itemSubtotal * (taxRate / 100);
+
+        subtotal += itemSubtotal;
+        taxAmount += itemTax;
+
+        processedItems.push({
+          itemId: item.id,
+          quantity: line.quantity,
+          unitPrice: price,
+          subtotal: itemSubtotal,
+        });
+      }
+    }
+
+    const discountAmount = Number(dto.discountAmount ?? order.discountAmount);
+    const totalAmount = Math.max(0, subtotal + taxAmount - discountAmount);
+
+    return this.prisma.$transaction(async (tx) => {
+      // Update order fields
+      const updateData: any = {};
+      if (dto.memberId !== undefined) updateData.memberId = dto.memberId || null;
+      if (dto.terminalId !== undefined) updateData.terminalId = dto.terminalId || null;
+      if (dto.discountAmount !== undefined) updateData.discountAmount = discountAmount;
+
+      // If items are provided, replace all items
+      if (processedItems) {
+        await tx.canteenOrderItem.deleteMany({ where: { orderId: id } });
+        updateData.subtotal = subtotal;
+        updateData.taxAmount = taxAmount;
+        updateData.totalAmount = totalAmount;
+      }
+
+      const updated = await tx.canteenOrder.update({
+        where: { id },
+        data: {
+          ...updateData,
+          ...(processedItems && {
+            items: {
+              create: processedItems.map((pi) => ({
+                itemId: pi.itemId,
+                quantity: pi.quantity,
+                unitPrice: pi.unitPrice,
+                subtotal: pi.subtotal,
+              })),
+            },
+          }),
+        },
+        include: {
+          items: { include: { item: true } },
+          member: true,
+          terminal: true,
+          payments: true,
+        },
+      });
+
+      await this.auditService.log({
+        userId: actorUserId,
+        entityType: 'CanteenOrder',
+        entityId: id,
+        action: 'Canteen Order Updated',
+        metadata: { orderNumber: order.orderNumber },
+      });
+
+      return updated;
+    });
+  }
+
   async updateOrderStatus(id: string, dto: UpdateOrderStatusDto, actorUserId?: string) {
     const order = await this.getOrderById(id);
 
@@ -371,7 +504,7 @@ export class CanteenOrdersService {
     return newItem;
   }
 
-  async updateOrderItem(orderId: string, itemId: string, quantity: number, actorUserId?: string) {
+  async updateOrderItem(orderId: string, orderItemId: string, quantity: number, actorUserId?: string) {
     const order = await this.getOrderById(orderId);
 
     if (order.paymentStatus === CanteenPaymentStatus.PAID || order.status === CanteenOrderStatus.COMPLETED) {
@@ -383,7 +516,7 @@ export class CanteenOrdersService {
     }
 
     const orderItem = await this.prisma.canteenOrderItem.findFirst({
-      where: { orderId, itemId },
+      where: { id: orderItemId, orderId },
       include: { item: true },
     });
 
@@ -426,14 +559,14 @@ export class CanteenOrdersService {
         entityType: 'CanteenOrderItem',
         entityId: updatedItem.id,
         action: 'Canteen Order Item Updated',
-        metadata: { orderId, itemId, newQuantity: quantity },
+        metadata: { orderId, itemId: orderItem.itemId, newQuantity: quantity },
       });
 
       return updatedItem;
     });
   }
 
-  async removeOrderItem(orderId: string, itemId: string, actorUserId?: string) {
+  async removeOrderItem(orderId: string, orderItemId: string, actorUserId?: string) {
     const order = await this.getOrderById(orderId);
 
     if (order.paymentStatus === CanteenPaymentStatus.PAID || order.status === CanteenOrderStatus.COMPLETED) {
@@ -441,7 +574,7 @@ export class CanteenOrdersService {
     }
 
     const orderItem = await this.prisma.canteenOrderItem.findFirst({
-      where: { orderId, itemId },
+      where: { id: orderItemId, orderId },
     });
 
     if (!orderItem) {
@@ -474,7 +607,7 @@ export class CanteenOrdersService {
       entityType: 'CanteenOrderItem',
       entityId: orderItem.id,
       action: 'Canteen Order Item Removed',
-      metadata: { orderId, itemId },
+      metadata: { orderId, itemId: orderItem.itemId },
     });
 
     return { message: 'Order item removed successfully.' };

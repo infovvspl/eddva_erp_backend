@@ -12,6 +12,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { CanteenOrdersService } from './canteen-orders.service';
 import { CreateCanteenOrderDto } from './dto/create-canteen-order.dto';
+import { UpdateCanteenOrderDto } from './dto/update-canteen-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { CanteenOrderItemDto } from './dto/canteen-order-item.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -80,9 +81,20 @@ export class CanteenOrdersController {
     return this.ordersService.getOrderById(id);
   }
 
-  @ApiOperation({ summary: 'Update Canteen order status' })
+  @ApiOperation({ summary: 'Update Canteen order (items, member, terminal, discount)' })
   @RequireCanteenPermission('canteen.order.update')
   @Patch(':id')
+  async updateOrder(
+    @Param('id') id: string,
+    @Body() dto: UpdateCanteenOrderDto,
+    @GetUser() user: any,
+  ) {
+    return this.ordersService.updateOrder(id, dto, user?.id || user?.userId);
+  }
+
+  @ApiOperation({ summary: 'Update Canteen order status only' })
+  @RequireCanteenPermission('canteen.order.update')
+  @Patch(':id/status')
   async updateOrderStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
