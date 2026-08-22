@@ -1022,3 +1022,726 @@ model CanteenWalletTransaction {
 
 
 
+model LibCategory {
+  category_id Int       @id @default(autoincrement())
+  name        String    @unique
+  books       LibBook[]
+
+  @@map("library_categories")
+}
+
+model LibMember {
+  member_id           Int                  @id @default(autoincrement())
+  external_ref_id     String?
+  name                String
+  member_type         LibMemberType
+  library_card_number String               @unique
+  status              LibMemberStatus      @default(active)
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
+  fines               LibFine[]
+  issue_records       LibIssueRecord[]
+  notification_logs   LibNotificationLog[]
+  reservations        LibReservation[]
+
+  @@map("library_members")
+}
+
+model LibUser {
+  user_id         Int              @id @default(autoincrement())
+  name            String
+  role            LibUserRole
+  created_at      DateTime         @default(now())
+  payments        LibFinePayment[]
+  issues_made     LibIssueRecord[] @relation("IssuedBy")
+  returns_handled LibIssueRecord[] @relation("ReturnedTo")
+
+  @@map("library_users")
+}
+
+model LibMembershipRule {
+  rule_id           Int           @id @default(autoincrement())
+  member_type       LibMemberType @unique
+  max_books_allowed Int
+  loan_period_days  Int
+  fine_per_day      Decimal       @db.Decimal(10, 2)
+  grace_period_days Int           @default(0)
+  max_fine_cap      Decimal?      @db.Decimal(10, 2)
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+
+  @@map("library_membership_rules")
+}
+
+model LibBook {
+  book_id         Int              @id @default(autoincrement())
+  isbn            String?          @unique
+  title           String
+  author          String
+  publisher       String?
+  edition         String?
+  category_id     Int
+  language        String?          @default("English")
+  publish_year    Int?
+  description     String?
+  cover_image_url String?
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
+  copies          LibBookCopy[]
+  vendors         LibBookVendor[]
+  category        LibCategory      @relation(fields: [category_id], references: [category_id])
+  reservations    LibReservation[]
+
+  @@map("library_books")
+}
+
+model LibBookVendor {
+  book_vendor_id      Int      @id @default(autoincrement())
+  book_id             Int
+  vendor_name         String
+  last_purchase_price Decimal? @db.Decimal(10, 2)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+  book                LibBook  @relation(fields: [book_id], references: [book_id])
+
+  @@map("library_book_vendors")
+}
+
+model LibBookCopy {
+  copy_id          Int              @id @default(autoincrement())
+  book_id          Int
+  barcode          String           @unique
+  accession_number String           @unique
+  rack_location    String?
+  condition        LibCopyCondition @default(new)
+  status           LibCopyStatus    @default(available)
+  acquired_date    DateTime?        @db.Date
+  price            Decimal?         @db.Decimal(10, 2)
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+  book             LibBook          @relation(fields: [book_id], references: [book_id])
+  issue_records    LibIssueRecord[]
+
+  @@map("library_book_copies")
+}
+
+model LibIssueRecord {
+  issue_id          Int            @id @default(autoincrement())
+  copy_id           Int
+  member_id         Int
+  issue_date        DateTime       @db.Date
+  due_date          DateTime       @db.Date
+  return_date       DateTime?      @db.Date
+  renewal_count     Int            @default(0)
+  status            LibIssueStatus @default(issued)
+  issued_by         Int
+  returned_to       Int?
+  fine_per_day      Decimal        @db.Decimal(10, 2)
+  grace_period_days Int            @default(0)
+  max_fine_cap      Decimal?       @db.Decimal(10, 2)
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+  fines             LibFine[]
+  copy              LibBookCopy    @relation(fields: [copy_id], references: [copy_id])
+  issuer            LibUser        @relation("IssuedBy", fields: [issued_by], references: [user_id])
+  member            LibMember      @relation(fields: [member_id], references: [member_id])
+  returner          LibUser?       @relation("ReturnedTo", fields: [returned_to], references: [user_id])
+
+  @@map("library_issue_records")
+}
+
+model LibReservation {
+  reservation_id Int                  @id @default(autoincrement())
+  book_id        Int
+  member_id      Int
+  reserved_date  DateTime             @db.Date
+  status         LibReservationStatus @default(pending)
+  expiry_date    DateTime             @db.Date
+  created_at     DateTime             @default(now())
+  updated_at     DateTime             @updatedAt
+  book           LibBook              @relation(fields: [book_id], references: [book_id])
+  member         LibMember            @relation(fields: [member_id], references: [member_id])
+
+  @@map("library_reservations")
+}
+
+model LibFine {
+  fine_id       Int              @id @default(autoincrement())
+  issue_id      Int
+  member_id     Int
+  reason        LibFineReason
+  amount        Decimal          @db.Decimal(10, 2)
+  status        LibFineStatus    @default(pending)
+  calculated_at DateTime         @default(now())
+  updated_at    DateTime         @updatedAt
+  payments      LibFinePayment[]
+  issue_record  LibIssueRecord   @relation(fields: [issue_id], references: [issue_id])
+  member        LibMember        @relation(fields: [member_id], references: [member_id])
+
+  @@map("library_fines")
+}
+
+model LibFinePayment {
+  payment_id       Int            @id @default(autoincrement())
+  fine_id          Int
+  amount_paid      Decimal        @db.Decimal(10, 2)
+  payment_date     DateTime       @db.Date
+  payment_mode     LibPaymentMode
+  received_by      Int
+  transaction_ref  String?
+  created_at       DateTime       @default(now())
+  fine             LibFine        @relation(fields: [fine_id], references: [fine_id])
+  received_by_user LibUser        @relation(fields: [received_by], references: [user_id])
+
+  @@map("library_fine_payments")
+}
+
+model LibNotificationLog {
+  log_id     Int       @id @default(autoincrement())
+  member_id  Int
+  event_type String
+  ref_id     Int?
+  created_at DateTime  @default(now())
+  member     LibMember @relation(fields: [member_id], references: [member_id])
+
+  @@map("library_notification_logs")
+}
+
+model LibDynamicRole {
+  role_id      Int                  @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json                 @default("[]")
+  created_at   DateTime             @default(now())
+  updated_at   DateTime             @updatedAt
+  user_roles   LibUserDynamicRole[]
+
+  @@unique([institute_id, name])
+  @@map("library_dynamic_roles")
+}
+
+model LibUserDynamicRole {
+  id            Int            @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  username      String
+  password_hash String
+  is_active     Boolean        @default(true)
+  role_id       Int
+  assigned_at   DateTime       @default(now())
+  role          LibDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+
+  @@unique([institute_id, eddva_user_id])
+  @@unique([institute_id, username])
+  @@map("library_user_dynamic_roles")
+}
+
+model LibSsoSession {
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  lib_token     String   @unique
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@map("library_sso_sessions")
+}
+
+model SportsSport {
+  sport_id    Int                @id @default(autoincrement())
+  name        String             @unique
+  category    SportsCategory
+  description String?
+  created_at  DateTime           @default(now())
+  updated_at  DateTime           @updatedAt
+  records     SportsRecord[]
+  tournaments SportsTournament[]
+
+  @@map("sports_sports")
+}
+
+model SportsParticipant {
+  participant_id         Int                          @id @default(autoincrement())
+  external_ref_id        String?
+  name                   String
+  class_section          String?
+  roll_number            String?
+  gender                 String?
+  photo_url              String?
+  created_at             DateTime                     @default(now())
+  updated_at             DateTime                     @updatedAt
+  awards                 SportsAward[]
+  house_memberships      SportsHouseMembership[]
+  match_stats            SportsPlayerMatchStat[]
+  records                SportsRecord[]
+  tournament_memberships SportsTournamentTeamMember[]
+
+  @@map("sports_participants")
+}
+
+model SportsStaff {
+  staff_id        Int                    @id @default(autoincrement())
+  external_ref_id String?
+  name            String
+  role            String
+  email           String?
+  phone           String?
+  created_at      DateTime               @default(now())
+  updated_at      DateTime               @updatedAt
+  houses_headed   SportsHouse[]
+  teams_coached   SportsTournamentTeam[]
+  users           SportsUser[]
+
+  @@map("sports_staff")
+}
+
+model SportsVenue {
+  venue_id    Int                @id @default(autoincrement())
+  name        String             @unique
+  type        SportsVenueType
+  capacity    Int?
+  location    String?
+  created_at  DateTime           @default(now())
+  updated_at  DateTime           @updatedAt
+  fixtures    SportsFixture[]
+  tournaments SportsTournament[]
+
+  @@map("sports_venues")
+}
+
+model SportsUser {
+  user_id             Int                   @id @default(autoincrement())
+  staff_id            Int?
+  role                SportsUserRole
+  created_at          DateTime              @default(now())
+  recorded_results    SportsFixtureResult[]
+  points_awarded      SportsHousePoint[]
+  verified_records    SportsRecord[]
+  created_tournaments SportsTournament[]
+  staff               SportsStaff?          @relation(fields: [staff_id], references: [staff_id])
+
+  @@map("sports_users")
+}
+
+model SportsHouse {
+  house_id        Int                     @id @default(autoincrement())
+  name            String                  @unique
+  color_code      String?
+  house_master_id Int?
+  motto           String?
+  created_at      DateTime                @default(now())
+  updated_at      DateTime                @updatedAt
+  memberships     SportsHouseMembership[]
+  points          SportsHousePoint[]
+  standings       SportsHouseStanding[]
+  house_master    SportsStaff?            @relation(fields: [house_master_id], references: [staff_id])
+  teams           SportsTournamentTeam[]
+
+  @@map("sports_houses")
+}
+
+model SportsHouseMembership {
+  membership_id  Int                    @id @default(autoincrement())
+  participant_id Int
+  house_id       Int
+  academic_year  String
+  status         SportsMembershipStatus @default(active)
+  created_at     DateTime               @default(now())
+  house          SportsHouse            @relation(fields: [house_id], references: [house_id])
+  participant    SportsParticipant      @relation(fields: [participant_id], references: [participant_id])
+
+  @@unique([participant_id, academic_year])
+  @@map("sports_house_memberships")
+}
+
+model SportsHousePoint {
+  point_id            Int                   @id @default(autoincrement())
+  house_id            Int
+  points              Int
+  source_type         SportsPointSourceType
+  source_reference_id Int?
+  reason              String?
+  awarded_date        DateTime              @db.Date
+  awarded_by          Int?
+  created_at          DateTime              @default(now())
+  awarder_user        SportsUser?           @relation(fields: [awarded_by], references: [user_id])
+  house               SportsHouse           @relation(fields: [house_id], references: [house_id])
+
+  @@map("sports_house_points")
+}
+
+model SportsHouseStanding {
+  house_id        Int
+  academic_year   String
+  total_points    Int         @default(0)
+  rank            Int?
+  last_updated_at DateTime    @default(now()) @updatedAt
+  house           SportsHouse @relation(fields: [house_id], references: [house_id])
+
+  @@id([house_id, academic_year])
+  @@map("sports_house_standings")
+}
+
+model SportsTournament {
+  tournament_id Int                    @id @default(autoincrement())
+  name          String
+  sport_id      Int
+  level         SportsTournamentLevel  @default(inter_house)
+  format        SportsTournamentFormat @default(knockout)
+  start_date    DateTime               @db.Date
+  end_date      DateTime               @db.Date
+  venue_id      Int?
+  status        SportsTournamentStatus @default(upcoming)
+  created_by    Int?
+  created_at    DateTime               @default(now())
+  updated_at    DateTime               @updatedAt
+  awards        SportsAward[]
+  fixtures      SportsFixture[]
+  teams         SportsTournamentTeam[]
+  creator       SportsUser?            @relation(fields: [created_by], references: [user_id])
+  sport         SportsSport            @relation(fields: [sport_id], references: [sport_id])
+  venue         SportsVenue?           @relation(fields: [venue_id], references: [venue_id])
+
+  @@map("sports_tournaments")
+}
+
+model SportsTournamentTeam {
+  tournament_team_id Int                          @id @default(autoincrement())
+  tournament_id      Int
+  house_id           Int?
+  team_name          String
+  coach_id           Int?
+  created_at         DateTime                     @default(now())
+  awards             SportsAward[]
+  winning_results    SportsFixtureResult[]        @relation("WinnerTeam")
+  fixtures_as_team_a SportsFixture[]              @relation("TeamA")
+  fixtures_as_team_b SportsFixture[]              @relation("TeamB")
+  records            SportsRecord[]
+  members            SportsTournamentTeamMember[]
+  coach              SportsStaff?                 @relation(fields: [coach_id], references: [staff_id])
+  house              SportsHouse?                 @relation(fields: [house_id], references: [house_id])
+  tournament         SportsTournament             @relation(fields: [tournament_id], references: [tournament_id], onDelete: Cascade)
+
+  @@map("sports_tournament_teams")
+}
+
+model SportsTournamentTeamMember {
+  member_id          Int                  @id @default(autoincrement())
+  tournament_team_id Int
+  participant_id     Int
+  role               String               @default("player")
+  created_at         DateTime             @default(now())
+  participant        SportsParticipant    @relation(fields: [participant_id], references: [participant_id])
+  team               SportsTournamentTeam @relation(fields: [tournament_team_id], references: [tournament_team_id], onDelete: Cascade)
+
+  @@unique([tournament_team_id, participant_id])
+  @@map("sports_tournament_team_members")
+}
+
+model SportsFixture {
+  fixture_id     Int                     @id @default(autoincrement())
+  tournament_id  Int
+  round          String
+  team_a_id      Int
+  team_b_id      Int
+  venue_id       Int?
+  scheduled_date DateTime
+  status         SportsFixtureStatus     @default(scheduled)
+  created_at     DateTime                @default(now())
+  updated_at     DateTime                @updatedAt
+  result         SportsFixtureResult?
+  team_a         SportsTournamentTeam    @relation("TeamA", fields: [team_a_id], references: [tournament_team_id])
+  team_b         SportsTournamentTeam    @relation("TeamB", fields: [team_b_id], references: [tournament_team_id])
+  tournament     SportsTournament        @relation(fields: [tournament_id], references: [tournament_id], onDelete: Cascade)
+  venue          SportsVenue?            @relation(fields: [venue_id], references: [venue_id])
+  player_stats   SportsPlayerMatchStat[]
+  records        SportsRecord[]
+
+  @@map("sports_fixtures")
+}
+
+model SportsFixtureResult {
+  result_id      Int                   @id @default(autoincrement())
+  fixture_id     Int                   @unique
+  team_a_score   String
+  team_b_score   String
+  winner_team_id Int?
+  result_notes   String?
+  recorded_by    Int?
+  recorded_at    DateTime              @default(now())
+  fixture        SportsFixture         @relation(fields: [fixture_id], references: [fixture_id], onDelete: Cascade)
+  recorder       SportsUser?           @relation(fields: [recorded_by], references: [user_id])
+  winner_team    SportsTournamentTeam? @relation("WinnerTeam", fields: [winner_team_id], references: [tournament_team_id])
+
+  @@map("sports_fixture_results")
+}
+
+model SportsPlayerMatchStat {
+  stat_id        Int               @id @default(autoincrement())
+  fixture_id     Int
+  participant_id Int
+  stat_type      String
+  stat_value     Decimal           @db.Decimal(10, 2)
+  fixture        SportsFixture     @relation(fields: [fixture_id], references: [fixture_id], onDelete: Cascade)
+  participant    SportsParticipant @relation(fields: [participant_id], references: [participant_id])
+
+  @@map("sports_player_match_stats")
+}
+
+model SportsRecord {
+  record_id          Int                   @id @default(autoincrement())
+  participant_id     Int?
+  tournament_team_id Int?
+  sport_id           Int
+  record_type        SportsRecordType
+  description        String
+  value              String
+  achieved_date      DateTime              @db.Date
+  source_fixture_id  Int?
+  verified_by        Int?
+  created_at         DateTime              @default(now())
+  participant        SportsParticipant?    @relation(fields: [participant_id], references: [participant_id])
+  source_fixture     SportsFixture?        @relation(fields: [source_fixture_id], references: [fixture_id])
+  sport              SportsSport           @relation(fields: [sport_id], references: [sport_id])
+  tournament_team    SportsTournamentTeam? @relation(fields: [tournament_team_id], references: [tournament_team_id])
+  verifier           SportsUser?           @relation(fields: [verified_by], references: [user_id])
+
+  @@map("sports_records")
+}
+
+model SportsAward {
+  award_id           Int                   @id @default(autoincrement())
+  participant_id     Int?
+  tournament_team_id Int?
+  tournament_id      Int
+  award_type         String
+  issued_date        DateTime              @db.Date
+  created_at         DateTime              @default(now())
+  participant        SportsParticipant?    @relation(fields: [participant_id], references: [participant_id])
+  tournament         SportsTournament      @relation(fields: [tournament_id], references: [tournament_id])
+  tournament_team    SportsTournamentTeam? @relation(fields: [tournament_team_id], references: [tournament_team_id])
+
+  @@map("sports_awards")
+}
+
+model SportsDynamicRole {
+  role_id      Int                     @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json                    @default("[]")
+  created_at   DateTime                @default(now())
+  updated_at   DateTime                @updatedAt
+  user_roles   SportsUserDynamicRole[]
+
+  @@unique([institute_id, name])
+  @@map("sports_dynamic_roles")
+}
+
+model SportsUserDynamicRole {
+  id            Int               @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  username      String
+  password_hash String
+  is_active     Boolean           @default(true)
+  role_id       Int
+  assigned_at   DateTime          @default(now())
+  role          SportsDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+
+  @@unique([institute_id, eddva_user_id])
+  @@unique([institute_id, username])
+  @@map("sports_user_dynamic_roles")
+}
+
+model SportsSsoSession {
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  sports_token  String   @unique
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@map("sports_sso_sessions")
+}
+
+model LibPermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("library_permissions")
+}
+
+model SportsPermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("sports_permissions")
+}
+
+enum LibMemberType {
+  student
+  staff
+  faculty
+}
+
+enum LibMemberStatus {
+  active
+  suspended
+  expired
+}
+
+enum LibUserRole {
+  admin
+  librarian
+}
+
+enum LibCopyCondition {
+  new
+  good
+  worn
+  damaged
+}
+
+enum LibCopyStatus {
+  available
+  issued
+  reserved
+  lost
+  under_repair
+  withdrawn
+}
+
+enum LibIssueStatus {
+  issued
+  returned
+  overdue
+  lost
+}
+
+enum LibReservationStatus {
+  pending
+  ready_for_pickup
+  fulfilled
+  cancelled
+  expired
+}
+
+enum LibFineReason {
+  overdue
+  lost_book
+  damaged_book
+}
+
+enum LibFineStatus {
+  pending
+  paid
+  waived
+  partially_paid
+}
+
+enum LibPaymentMode {
+  cash
+  card
+  upi
+  waived
+}
+
+enum SportsCategory {
+  team
+  individual
+}
+
+enum SportsStaffRole {
+  coach
+  house_master
+  official
+}
+
+enum SportsVenueType {
+  ground
+  court
+  pool
+  hall
+}
+
+enum SportsUserRole {
+  admin
+  coach
+  house_master
+}
+
+enum SportsMembershipStatus {
+  active
+  transferred
+}
+
+enum SportsPointSourceType {
+  tournament_result
+  discipline
+  participation
+  other
+}
+
+enum SportsTournamentLevel {
+  inter_house
+  inter_school
+  inter_district
+}
+
+enum SportsTournamentFormat {
+  knockout
+  league
+  round_robin
+}
+
+enum SportsTournamentStatus {
+  upcoming
+  ongoing
+  completed
+  cancelled
+}
+
+enum SportsFixtureStatus {
+  scheduled
+  in_progress
+  completed
+  postponed
+  walkover
+}
+
+enum SportsRecordType {
+  personal_best
+  tournament_win
+  milestone
+  school_record
+}
