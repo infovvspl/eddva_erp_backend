@@ -27,7 +27,7 @@ import { RequirePermission } from '../auth/require-permissions.decorator';
 @ApiTags('Library / Members')
 @ApiBearerAuth()
 @UseGuards(LibJwtGuard, LibInstituteAdminViewOnlyGuard, LibPermissionsGuard)
-@Controller('library/members')
+@Controller('api/library/members')
 export class LibMembersController {
   constructor(private readonly membersService: LibMembersService) {}
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, ParseIntPipe, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, ParseIntPipe, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { LibBookVendorsService } from './lib-book-vendors.service';
 import { CreateBookVendorDto } from './dto/create-book-vendor.dto';
@@ -11,7 +11,7 @@ import { RequirePermission } from '../auth/require-permissions.decorator';
 @ApiTags('Library / Book Vendors')
 @ApiBearerAuth()
 @UseGuards(LibJwtGuard, LibInstituteAdminViewOnlyGuard, LibPermissionsGuard)
-@Controller('library')
+@Controller('api/library')
 export class LibBookVendorsController {
   constructor(private readonly vendorsService: LibBookVendorsService) {}
 
@@ -37,5 +37,14 @@ export class LibBookVendorsController {
   @ApiParam({ name: 'id', description: 'vendor_id of the Book Vendor mapping to update (e.g. 1)' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateBookVendorDto) {
     return this.vendorsService.update(id, dto);
+  }
+
+  @Delete('book-vendors/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission({ resource: 'vendors', action: 'delete' })
+  @ApiOperation({ summary: 'Remove a vendor from a book title (admin)' })
+  @ApiParam({ name: 'id', description: 'book_vendor_id of the Book Vendor mapping to delete (e.g. 1)' })
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.vendorsService.remove(id);
   }
 }

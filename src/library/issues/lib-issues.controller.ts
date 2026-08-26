@@ -13,7 +13,7 @@ import { RequirePermission } from '../auth/require-permissions.decorator';
 @ApiTags('Library / Issues & Returns')
 @ApiBearerAuth()
 @UseGuards(LibJwtGuard, LibInstituteAdminViewOnlyGuard, LibPermissionsGuard)
-@Controller('library/issues')
+@Controller('api/library/issues')
 export class LibIssuesController {
   constructor(
     private readonly issueService: IssueService,

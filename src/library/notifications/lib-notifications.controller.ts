@@ -8,7 +8,7 @@ import { LibPermissionsGuard } from '../auth/lib-permissions.guard';
 @ApiTags('Library / Notifications')
 @ApiBearerAuth()
 @UseGuards(LibJwtGuard, LibInstituteAdminViewOnlyGuard, LibPermissionsGuard)
-@Controller('library/notifications')
+@Controller('api/library/notifications')
 export class LibNotificationsController {
   constructor(private readonly notificationService: LibNotificationService) {}
 

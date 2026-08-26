@@ -19,7 +19,7 @@ import { UpdateMembershipRuleDto } from './dto/update-membership-rule.dto';
 
 @ApiTags('Library / Membership Rules')
 @ApiBearerAuth()
-@Controller('library/membership-rules')
+@Controller('api/library/membership-rules')
 export class LibMembershipRulesController {
   constructor(private readonly rulesService: LibMembershipRulesService) {}
 

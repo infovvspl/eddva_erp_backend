@@ -26,7 +26,7 @@ import { RequirePermission } from '../auth/require-permissions.decorator';
 @ApiTags('Library / Copies & Barcode')
 @ApiBearerAuth()
 @UseGuards(LibJwtGuard, LibInstituteAdminViewOnlyGuard, LibPermissionsGuard)
-@Controller('library')
+@Controller('api/library')
 export class LibCopiesController {
   constructor(
     private readonly copiesService: LibCopiesService,

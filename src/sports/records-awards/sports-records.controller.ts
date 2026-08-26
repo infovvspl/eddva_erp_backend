@@ -19,7 +19,7 @@ import { RequirePermission } from '../auth/require-permissions.decorator';
 @ApiTags('Sports / Records & Awards')
 @ApiBearerAuth()
 @UseGuards(SportsJwtGuard, SportsInstituteAdminViewOnlyGuard, SportsPermissionsGuard)
-@Controller('sports')
+@Controller('api/sports')
 export class SportsRecordsController {
   constructor(private readonly svc: SportsRecordsService) {}
 

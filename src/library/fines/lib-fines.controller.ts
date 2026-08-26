@@ -11,7 +11,7 @@ import { RequirePermission } from '../auth/require-permissions.decorator';
 @ApiTags('Library / Fines')
 @ApiBearerAuth()
 @UseGuards(LibJwtGuard, LibInstituteAdminViewOnlyGuard, LibPermissionsGuard)
-@Controller('library/fines')
+@Controller('api/library/fines')
 export class LibFinesController {
   constructor(private readonly finesService: LibFinesService) {}
 

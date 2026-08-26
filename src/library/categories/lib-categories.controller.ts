@@ -22,14 +22,13 @@ import { LibCategoriesService } from './lib-categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { LibJwtGuard } from '../auth/lib-jwt.guard';
-import { LibInstituteAdminViewOnlyGuard } from '../auth/lib-institute-admin-view-only.guard';
 import { LibPermissionsGuard } from '../auth/lib-permissions.guard';
 import { RequirePermission } from '../auth/require-permissions.decorator';
 
 @ApiTags('Library / Categories')
 @ApiBearerAuth()
-@UseGuards(LibJwtGuard, LibInstituteAdminViewOnlyGuard, LibPermissionsGuard)
-@Controller('library/categories')
+@UseGuards(LibJwtGuard, LibPermissionsGuard)
+@Controller('api/library/categories')
 export class LibCategoriesController {
   constructor(private readonly categoriesService: LibCategoriesService) {}
 

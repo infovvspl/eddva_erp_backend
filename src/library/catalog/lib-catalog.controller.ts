@@ -37,7 +37,7 @@ import { RequirePermission } from '../auth/require-permissions.decorator';
 @ApiTags('Library / Catalog')
 @ApiBearerAuth()
 @UseGuards(LibJwtGuard, LibInstituteAdminViewOnlyGuard, LibPermissionsGuard)
-@Controller('library/books')
+@Controller('api/library/books')
 export class LibCatalogController {
   private s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' });
 

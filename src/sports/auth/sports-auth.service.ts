@@ -22,10 +22,26 @@ export interface SportsPlatformUser {
 export class SportsAuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private get schoolJwtSecret(): string {
-    const base = process.env.SCHOOL_JWT_SECRET || process.env.JWT_SECRET;
-    if (!base) throw new Error('SCHOOL_JWT_SECRET or JWT_SECRET must be set');
-    return process.env.SCHOOL_JWT_SECRET ?? `${base}_school`;
+  private verifyErpToken(token: string): any {
+    const secrets = [
+      process.env.SCHOOL_JWT_SECRET,
+      process.env.JWT_SECRET,
+      process.env.JWT_SECRET ? `${process.env.JWT_SECRET}_school` : undefined,
+    ].filter((secret): secret is string => Boolean(secret));
+
+    if (secrets.length === 0) {
+      throw new Error('SCHOOL_JWT_SECRET or JWT_SECRET must be set');
+    }
+
+    for (const secret of [...new Set(secrets)]) {
+      try {
+        return jwt.verify(token, secret);
+      } catch {
+        // Try the next configured ERP signing secret.
+      }
+    }
+
+    throw new UnauthorizedException('Invalid or expired EDDVA session token');
   }
 
   private get sportsJwtSecret(): string {
@@ -44,12 +60,7 @@ export class SportsAuthService {
     user: SportsPlatformUser;
     redirect: string;
   }> {
-    let decoded: any;
-    try {
-      decoded = jwt.verify(eddvaToken, this.schoolJwtSecret);
-    } catch {
-      throw new UnauthorizedException('Invalid or expired EDDVA session token');
-    }
+    const decoded = this.verifyErpToken(eddvaToken);
 
     const eddva_user_id: string = decoded.id || decoded.sub;
     const user_role: string = (decoded.role || '').toUpperCase();
@@ -72,7 +83,7 @@ export class SportsAuthService {
       user_name,
       user_email,
       user_role,
-      is_institute_admin: user_role === 'INSTITUTE_ADMIN',
+      is_institute_admin: ['INSTITUTE_ADMIN', 'INSTITUTE ADMINISTRATOR', 'INSTITUTE_ADMINISTRATOR'].includes(user_role),
     };
 
     const expiresIn = 60 * 60 * 24; // 24 hours
@@ -169,8 +180,43 @@ export class SportsAuthService {
    */
   verifySportsToken(token: string): SportsPlatformUser {
     try {
-      return jwt.verify(token, this.sportsJwtSecret) as SportsPlatformUser;
-    } catch {
+      const decoded = jwt.verify(token, this.sportsJwtSecret) as jwt.JwtPayload;
+      const eddva_user_id = decoded.eddva_user_id || decoded.id || decoded.sub;
+      const institute_id = decoded.institute_id || decoded.instituteId || decoded.tenantId;
+      const user_role = String(decoded.user_role || decoded.role || '').toUpperCase();
+
+      if (typeof eddva_user_id !== 'string' || typeof institute_id !== 'string') {
+        throw new UnauthorizedException('Sports Platform session is missing required user details');
+      }
+
+      const user_email = typeof decoded.user_email === 'string'
+        ? decoded.user_email
+        : typeof decoded.email === 'string'
+          ? decoded.email
+          : undefined;
+      const user_name = typeof decoded.user_name === 'string'
+        ? decoded.user_name
+        : typeof decoded.name === 'string'
+          ? decoded.name
+          : typeof decoded.fullName === 'string'
+            ? decoded.fullName
+            : user_email?.split('@')[0] || 'Sports User';
+
+      return {
+        eddva_user_id,
+        institute_id,
+        user_name,
+        user_email,
+        user_role,
+        is_institute_admin:
+          decoded.is_institute_admin === true ||
+          ['INSTITUTE_ADMIN', 'INSTITUTE ADMINISTRATOR', 'INSTITUTE_ADMINISTRATOR'].includes(user_role),
+        role_id: typeof decoded.role_id === 'number' ? decoded.role_id : undefined,
+        role_name: typeof decoded.role_name === 'string' ? decoded.role_name : undefined,
+        permissions: decoded.permissions,
+      };
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException('Invalid or expired Sports Platform session');
     }
   }

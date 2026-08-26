@@ -1099,6 +1099,11 @@ model LibBookVendor {
   book_vendor_id      Int      @id @default(autoincrement())
   book_id             Int
   vendor_name         String
+  name                String?
+  contact_person      String?
+  phone               String?
+  email               String?
+  address             String?
   last_purchase_price Decimal? @db.Decimal(10, 2)
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt

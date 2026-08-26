@@ -29,11 +29,26 @@ export interface LibPlatformUser {
 export class LibAuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private get schoolJwtSecret(): string {
-    const base = process.env.SCHOOL_JWT_SECRET || process.env.JWT_SECRET;
-    if (!base) throw new Error('SCHOOL_JWT_SECRET or JWT_SECRET must be set');
-    // EDDVA school module appends '_school' if SCHOOL_JWT_SECRET is not explicitly set
-    return process.env.SCHOOL_JWT_SECRET ?? `${base}_school`;
+  private verifyErpToken(token: string): any {
+    const secrets = [
+      process.env.SCHOOL_JWT_SECRET,
+      process.env.JWT_SECRET,
+      process.env.JWT_SECRET ? `${process.env.JWT_SECRET}_school` : undefined,
+    ].filter((secret): secret is string => Boolean(secret));
+
+    if (secrets.length === 0) {
+      throw new Error('SCHOOL_JWT_SECRET or JWT_SECRET must be set');
+    }
+
+    for (const secret of [...new Set(secrets)]) {
+      try {
+        return jwt.verify(token, secret);
+      } catch {
+        // Try the next configured ERP signing secret.
+      }
+    }
+
+    throw new UnauthorizedException('Invalid or expired EDDVA session token');
   }
 
   private get libraryJwtSecret(): string {
@@ -53,12 +68,7 @@ export class LibAuthService {
     redirect: string;
   }> {
     // 1. Verify EDDVA token
-    let decoded: any;
-    try {
-      decoded = jwt.verify(eddvaToken, this.schoolJwtSecret);
-    } catch {
-      throw new UnauthorizedException('Invalid or expired EDDVA session token');
-    }
+    const decoded = this.verifyErpToken(eddvaToken);
 
     const eddva_user_id: string = decoded.id || decoded.sub;
     const user_role: string = (decoded.role || '').toUpperCase();
@@ -81,7 +91,7 @@ export class LibAuthService {
       user_name,
       user_email,
       user_role,
-      is_institute_admin: user_role === 'INSTITUTE_ADMIN',
+      is_institute_admin: ['INSTITUTE_ADMIN', 'INSTITUTE ADMINISTRATOR', 'INSTITUTE_ADMINISTRATOR'].includes(user_role),
     };
 
     // 2. Issue Library JWT (24h expiry)
@@ -183,7 +193,38 @@ export class LibAuthService {
    */
   verifyLibraryToken(token: string): LibPlatformUser {
     try {
-      return jwt.verify(token, this.libraryJwtSecret) as LibPlatformUser;
+      const decoded = jwt.verify(token, this.libraryJwtSecret) as jwt.JwtPayload;
+      const eddva_user_id = decoded.eddva_user_id || decoded.id || decoded.sub;
+      const institute_id = decoded.institute_id || decoded.instituteId || decoded.tenantId;
+      const user_role = String(decoded.user_role || decoded.role || '').toUpperCase();
+
+      if (typeof eddva_user_id !== 'string' || typeof institute_id !== 'string') {
+        throw new UnauthorizedException('Library Platform session is missing required user details');
+      }
+
+      const user_email = typeof decoded.user_email === 'string'
+        ? decoded.user_email
+        : typeof decoded.email === 'string'
+          ? decoded.email
+          : undefined;
+      const user_name = typeof decoded.user_name === 'string'
+        ? decoded.user_name
+        : typeof decoded.name === 'string'
+          ? decoded.name
+          : typeof decoded.fullName === 'string'
+            ? decoded.fullName
+            : user_email?.split('@')[0] || 'Library User';
+
+      return {
+        eddva_user_id,
+        institute_id,
+        user_name,
+        user_email,
+        user_role,
+        is_institute_admin:
+          decoded.is_institute_admin === true ||
+          ['INSTITUTE_ADMIN', 'INSTITUTE ADMINISTRATOR', 'INSTITUTE_ADMINISTRATOR'].includes(user_role),
+      };
     } catch {
       throw new UnauthorizedException('Invalid or expired Library Platform session');
     }

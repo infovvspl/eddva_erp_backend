@@ -12,7 +12,7 @@ import { ReservationQueryDto } from './dto/reservation-query.dto';
 @ApiTags('Library / Reservations')
 @ApiBearerAuth()
 @UseGuards(LibJwtGuard, LibInstituteAdminViewOnlyGuard, LibPermissionsGuard)
-@Controller('library')
+@Controller('api/library')
 export class LibReservationsController {
   constructor(private readonly reservationsService: LibReservationsService) {}
 

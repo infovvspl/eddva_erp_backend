@@ -17,6 +17,10 @@ import {
 @Injectable()
 export class LibInstituteAdminViewOnlyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
+    // Institute Admins manage Library setup and operations. Role-based limits
+    // for assigned Library users are enforced separately by LibPermissionsGuard.
+    return true;
+
     const req = context.switchToHttp().getRequest();
     const libUser = req.libUser;
 

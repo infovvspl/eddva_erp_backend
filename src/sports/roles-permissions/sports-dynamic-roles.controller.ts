@@ -28,7 +28,7 @@ import type { SportsPlatformUser } from '../auth/sports-auth.service';
 @ApiTags('Sports / Roles & Permissions')
 @ApiBearerAuth()
 @UseGuards(SportsJwtGuard)
-@Controller('sports/roles')
+@Controller('api/sports/roles')
 export class SportsDynamicRolesController {
   constructor(private readonly svc: SportsDynamicRolesService) {}
 

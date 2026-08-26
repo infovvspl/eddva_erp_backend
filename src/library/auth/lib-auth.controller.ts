@@ -13,7 +13,7 @@ import { LibAuthService } from './lib-auth.service';
 import { LibDirectLoginDto } from './dto/login.dto';
 
 @ApiTags('Library / Auth (SSO)')
-@Controller('library/auth')
+@Controller('api/library/auth')
 export class LibAuthController {
   constructor(private readonly authService: LibAuthService) {}
 

@@ -17,7 +17,7 @@ import { SportsJwtGuard } from '../auth/sports-jwt.guard';
 @ApiTags('Sports / Dynamic Permissions Registry')
 @ApiBearerAuth()
 @UseGuards(SportsJwtGuard)
-@Controller('sports/permissions')
+@Controller('api/sports/permissions')
 export class SportsPermissionsRegistryController {
   constructor(private readonly svc: SportsPermissionsRegistryService) {}
 

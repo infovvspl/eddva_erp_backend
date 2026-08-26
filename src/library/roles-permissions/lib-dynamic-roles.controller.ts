@@ -28,7 +28,7 @@ import type { LibPlatformUser } from '../auth/lib-auth.service';
 @ApiTags('Library / Roles & Permissions')
 @ApiBearerAuth()
 @UseGuards(LibJwtGuard)
-@Controller('library/roles')
+@Controller('api/library/roles')
 export class LibDynamicRolesController {
   constructor(private readonly svc: LibDynamicRolesService) {}
 

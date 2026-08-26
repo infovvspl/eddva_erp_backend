@@ -20,7 +20,7 @@ import { SportsUser } from './sports-user.decorator';
 import type { SportsPlatformUser } from './sports-auth.service';
 
 @ApiTags('Sports / Auth (SSO)')
-@Controller('sports/auth')
+@Controller('api/sports/auth')
 export class SportsAuthController {
   constructor(private readonly authService: SportsAuthService) {}
 

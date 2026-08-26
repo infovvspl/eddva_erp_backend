@@ -17,7 +17,7 @@ import { LibJwtGuard } from '../auth/lib-jwt.guard';
 @ApiTags('Library / Dynamic Permissions Registry')
 @ApiBearerAuth()
 @UseGuards(LibJwtGuard)
-@Controller('library/permissions')
+@Controller('api/library/permissions')
 export class LibPermissionsController {
   constructor(private readonly svc: LibPermissionsService) {}
 

@@ -25,7 +25,7 @@ import { RequirePermission } from '../auth/require-permissions.decorator';
 @ApiTags('Sports / Shared Core Catalog')
 @ApiBearerAuth()
 @UseGuards(SportsJwtGuard, SportsInstituteAdminViewOnlyGuard, SportsPermissionsGuard)
-@Controller('sports')
+@Controller('api/sports')
 export class SportsCoreController {
   constructor(private readonly svc: SportsCoreService) {}
 
