@@ -47,6 +47,8 @@ export class NumberingService {
         return `PAYMENT/${financialYear}/`;
       case DocumentType.RECEIPT:
         return `RECEIPT/${financialYear}/`;
+      case DocumentType.VISITOR_BADGE:
+        return `BADGE/${financialYear}/`;
       default:
         return `DOC/${financialYear}/`;
     }
