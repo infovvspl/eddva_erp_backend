@@ -2124,3 +2124,500 @@ model FrontOfficePermission {
 
   @@map("front_office_permissions_catalog")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Inventory Management Module
+// stock_ledger is the single source of truth for quantity movements —
+// stock_balances is a derived fast-lookup cache, kept in sync atomically by
+// InventoryStockLedgerService using the same INSERT..ON CONFLICT DO UPDATE
+// RETURNING pattern already used for document numbering (numbering.service.ts)
+// — no advisory locks needed since every movement is a single atomic SQL
+// statement. RBAC is a parallel dynamic-role system, same architecture as
+// Front Office/Sports/Library (independent JWT, SSO exchange + direct
+// login, dynamic roles with a live permission catalog).
+// ─────────────────────────────────────────────────────────────────────────
+
+enum InvLocationType {
+  store
+  department
+  classroom
+  lab
+}
+
+model InvCategory {
+  category_id        Int           @id @default(autoincrement())
+  name               String        @unique
+  parent_category_id Int?
+  parent             InvCategory?  @relation("InvCategoryParent", fields: [parent_category_id], references: [category_id])
+  children           InvCategory[] @relation("InvCategoryParent")
+  status             Status        @default(ACTIVE)
+  created_at         DateTime      @default(now())
+  updated_at         DateTime      @updatedAt
+
+  items          InvItem[]
+  approval_rules InvApprovalRule[]
+
+  @@index([parent_category_id])
+  @@map("inv_categories")
+}
+
+model InvLocation {
+  location_id Int             @id @default(autoincrement())
+  name        String          @unique
+  type        InvLocationType
+  status      Status          @default(ACTIVE)
+  created_at  DateTime        @default(now())
+  updated_at  DateTime        @updatedAt
+
+  purchases      InvStockPurchase[]
+  ledger_entries InvStockLedger[]
+  balances       InvStockBalance[]
+  transfers_out  InvStockTransfer[]   @relation("InvTransferFrom")
+  transfers_in   InvStockTransfer[]   @relation("InvTransferTo")
+  adjustments    InvStockAdjustment[]
+  issues         InvAssetIssue[]
+  asset_units    InvAssetUnit[]
+
+  @@map("inv_locations")
+}
+
+model InvVendor {
+  vendor_id     Int      @id @default(autoincrement())
+  name          String
+  contact_phone String?
+  email         String?
+  address       String?
+  status        Status   @default(ACTIVE)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  item_vendors InvItemVendor[]
+  purchases    InvStockPurchase[]
+
+  @@map("inv_vendors")
+}
+
+enum InvItemType {
+  consumable
+  asset
+}
+
+model InvItem {
+  item_id         Int         @id @default(autoincrement())
+  item_code       String      @unique
+  name            String
+  category_id     Int
+  category        InvCategory @relation(fields: [category_id], references: [category_id])
+  item_type       InvItemType
+  unit_of_measure String
+  reorder_level   Int         @default(0)
+  description     String?
+  image_url       String?
+  status          Status      @default(ACTIVE)
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  item_vendors   InvItemVendor[]
+  purchases      InvStockPurchase[]
+  transfers      InvStockTransfer[]
+  adjustments    InvStockAdjustment[]
+  ledger_entries InvStockLedger[]
+  balances       InvStockBalance[]
+  asset_units    InvAssetUnit[]
+  issues         InvAssetIssue[]
+
+  @@index([category_id])
+  @@index([item_type])
+  @@index([name])
+  @@map("inv_items")
+}
+
+model InvItemVendor {
+  id                  Int       @id @default(autoincrement())
+  item_id             Int
+  item                InvItem   @relation(fields: [item_id], references: [item_id], onDelete: Cascade)
+  vendor_id           Int
+  vendor              InvVendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+  last_purchase_price Decimal?  @db.Decimal(12, 2)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  @@unique([item_id, vendor_id])
+  @@map("inv_item_vendors")
+}
+
+model InvStockPurchase {
+  purchase_id    Int         @id @default(autoincrement())
+  item_id        Int
+  item           InvItem     @relation(fields: [item_id], references: [item_id])
+  vendor_id      Int
+  vendor         InvVendor   @relation(fields: [vendor_id], references: [vendor_id])
+  location_id    Int
+  location       InvLocation @relation(fields: [location_id], references: [location_id])
+  quantity       Int
+  unit_price     Decimal     @db.Decimal(12, 2)
+  total_amount   Decimal     @db.Decimal(14, 2)
+  invoice_number String?
+  purchase_date  DateTime    @db.Date
+  created_by     String? // eddva_user_id — not an FK (see Front Office schema note on the same pattern)
+  created_at     DateTime    @default(now())
+
+  ledger_entries InvStockLedger[]
+  asset_units    InvAssetUnit[]
+
+  @@index([vendor_id])
+  @@index([item_id])
+  @@index([location_id])
+  @@index([purchase_date])
+  @@map("inv_stock_purchases")
+}
+
+model InvStockTransfer {
+  transfer_id      Int         @id @default(autoincrement())
+  item_id          Int
+  item             InvItem     @relation(fields: [item_id], references: [item_id])
+  from_location_id Int
+  from_location    InvLocation @relation("InvTransferFrom", fields: [from_location_id], references: [location_id])
+  to_location_id   Int
+  to_location      InvLocation @relation("InvTransferTo", fields: [to_location_id], references: [location_id])
+  quantity         Int
+  transfer_date    DateTime    @db.Date
+  created_by       String?
+  created_at       DateTime    @default(now())
+
+  ledger_entries InvStockLedger[]
+
+  @@index([item_id])
+  @@index([from_location_id])
+  @@index([to_location_id])
+  @@index([transfer_date])
+  @@map("inv_stock_transfers")
+}
+
+enum InvAdjustmentReason {
+  damaged
+  expired
+  lost
+  audit_correction
+}
+
+model InvStockAdjustment {
+  adjustment_id  Int                 @id @default(autoincrement())
+  item_id        Int
+  item           InvItem             @relation(fields: [item_id], references: [item_id])
+  location_id    Int
+  location       InvLocation         @relation(fields: [location_id], references: [location_id])
+  quantity_delta Int // signed — negative for damaged/expired/lost, positive for audit_correction increases
+  reason         InvAdjustmentReason
+  remarks        String?
+  created_by     String?
+  created_at     DateTime            @default(now())
+
+  ledger_entries InvStockLedger[]
+
+  @@index([item_id])
+  @@index([location_id])
+  @@index([reason])
+  @@index([created_at])
+  @@map("inv_stock_adjustments")
+}
+
+enum InvStockTxnType {
+  purchase_in
+  transfer_out
+  transfer_in
+  adjustment_in
+  adjustment_out
+  issue_out
+  return_in
+}
+
+enum InvReferenceType {
+  purchase
+  transfer
+  adjustment
+  issue
+  return
+}
+
+model InvStockLedger {
+  ledger_id        Int                 @id @default(autoincrement())
+  item_id          Int
+  item             InvItem             @relation(fields: [item_id], references: [item_id])
+  location_id      Int
+  location         InvLocation         @relation(fields: [location_id], references: [location_id])
+  transaction_type InvStockTxnType
+  quantity         Int // always positive magnitude — direction implied by transaction_type
+  balance_after    Int
+  reference_type   InvReferenceType
+  reference_id     Int
+  purchase_id      Int?
+  purchase         InvStockPurchase?   @relation(fields: [purchase_id], references: [purchase_id])
+  transfer_id      Int?
+  transfer         InvStockTransfer?   @relation(fields: [transfer_id], references: [transfer_id])
+  adjustment_id    Int?
+  adjustment       InvStockAdjustment? @relation(fields: [adjustment_id], references: [adjustment_id])
+  issue_id         Int?
+  issue            InvAssetIssue?      @relation(fields: [issue_id], references: [issue_id])
+  return_id        Int?
+  return           InvAssetReturn?     @relation(fields: [return_id], references: [return_id])
+  created_by       String?
+  created_at       DateTime            @default(now())
+
+  @@index([item_id, location_id])
+  @@index([transaction_type])
+  @@index([reference_type, reference_id])
+  @@index([created_at])
+  @@map("inv_stock_ledger")
+}
+
+model InvStockBalance {
+  item_id     Int
+  location_id Int
+  item        InvItem     @relation(fields: [item_id], references: [item_id])
+  location    InvLocation @relation(fields: [location_id], references: [location_id])
+  quantity    Int         @default(0)
+  updated_at  DateTime    @updatedAt
+
+  @@id([item_id, location_id])
+  @@index([location_id])
+  @@map("inv_stock_balances")
+}
+
+enum InvAssetStatus {
+  in_store
+  issued
+  under_repair
+  disposed
+  lost
+}
+
+model InvAssetUnit {
+  asset_unit_id       Int               @id @default(autoincrement())
+  item_id             Int
+  item                InvItem           @relation(fields: [item_id], references: [item_id])
+  asset_tag           String            @unique
+  serial_number       String?
+  purchase_id         Int?
+  purchase            InvStockPurchase? @relation(fields: [purchase_id], references: [purchase_id])
+  current_location_id Int?
+  current_location    InvLocation?      @relation(fields: [current_location_id], references: [location_id])
+  current_holder_id   Int?
+  current_holder      InvHolder?        @relation(fields: [current_holder_id], references: [holder_id])
+  status              InvAssetStatus    @default(in_store)
+  purchase_date       DateTime?         @db.Date
+  warranty_expiry     DateTime?         @db.Date
+  created_at          DateTime          @default(now())
+  updated_at          DateTime          @updatedAt
+
+  issues      InvAssetIssue[]
+  maintenance InvAssetMaintenance[]
+
+  @@index([status])
+  @@index([current_holder_id])
+  @@index([item_id])
+  @@map("inv_asset_units")
+}
+
+enum InvHolderType {
+  staff
+  student
+  department
+}
+
+model InvHolder {
+  holder_id       Int           @id @default(autoincrement())
+  holder_type     InvHolderType
+  name            String
+  external_ref_id String? // link to an existing staff/student id if the parent system exposes one
+  contact_phone   String?
+  status          Status        @default(ACTIVE)
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  issues      InvAssetIssue[]
+  asset_units InvAssetUnit[]
+
+  @@index([holder_type])
+  @@map("inv_holders")
+}
+
+enum InvIssueStatus {
+  pending_approval
+  issued
+  partially_returned
+  returned
+  overdue
+  rejected
+}
+
+enum InvApprovalStatus {
+  not_required
+  pending
+  approved
+  rejected
+}
+
+model InvAssetIssue {
+  issue_id             Int               @id @default(autoincrement())
+  item_id              Int
+  item                 InvItem           @relation(fields: [item_id], references: [item_id])
+  asset_unit_id        Int?
+  asset_unit           InvAssetUnit?     @relation(fields: [asset_unit_id], references: [asset_unit_id])
+  quantity             Int // 1 for asset issues, N for consumables
+  quantity_returned    Int               @default(0)
+  holder_id            Int
+  holder               InvHolder         @relation(fields: [holder_id], references: [holder_id])
+  source_location_id   Int
+  source_location      InvLocation       @relation(fields: [source_location_id], references: [location_id])
+  issue_date           DateTime          @db.Date
+  expected_return_date DateTime?         @db.Date
+  status               InvIssueStatus    @default(issued)
+  approval_status      InvApprovalStatus @default(not_required)
+  approval_rule_id     Int?
+  approval_rule        InvApprovalRule?  @relation(fields: [approval_rule_id], references: [rule_id])
+  approved_by          String?
+  approved_at          DateTime?
+  rejection_reason     String?
+  issued_by            String?
+  created_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
+
+  ledger_entries InvStockLedger[]
+  returns        InvAssetReturn[]
+
+  @@index([holder_id])
+  @@index([item_id])
+  @@index([asset_unit_id])
+  @@index([status])
+  @@index([approval_status])
+  @@index([expected_return_date])
+  @@map("inv_asset_issues")
+}
+
+enum InvReturnCondition {
+  good
+  damaged
+  unusable
+}
+
+model InvAssetReturn {
+  return_id         Int                @id @default(autoincrement())
+  issue_id          Int
+  issue             InvAssetIssue      @relation(fields: [issue_id], references: [issue_id])
+  quantity_returned Int
+  condition         InvReturnCondition
+  remarks           String?
+  return_date       DateTime           @db.Date
+  received_by       String?
+  created_at        DateTime           @default(now())
+
+  ledger_entries InvStockLedger[]
+
+  @@index([issue_id])
+  @@map("inv_asset_returns")
+}
+
+enum InvMaintenanceStatus {
+  reported
+  in_progress
+  resolved
+}
+
+model InvAssetMaintenance {
+  maintenance_id Int                  @id @default(autoincrement())
+  asset_unit_id  Int
+  asset_unit     InvAssetUnit         @relation(fields: [asset_unit_id], references: [asset_unit_id], onDelete: Cascade)
+  issue_reported String
+  service_date   DateTime?            @db.Date
+  cost           Decimal?             @db.Decimal(12, 2)
+  status         InvMaintenanceStatus @default(reported)
+  created_by     String?
+  created_at     DateTime             @default(now())
+  updated_at     DateTime             @updatedAt
+
+  @@index([asset_unit_id])
+  @@index([status])
+  @@map("inv_asset_maintenance")
+}
+
+model InvApprovalRule {
+  rule_id            Int          @id @default(autoincrement())
+  category_id        Int?
+  category           InvCategory? @relation(fields: [category_id], references: [category_id])
+  value_threshold    Decimal?     @db.Decimal(14, 2)
+  quantity_threshold Int?
+  is_active          Boolean      @default(true)
+  created_at         DateTime     @default(now())
+  updated_at         DateTime     @updatedAt
+
+  issues InvAssetIssue[]
+
+  @@index([category_id])
+  @@map("inv_approval_rules")
+}
+
+// ─── Inventory RBAC — parallel dynamic-role system, same architecture as Front Office/Sports/Library ───
+
+model InventoryDynamicRole {
+  role_id      Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json     @default("[]")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_roles InventoryUserDynamicRole[]
+
+  @@unique([institute_id, name])
+  @@map("inventory_dynamic_roles")
+}
+
+model InventoryUserDynamicRole {
+  id            Int                  @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  username      String
+  password_hash String
+  is_active     Boolean              @default(true)
+  role_id       Int
+  assigned_at   DateTime             @default(now())
+  role          InventoryDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+
+  @@unique([institute_id, eddva_user_id])
+  @@unique([institute_id, username])
+  @@map("inventory_user_dynamic_roles")
+}
+
+model InventorySsoSession {
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  inv_token     String   @unique
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@map("inventory_sso_sessions")
+}
+
+model InventoryPermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("inventory_permissions_catalog")
+}

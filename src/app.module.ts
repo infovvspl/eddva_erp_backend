@@ -15,6 +15,7 @@ import { CanteenModule } from './canteen/canteen.module';
 import { LibraryModule } from './library/library.module';
 import { SportsModule } from './sports/sports.module';
 import { FrontOfficeModule } from './front-office/front-office.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -36,6 +37,7 @@ import { AppService } from './app.service';
     LibraryModule,
     SportsModule,
     FrontOfficeModule,
+    InventoryModule,
   ],
   controllers: [AppController],
   providers: [AppService],
