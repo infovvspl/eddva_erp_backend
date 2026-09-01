@@ -2621,3 +2621,418 @@ model InventoryPermission {
 
   @@map("inventory_permissions_catalog")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Transport Management Module — ported from the sibling eddva_erp_backend
+// project's TypeORM TransportModule (vehicles/routes/passengers/allocations,
+// drivers, GPS tracking/geofencing, fee billing). Field names and @@map
+// table names preserve the source's naming; PKs use Int autoincrement (not
+// UUID) and RBAC uses the same parallel dynamic-role architecture as
+// Front Office/Inventory/Library/Sports/Canteen, matching this project's
+// conventions rather than the source's separate erp-roles module (which
+// duplicated a role/permission system this project already has, just under
+// a different name — not ported).
+// ─────────────────────────────────────────────────────────────────────────
+
+model TransportVehicle {
+  vehicle_id          Int      @id @default(autoincrement())
+  institute_id        String
+  registration_number String
+  capacity            Int      @default(40)
+  model               String?
+  is_active           Boolean  @default(true)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  route_assignments TransportRouteVehicleAssignment[]
+  driver_history    TransportDriverVehicleHistory[]
+  gps_devices       TransportGpsDevice[]
+  location_logs     TransportLocationLog[]
+  geofence_alerts   TransportGeofenceAlert[]
+  maintenance       TransportVehicleMaintenance[]
+
+  @@unique([institute_id, registration_number])
+  @@map("transport_vehicles")
+}
+
+model TransportRoute {
+  route_id       Int      @id @default(autoincrement())
+  institute_id   String
+  name           String
+  start_location String
+  end_location   String
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  stops               TransportRouteStop[]
+  vehicle_assignments TransportRouteVehicleAssignment[]
+  allocations         TransportPassengerRouteAllocation[]
+  fee_plans           TransportFeePlan[]
+
+  @@map("transport_routes")
+}
+
+model TransportRouteStop {
+  stop_id     Int            @id @default(autoincrement())
+  route_id    Int
+  route       TransportRoute @relation(fields: [route_id], references: [route_id], onDelete: Cascade)
+  stop_name   String
+  sequence_no Int
+  latitude    Decimal?       @db.Decimal(10, 7)
+  longitude   Decimal?       @db.Decimal(10, 7)
+  pickup_time String? // "HH:mm" — see front-office/common/time.util.ts convention
+  drop_time   String?
+  created_at  DateTime       @default(now())
+  updated_at  DateTime       @updatedAt
+
+  pickup_allocations TransportPassengerRouteAllocation[] @relation("PickupStop")
+  drop_allocations   TransportPassengerRouteAllocation[] @relation("DropStop")
+
+  @@index([route_id])
+  @@map("transport_route_stops")
+}
+
+enum TransportAssignmentStatus {
+  active
+  ended
+}
+
+model TransportRouteVehicleAssignment {
+  assignment_id  Int                       @id @default(autoincrement())
+  route_id       Int
+  route          TransportRoute            @relation(fields: [route_id], references: [route_id])
+  vehicle_id     Int
+  vehicle        TransportVehicle          @relation(fields: [vehicle_id], references: [vehicle_id])
+  driver_id      Int?
+  driver         TransportDriver?          @relation(fields: [driver_id], references: [driver_id])
+  effective_from DateTime                  @db.Date
+  effective_to   DateTime?                 @db.Date
+  status         TransportAssignmentStatus @default(active)
+  created_at     DateTime                  @default(now())
+  updated_at     DateTime                  @updatedAt
+
+  @@index([route_id])
+  @@index([vehicle_id])
+  @@index([driver_id])
+  @@map("transport_route_vehicle_assignments")
+}
+
+enum TransportPassengerType {
+  student
+  employee
+}
+
+enum TransportPassengerStatus {
+  active
+  inactive
+}
+
+model TransportPassenger {
+  passenger_id    Int                      @id @default(autoincrement())
+  institute_id    String
+  external_ref_id String?
+  name            String
+  phone           String?
+  type            TransportPassengerType
+  status          TransportPassengerStatus @default(active)
+  created_at      DateTime                 @default(now())
+  updated_at      DateTime                 @updatedAt
+
+  allocations   TransportPassengerRouteAllocation[]
+  subscriptions TransportPassengerFeeSubscription[]
+
+  @@index([institute_id])
+  @@map("transport_passengers")
+}
+
+enum TransportAllocationStatus {
+  active
+  cancelled
+}
+
+model TransportPassengerRouteAllocation {
+  allocation_id  Int                       @id @default(autoincrement())
+  passenger_id   Int
+  passenger      TransportPassenger        @relation(fields: [passenger_id], references: [passenger_id])
+  route_id       Int
+  route          TransportRoute            @relation(fields: [route_id], references: [route_id])
+  pickup_stop_id Int?
+  pickup_stop    TransportRouteStop?       @relation("PickupStop", fields: [pickup_stop_id], references: [stop_id])
+  drop_stop_id   Int?
+  drop_stop      TransportRouteStop?       @relation("DropStop", fields: [drop_stop_id], references: [stop_id])
+  effective_from DateTime                  @db.Date
+  effective_to   DateTime?                 @db.Date
+  status         TransportAllocationStatus @default(active)
+  created_at     DateTime                  @default(now())
+  updated_at     DateTime                  @updatedAt
+
+  @@index([passenger_id])
+  @@index([route_id])
+  @@map("transport_passenger_route_allocations")
+}
+
+enum TransportDriverStatus {
+  active
+  on_leave
+  inactive
+}
+
+model TransportDriver {
+  driver_id      Int                   @id @default(autoincrement())
+  institute_id   String
+  name           String
+  phone          String
+  license_number String
+  license_expiry DateTime              @db.Date
+  address        String?
+  photo_url      String?
+  joining_date   DateTime?             @db.Date
+  status         TransportDriverStatus @default(active)
+  created_at     DateTime              @default(now())
+  updated_at     DateTime              @updatedAt
+
+  documents         TransportDriverDocument[]
+  vehicle_history   TransportDriverVehicleHistory[]
+  route_assignments TransportRouteVehicleAssignment[]
+
+  @@index([institute_id])
+  @@map("transport_drivers")
+}
+
+model TransportDriverDocument {
+  document_id Int             @id @default(autoincrement())
+  driver_id   Int
+  driver      TransportDriver @relation(fields: [driver_id], references: [driver_id], onDelete: Cascade)
+  doc_type    String
+  doc_url     String
+  expiry_date DateTime?       @db.Date
+  created_at  DateTime        @default(now())
+  updated_at  DateTime        @updatedAt
+
+  @@index([driver_id])
+  @@map("transport_driver_documents")
+}
+
+model TransportDriverVehicleHistory {
+  history_id    Int              @id @default(autoincrement())
+  driver_id     Int
+  driver        TransportDriver  @relation(fields: [driver_id], references: [driver_id])
+  vehicle_id    Int
+  vehicle       TransportVehicle @relation(fields: [vehicle_id], references: [vehicle_id])
+  assigned_from DateTime         @db.Date
+  assigned_to   DateTime?        @db.Date
+  created_at    DateTime         @default(now())
+  updated_at    DateTime         @updatedAt
+
+  @@index([driver_id])
+  @@index([vehicle_id])
+  @@map("transport_driver_vehicle_history")
+}
+
+model TransportGpsDevice {
+  device_id      Int              @id @default(autoincrement())
+  vehicle_id     Int
+  vehicle        TransportVehicle @relation(fields: [vehicle_id], references: [vehicle_id])
+  device_serial  String
+  sim_number     String?
+  installed_date DateTime?        @db.Date
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+
+  @@index([vehicle_id])
+  @@map("transport_vehicle_gps_devices")
+}
+
+model TransportLocationLog {
+  log_id      BigInt           @id @default(autoincrement())
+  vehicle_id  Int
+  vehicle     TransportVehicle @relation(fields: [vehicle_id], references: [vehicle_id])
+  latitude    Decimal          @db.Decimal(10, 7)
+  longitude   Decimal          @db.Decimal(10, 7)
+  speed_kmph  Decimal?         @db.Decimal(5, 2)
+  heading     Int?
+  recorded_at DateTime
+
+  @@index([vehicle_id, recorded_at])
+  @@map("transport_vehicle_location_logs")
+}
+
+enum TransportGeofenceAlertType {
+  route_deviation
+  speed_violation
+  stop_delay
+  sos
+}
+
+model TransportGeofenceAlert {
+  alert_id     Int                        @id @default(autoincrement())
+  vehicle_id   Int
+  vehicle      TransportVehicle           @relation(fields: [vehicle_id], references: [vehicle_id])
+  alert_type   TransportGeofenceAlertType
+  triggered_at DateTime
+  resolved     Boolean                    @default(false)
+  created_at   DateTime                   @default(now())
+
+  @@index([vehicle_id])
+  @@index([resolved])
+  @@map("transport_geofence_alerts")
+}
+
+model TransportVehicleMaintenance {
+  maintenance_id        Int              @id @default(autoincrement())
+  vehicle_id            Int
+  vehicle               TransportVehicle @relation(fields: [vehicle_id], references: [vehicle_id])
+  service_date          DateTime         @db.Date
+  service_type          String
+  cost                  Decimal?         @db.Decimal(10, 2)
+  next_service_due_km   Int?
+  next_service_due_date DateTime?        @db.Date
+  created_at            DateTime         @default(now())
+  updated_at            DateTime         @updatedAt
+
+  @@index([vehicle_id])
+  @@map("transport_vehicle_maintenance")
+}
+
+enum TransportFeeBasis {
+  route
+  distance_slab
+  flat
+}
+
+enum TransportBillingCycle {
+  monthly
+  quarterly
+  annual
+}
+
+model TransportFeePlan {
+  fee_plan_id   Int                   @id @default(autoincrement())
+  institute_id  String
+  name          String
+  basis         TransportFeeBasis
+  route_id      Int?
+  route         TransportRoute?       @relation(fields: [route_id], references: [route_id])
+  amount        Decimal               @db.Decimal(10, 2)
+  billing_cycle TransportBillingCycle
+  created_at    DateTime              @default(now())
+  updated_at    DateTime              @updatedAt
+
+  subscriptions TransportPassengerFeeSubscription[]
+
+  @@index([institute_id])
+  @@map("transport_fee_plans")
+}
+
+enum TransportSubscriptionStatus {
+  active
+  cancelled
+  expired
+}
+
+model TransportPassengerFeeSubscription {
+  subscription_id Int                         @id @default(autoincrement())
+  passenger_id    Int
+  passenger       TransportPassenger          @relation(fields: [passenger_id], references: [passenger_id])
+  fee_plan_id     Int
+  fee_plan        TransportFeePlan            @relation(fields: [fee_plan_id], references: [fee_plan_id])
+  start_date      DateTime                    @db.Date
+  end_date        DateTime?                   @db.Date
+  status          TransportSubscriptionStatus @default(active)
+  created_at      DateTime                    @default(now())
+  updated_at      DateTime                    @updatedAt
+
+  payments TransportFeePayment[]
+
+  @@index([passenger_id])
+  @@map("transport_passenger_fee_subscriptions")
+}
+
+enum TransportPaymentStatus {
+  success
+  pending
+  failed
+  refunded
+}
+
+model TransportFeePayment {
+  payment_id      Int                               @id @default(autoincrement())
+  subscription_id Int
+  subscription    TransportPassengerFeeSubscription @relation(fields: [subscription_id], references: [subscription_id])
+  amount_paid     Decimal                           @db.Decimal(10, 2)
+  payment_date    DateTime                          @db.Date
+  payment_mode    PaymentMode
+  transaction_ref String?
+  status          TransportPaymentStatus            @default(success)
+  invoice_id      String?
+  created_at      DateTime                          @default(now())
+  updated_at      DateTime                          @updatedAt
+
+  @@index([subscription_id])
+  @@map("transport_fee_payments")
+}
+
+// ─── Transport RBAC — parallel dynamic-role system, same architecture as Front Office/Inventory/Sports/Library ───
+
+model TransportDynamicRole {
+  role_id      Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json     @default("[]")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_roles TransportUserDynamicRole[]
+
+  @@unique([institute_id, name])
+  @@map("transport_dynamic_roles")
+}
+
+model TransportUserDynamicRole {
+  id            Int                  @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  username      String
+  password_hash String
+  is_active     Boolean              @default(true)
+  role_id       Int
+  assigned_at   DateTime             @default(now())
+  role          TransportDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+
+  @@unique([institute_id, eddva_user_id])
+  @@unique([institute_id, username])
+  @@map("transport_user_dynamic_roles")
+}
+
+model TransportSsoSession {
+  session_id      Int      @id @default(autoincrement())
+  institute_id    String
+  eddva_user_id   String
+  user_name       String
+  user_email      String?
+  user_role       String
+  transport_token String   @unique
+  expires_at      DateTime
+  created_at      DateTime @default(now())
+
+  @@map("transport_sso_sessions")
+}
+
+model TransportPermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("transport_permissions_catalog")
+}

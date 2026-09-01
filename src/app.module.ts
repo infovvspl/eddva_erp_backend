@@ -16,6 +16,7 @@ import { LibraryModule } from './library/library.module';
 import { SportsModule } from './sports/sports.module';
 import { FrontOfficeModule } from './front-office/front-office.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { TransportModule } from './transport/transport.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -38,6 +39,7 @@ import { AppService } from './app.service';
     SportsModule,
     FrontOfficeModule,
     InventoryModule,
+    TransportModule,
   ],
   controllers: [AppController],
   providers: [AppService],
