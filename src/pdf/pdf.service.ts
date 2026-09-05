@@ -353,4 +353,114 @@ export class PdfService implements OnModuleDestroy {
       await page.close();
     }
   }
+
+  /** Shared print styling for the tabular Accounts reports below — kept minimal, distinct from the invoice template's richer layout. */
+  private reportHtmlShell(title: string, subtitle: string, bodyHtml: string): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>${title}</title>
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 24px; color: #1e293b; font-size: 12px; }
+          h1 { font-size: 16px; color: #4338ca; margin: 0 0 2px; }
+          .subtitle { font-size: 11px; color: #64748b; margin-bottom: 16px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+          th { background: #f1f5f9; color: #475569; font-size: 10px; text-transform: uppercase; text-align: left; padding: 6px 8px; border-bottom: 1px solid #cbd5e1; }
+          td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+          .num { text-align: right; font-variant-numeric: tabular-nums; }
+          .section-title { font-size: 12px; font-weight: 700; color: #0f172a; margin: 16px 0 4px; }
+          .totals-row td { font-weight: 700; border-top: 2px solid #94a3b8; border-bottom: none; }
+          .balanced { color: #059669; font-weight: 700; }
+          .unbalanced { color: #dc2626; font-weight: 700; }
+        </style>
+      </head>
+      <body>
+        <h1>${title}</h1>
+        <div class="subtitle">${subtitle}</div>
+        ${bodyHtml}
+      </body>
+      </html>
+    `;
+  }
+
+  async generateTrialBalancePdf(report: { fy: { fyLabel: string }; rows: any[]; totalDebit: number; totalCredit: number; isBalanced: boolean }): Promise<Buffer> {
+    const rowsHtml = report.rows
+      .map(
+        (r) => `
+        <tr>
+          <td>${r.accountCode}</td>
+          <td>${r.accountName}</td>
+          <td>${r.groupName}</td>
+          <td class="num">${r.debit ? r.debit.toFixed(2) : ''}</td>
+          <td class="num">${r.credit ? r.credit.toFixed(2) : ''}</td>
+        </tr>`,
+      )
+      .join('');
+
+    const body = `
+      <table>
+        <thead><tr><th>Code</th><th>Account</th><th>Group</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+        <tbody>
+          ${rowsHtml}
+          <tr class="totals-row"><td colspan="3">Total</td><td class="num">${report.totalDebit.toFixed(2)}</td><td class="num">${report.totalCredit.toFixed(2)}</td></tr>
+        </tbody>
+      </table>
+      <div class="${report.isBalanced ? 'balanced' : 'unbalanced'}">${report.isBalanced ? 'Balanced' : 'NOT BALANCED — accounting integrity error'}</div>
+    `;
+
+    return this.renderPdf(this.reportHtmlShell('Trial Balance', `Financial Year: ${report.fy.fyLabel}`, body));
+  }
+
+  async generateBalanceSheetPdf(report: {
+    asOf: Date;
+    assets: any[];
+    liabilities: any[];
+    equity: any[];
+    currentPeriodSurplus: number;
+    totals: { assets: number; liabilitiesAndEquity: number };
+    isBalanced: boolean;
+  }): Promise<Buffer> {
+    const rowsHtml = (rows: any[]) => rows.map((r) => `<tr><td>${r.accountCode}</td><td>${r.accountName}</td><td class="num">${r.amount.toFixed(2)}</td></tr>`).join('');
+
+    const body = `
+      <div class="section-title">Assets</div>
+      <table><thead><tr><th>Code</th><th>Account</th><th class="num">Amount</th></tr></thead><tbody>${rowsHtml(report.assets)}</tbody></table>
+
+      <div class="section-title">Liabilities</div>
+      <table><thead><tr><th>Code</th><th>Account</th><th class="num">Amount</th></tr></thead><tbody>${rowsHtml(report.liabilities)}</tbody></table>
+
+      <div class="section-title">Equity</div>
+      <table>
+        <thead><tr><th>Code</th><th>Account</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+          ${rowsHtml(report.equity)}
+          <tr><td colspan="2">Current Period Surplus/(Deficit)</td><td class="num">${report.currentPeriodSurplus.toFixed(2)}</td></tr>
+        </tbody>
+      </table>
+
+      <table>
+        <tbody>
+          <tr class="totals-row"><td>Total Assets</td><td class="num">${report.totals.assets.toFixed(2)}</td></tr>
+          <tr class="totals-row"><td>Total Liabilities + Equity</td><td class="num">${report.totals.liabilitiesAndEquity.toFixed(2)}</td></tr>
+        </tbody>
+      </table>
+      <div class="${report.isBalanced ? 'balanced' : 'unbalanced'}">${report.isBalanced ? 'Assets = Liabilities + Equity' : 'NOT BALANCED — accounting integrity error'}</div>
+    `;
+
+    return this.renderPdf(this.reportHtmlShell('Balance Sheet', `As of ${new Date(report.asOf).toLocaleDateString()}`, body));
+  }
+
+  private async renderPdf(html: string): Promise<Buffer> {
+    const browser = await this.getBrowser();
+    const page = await browser.newPage();
+    try {
+      await page.setContent(html, { waitUntil: 'domcontentloaded' });
+      const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '10mm', right: '12mm', bottom: '10mm', left: '12mm' } });
+      return Buffer.from(pdfBuffer);
+    } finally {
+      await page.close();
+    }
+  }
 }

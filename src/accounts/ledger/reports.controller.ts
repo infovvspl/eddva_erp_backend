@@ -1,5 +1,6 @@
-import { BadRequestException, Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { AccountsJwtGuard } from '../auth/accounts-jwt.guard';
 import { AccountsInstituteAdminViewOnlyGuard } from '../auth/accounts-institute-admin-view-only.guard';
 import { AccountsPermissionsGuard } from '../auth/accounts-permissions.guard';
@@ -7,6 +8,7 @@ import { RequirePermission } from '../auth/require-permissions.decorator';
 import { AccountsUser } from '../auth/accounts-user.decorator';
 import type { AccountsPlatformUser } from '../auth/accounts-auth.service';
 import { LedgerService } from './ledger.service';
+import { PdfService } from '../../pdf/pdf.service';
 
 function parseDate(value: string | undefined, label: string): Date {
   if (!value) throw new BadRequestException(`${label} is required`);
@@ -20,7 +22,10 @@ function parseDate(value: string | undefined, label: string): Date {
 @UseGuards(AccountsJwtGuard, AccountsInstituteAdminViewOnlyGuard, AccountsPermissionsGuard)
 @Controller('api/accounts/reports')
 export class AccountsReportsController {
-  constructor(private readonly ledgerService: LedgerService) {}
+  constructor(
+    private readonly ledgerService: LedgerService,
+    private readonly pdfService: PdfService,
+  ) {}
 
   @Get('ledger/:accountId')
   @RequirePermission({ resource: 'ledger', action: 'read' })
@@ -72,12 +77,35 @@ export class AccountsReportsController {
     return this.ledgerService.trialBalance(fyId, user);
   }
 
+  @Get('trial-balance/pdf')
+  @RequirePermission({ resource: 'reports', action: 'read' })
+  @ApiOperation({ summary: 'Trial Balance as a downloadable PDF' })
+  @ApiQuery({ name: 'fy_id', required: true })
+  async trialBalancePdf(@AccountsUser() user: AccountsPlatformUser, @Res() res: Response, @Query('fy_id') fyId?: string) {
+    if (!fyId) throw new BadRequestException('fy_id is required');
+    const report = await this.ledgerService.trialBalance(fyId, user);
+    const pdfBuffer = await this.pdfService.generateTrialBalancePdf(report);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="trial-balance-${report.fy.fyLabel}.pdf"`, 'Content-Length': pdfBuffer.length });
+    res.end(pdfBuffer);
+  }
+
   @Get('balance-sheet')
   @RequirePermission({ resource: 'reports', action: 'read' })
   @ApiOperation({ summary: 'Balance Sheet as of a given date' })
   @ApiQuery({ name: 'as_of', required: true })
   balanceSheet(@AccountsUser() user: AccountsPlatformUser, @Query('as_of') asOf?: string) {
     return this.ledgerService.balanceSheet(parseDate(asOf, 'as_of'), user);
+  }
+
+  @Get('balance-sheet/pdf')
+  @RequirePermission({ resource: 'reports', action: 'read' })
+  @ApiOperation({ summary: 'Balance Sheet as a downloadable PDF' })
+  @ApiQuery({ name: 'as_of', required: true })
+  async balanceSheetPdf(@AccountsUser() user: AccountsPlatformUser, @Res() res: Response, @Query('as_of') asOf?: string) {
+    const report = await this.ledgerService.balanceSheet(parseDate(asOf, 'as_of'), user);
+    const pdfBuffer = await this.pdfService.generateBalanceSheetPdf(report);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="balance-sheet-${new Date(asOf!).toISOString().slice(0, 10)}.pdf"`, 'Content-Length': pdfBuffer.length });
+    res.end(pdfBuffer);
   }
 
   @Get('income-expenditure')

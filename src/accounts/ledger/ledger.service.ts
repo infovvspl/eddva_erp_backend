@@ -236,6 +236,8 @@ export class LedgerService {
     }
 
     const currentPeriodSurplus = Number((totalIncome - totalExpense).toFixed(2));
+    const roundedAssets = Number(totalAssets.toFixed(2));
+    const roundedLiabilitiesAndEquity = Number((totalLiabilities + totalEquity + currentPeriodSurplus).toFixed(2));
 
     return {
       asOf,
@@ -243,10 +245,10 @@ export class LedgerService {
       liabilities,
       equity,
       currentPeriodSurplus,
-      totals: {
-        assets: Number(totalAssets.toFixed(2)),
-        liabilitiesAndEquity: Number((totalLiabilities + totalEquity + currentPeriodSurplus).toFixed(2)),
-      },
+      totals: { assets: roundedAssets, liabilitiesAndEquity: roundedLiabilitiesAndEquity },
+      // Section 16: the accounting equation (Assets = Liabilities + Equity) is
+      // asserted explicitly here rather than left for the caller to derive.
+      isBalanced: Math.abs(roundedAssets - roundedLiabilitiesAndEquity) < 0.01,
     };
   }
 

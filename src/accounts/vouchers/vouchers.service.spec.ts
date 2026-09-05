@@ -21,6 +21,7 @@ describe('VouchersService', () => {
   const mockTx = {
     $queryRaw: jest.fn().mockResolvedValue([{ currentNumber: 1 }]),
     voucher: { create: jest.fn(), update: jest.fn() },
+    voucherEntry: { deleteMany: jest.fn(), updateMany: jest.fn() },
   };
   const mockPrisma = {
     voucherType: { findUnique: jest.fn() },
@@ -122,6 +123,62 @@ describe('VouchersService', () => {
     it('rejects when the financial year is closed or the date is out of range', async () => {
       mockFinancialYears.assertOpenAndDateInRange.mockRejectedValueOnce(new BadRequestException('Financial year "2026-27" is closed'));
       await expect(service.create(baseDto as any, actor)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('update', () => {
+    const draftVoucher = {
+      id: 'v-1',
+      status: 'DRAFT',
+      voucherNumber: 'JRN-00001',
+      voucherDate: new Date('2026-09-03'),
+      totalDebit: 100,
+      totalCredit: 100,
+      financialYear: openFy,
+      entries: [
+        { accountId: 'acc-cash', debitAmount: 100, creditAmount: 0, costCenterId: null, narration: null },
+        { accountId: 'acc-capital', debitAmount: 0, creditAmount: 100, costCenterId: null, narration: null },
+      ],
+    };
+
+    it('edits narration/date without touching entries when none are supplied', async () => {
+      mockPrisma.voucher.findFirst.mockResolvedValue(draftVoucher);
+      mockTx.voucher.update.mockResolvedValue({ id: 'v-1', narration: 'Updated' });
+
+      await service.update('v-1', { narration: 'Updated' }, actor);
+
+      expect(mockTx.voucherEntry.deleteMany).not.toHaveBeenCalled();
+      expect(mockTx.voucher.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ narration: 'Updated', totalDebit: 100, totalCredit: 100 }) }),
+      );
+    });
+
+    it('replaces entries and re-validates the double-entry balance when entries are supplied', async () => {
+      mockPrisma.voucher.findFirst.mockResolvedValue(draftVoucher);
+      mockTx.voucher.update.mockResolvedValue({ id: 'v-1' });
+
+      await service.update(
+        'v-1',
+        { entries: [{ accountId: 'acc-cash', debitAmount: 200 }, { accountId: 'acc-capital', creditAmount: 200 }] },
+        actor,
+      );
+
+      expect(mockTx.voucherEntry.deleteMany).toHaveBeenCalledWith({ where: { voucherId: 'v-1' } });
+      expect(mockTx.voucher.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ totalDebit: 200, totalCredit: 200 }) }),
+      );
+    });
+
+    it('rejects an unbalanced entry replacement', async () => {
+      mockPrisma.voucher.findFirst.mockResolvedValue(draftVoucher);
+      await expect(
+        service.update('v-1', { entries: [{ accountId: 'acc-cash', debitAmount: 200 }, { accountId: 'acc-capital', creditAmount: 100 }] }, actor),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects editing a voucher that is not in DRAFT status', async () => {
+      mockPrisma.voucher.findFirst.mockResolvedValue({ ...draftVoucher, status: 'POSTED' });
+      await expect(service.update('v-1', { narration: 'x' }, actor)).rejects.toThrow(BadRequestException);
     });
   });
 

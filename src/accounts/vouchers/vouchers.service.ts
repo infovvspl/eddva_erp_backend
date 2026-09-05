@@ -7,6 +7,7 @@ import { AccountsPlatformUser } from '../auth/accounts-auth.service';
 import { LedgerAccountsService } from '../ledger-accounts/ledger-accounts.service';
 import { FinancialYearsService } from '../financial-years/financial-years.service';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
+import { UpdateVoucherDto } from './dto/update-voucher.dto';
 import { CancelVoucherDto } from './dto/cancel-voucher.dto';
 
 interface RawEntryInput {
@@ -137,11 +138,11 @@ export class VouchersService {
   }
 
   /**
-   * Creates a voucher in DRAFT status. Section 15's API surface has no
-   * edit endpoint for vouchers — a voucher is either posted or cancelled —
-   * so double-entry balance (Rule 1) is fully validated here at creation
-   * rather than deferred to /post; posting only re-checks that nothing
-   * changed underneath it (FY closed, an account deactivated) since then.
+   * Creates a voucher in DRAFT status, already fully balance-validated
+   * (Rule 1) — `update()` re-validates the same way if entries are edited,
+   * so a DRAFT voucher is always balanced by construction; `/post` only
+   * re-checks that nothing changed underneath it (FY closed, an account
+   * deactivated) since it was last written.
    */
   async create(dto: CreateVoucherDto, actor: AccountsPlatformUser) {
     const { eddva_user_id: userId, institute_id: instituteId } = actor;
@@ -232,6 +233,80 @@ export class VouchersService {
     });
     if (!voucher) throw new NotFoundException(`Voucher ${id} not found`);
     return voucher;
+  }
+
+  /**
+   * A voucher may only be edited while DRAFT — once posted it is immutable
+   * (Rule 3), and once cancelled there is nothing left to edit. Editing
+   * fully re-validates FY/date range and, if entries are replaced, the full
+   * double-entry balance check (Rule 1) — the same guarantees `create()`
+   * enforces, since an edited draft is just as eligible for `/post` as a
+   * freshly created one.
+   */
+  async update(id: string, dto: UpdateVoucherDto, actor: AccountsPlatformUser) {
+    const { eddva_user_id: userId, institute_id: instituteId } = actor;
+    const voucher = await this.findOne(id, actor);
+
+    if (voucher.status !== VoucherStatus.DRAFT) {
+      throw new BadRequestException(`Cannot edit voucher in status ${voucher.status}. Only DRAFT vouchers can be edited.`);
+    }
+
+    const voucherDate = dto.voucherDate ? toCalendarDate(new Date(dto.voucherDate)) : voucher.voucherDate;
+    await this.financialYearsService.assertOpenAndDateInRange(voucher.financialYear, voucherDate);
+
+    let entries: ValidatedEntryInput[] = voucher.entries.map((e) => ({
+      accountId: e.accountId,
+      debitAmount: Number(e.debitAmount),
+      creditAmount: Number(e.creditAmount),
+      costCenterId: e.costCenterId ?? undefined,
+      narration: e.narration ?? undefined,
+    }));
+    let totalDebit = Number(voucher.totalDebit);
+    let totalCredit = Number(voucher.totalCredit);
+
+    if (dto.entries) {
+      const validated = await this.validateEntries(dto.entries, instituteId);
+      entries = validated.entries;
+      totalDebit = validated.totalDebit;
+      totalCredit = validated.totalCredit;
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (dto.entries) {
+        await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
+      } else if (dto.voucherDate) {
+        // entries aren't being replaced, but their denormalized voucherDate must stay in sync with the voucher's own date
+        await tx.voucherEntry.updateMany({ where: { voucherId: id }, data: { voucherDate } });
+      }
+      return tx.voucher.update({
+        where: { id },
+        data: {
+          voucherDate,
+          narration: dto.narration !== undefined ? dto.narration : undefined,
+          referenceNo: dto.referenceNo !== undefined ? dto.referenceNo : undefined,
+          totalDebit,
+          totalCredit,
+          ...(dto.entries
+            ? {
+                entries: {
+                  create: entries.map((e) => ({
+                    accountId: e.accountId,
+                    debitAmount: e.debitAmount,
+                    creditAmount: e.creditAmount,
+                    costCenterId: e.costCenterId,
+                    narration: e.narration,
+                    voucherDate,
+                  })),
+                },
+              }
+            : {}),
+        },
+        include: { entries: true, voucherType: true, financialYear: true },
+      });
+    });
+
+    await this.auditService.log({ userId, entityType: ACCOUNTS_ENTITY.VOUCHER, entityId: id, action: 'UPDATE' });
+    return updated;
   }
 
   async post(id: string, actor: AccountsPlatformUser) {

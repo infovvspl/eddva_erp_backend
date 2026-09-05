@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { ClosingService } from './closing.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountsAuditService } from '../common/accounts-audit.service';
@@ -46,18 +46,24 @@ describe('ClosingService', () => {
   });
 
   it('snapshots a closing balance per account and freezes the financial year (first-ever FY: opening comes from the ledger account itself)', async () => {
-    mockPrisma.financialYear.findFirst
-      .mockResolvedValueOnce(openFy) // the FY being closed
-      .mockResolvedValueOnce(null); // no prior FY exists for CASH-001's opening lookup
-    mockPrisma.ledgerAccount.findMany.mockResolvedValue([{ id: 'acc-cash' }]);
-    mockPrisma.ledgerAccount.findUnique.mockResolvedValue({ id: 'acc-cash', openingBalance: 0, openingBalanceType: 'DEBIT' });
-    mockPrisma.$queryRaw.mockResolvedValue([{ accountId: 'acc-cash', totalDebit: '10000', totalCredit: '0' }]);
+    // Real double-entry data always nets to zero across accounts — acc-cash's 10000 debit
+    // is funded by acc-cap's 10000 credit, mirroring the capital-introduced example used
+    // in this module's own live verification.
+    mockPrisma.financialYear.findFirst.mockResolvedValueOnce(openFy).mockResolvedValue(null); // FY being closed, then "no prior FY" for every account's opening lookup
+    mockPrisma.ledgerAccount.findMany.mockResolvedValue([{ id: 'acc-cash' }, { id: 'acc-cap' }]);
+    mockPrisma.ledgerAccount.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve({ id: where.id, openingBalance: 0, openingBalanceType: 'DEBIT' }),
+    );
+    mockPrisma.$queryRaw.mockResolvedValue([
+      { accountId: 'acc-cash', totalDebit: '10000', totalCredit: '0' },
+      { accountId: 'acc-cap', totalDebit: '0', totalCredit: '10000' },
+    ]);
     mockTx.accountPeriodBalance.upsert.mockResolvedValue({});
     mockTx.financialYear.update.mockResolvedValue({ id: 'fy-1', status: 'CLOSED' });
 
     const result = await service.closeFinancialYear('fy-1', actor);
 
-    expect(result.accountsClosed).toBe(1);
+    expect(result.accountsClosed).toBe(2);
     expect(mockTx.accountPeriodBalance.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { fyId_accountId: { fyId: 'fy-1', accountId: 'acc-cash' } },
@@ -71,11 +77,13 @@ describe('ClosingService', () => {
 
   it('carries the prior financial year\'s closing balance forward as the new opening balance, instead of the ledger account\'s lifetime opening', async () => {
     const priorFy = { id: 'fy-0', endDate: new Date('2026-03-31') };
-    mockPrisma.financialYear.findFirst
-      .mockResolvedValueOnce(openFy) // FY being closed
-      .mockResolvedValueOnce(priorFy); // prior FY exists
-    mockPrisma.accountPeriodBalance.findUnique.mockResolvedValue({ closingBalance: 5000, closingBalanceType: 'DEBIT' });
-    mockPrisma.ledgerAccount.findMany.mockResolvedValue([{ id: 'acc-cash' }]);
+    mockPrisma.financialYear.findFirst.mockResolvedValueOnce(openFy).mockResolvedValue(priorFy); // FY being closed, then "prior FY exists" for every account's opening lookup
+    mockPrisma.accountPeriodBalance.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve(
+        where.fyId_accountId.accountId === 'acc-cash' ? { closingBalance: 5000, closingBalanceType: 'DEBIT' } : { closingBalance: 5000, closingBalanceType: 'CREDIT' },
+      ),
+    );
+    mockPrisma.ledgerAccount.findMany.mockResolvedValue([{ id: 'acc-cash' }, { id: 'acc-cap' }]);
     mockPrisma.$queryRaw.mockResolvedValue([]); // no movement this year
     mockTx.accountPeriodBalance.upsert.mockResolvedValue({});
     mockTx.financialYear.update.mockResolvedValue({ id: 'fy-1', status: 'CLOSED' });
@@ -84,7 +92,27 @@ describe('ClosingService', () => {
 
     expect(mockPrisma.ledgerAccount.findUnique).not.toHaveBeenCalled();
     expect(mockTx.accountPeriodBalance.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ create: expect.objectContaining({ openingBalance: 5000, openingBalanceType: 'DEBIT', closingBalance: 5000, closingBalanceType: 'DEBIT' }) }),
+      expect.objectContaining({
+        where: { fyId_accountId: { fyId: 'fy-1', accountId: 'acc-cash' } },
+        create: expect.objectContaining({ openingBalance: 5000, openingBalanceType: 'DEBIT', closingBalance: 5000, closingBalanceType: 'DEBIT' }),
+      }),
     );
+  });
+
+  it('aborts and never marks the year closed if the computed closing balances do not net to zero (accounting integrity check)', async () => {
+    mockPrisma.financialYear.findFirst.mockResolvedValueOnce(openFy).mockResolvedValue(null); // FY being closed, then "no prior FY" for every account's opening lookup
+    mockPrisma.ledgerAccount.findMany.mockResolvedValue([{ id: 'acc-a' }, { id: 'acc-b' }]);
+    mockPrisma.ledgerAccount.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve({ id: where.id, openingBalance: 0, openingBalanceType: 'DEBIT' }),
+    );
+    // acc-a closes DEBIT 100, acc-b closes CREDIT 50 — deliberately mismatched, should never happen from real posted data
+    mockPrisma.$queryRaw.mockResolvedValue([
+      { accountId: 'acc-a', totalDebit: '100', totalCredit: '0' },
+      { accountId: 'acc-b', totalDebit: '0', totalCredit: '50' },
+    ]);
+    mockTx.accountPeriodBalance.upsert.mockResolvedValue({});
+
+    await expect(service.closeFinancialYear('fy-1', actor)).rejects.toThrow(InternalServerErrorException);
+    expect(mockTx.financialYear.update).not.toHaveBeenCalled();
   });
 });

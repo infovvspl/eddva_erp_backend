@@ -31,8 +31,8 @@ export const ACCOUNTS_RESOURCE_CATALOG = [
   {
     resource: 'vouchers',
     name: 'Vouchers',
-    description: 'Create, post, and cancel/reverse Journal/Payment/Receipt/Contra vouchers',
-    available_actions: ['read', 'create', 'post', 'cancel'],
+    description: 'Create, edit, post, and cancel/reverse Journal/Payment/Receipt/Contra vouchers',
+    available_actions: ['read', 'create', 'update', 'post', 'cancel'],
   },
   {
     resource: 'ledger',

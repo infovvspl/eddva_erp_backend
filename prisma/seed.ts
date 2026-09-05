@@ -712,23 +712,24 @@ async function main() {
 
   // Accounts dynamic RBAC (parallel to the core RBAC used by Sales/Purchase —
   // same architecture as Library/Sports/Canteen/Front Office/Inventory/Transport)
+  const accountsFinanceAdminPermissions = [
+    { resource: 'coa', actions: ['read', 'create', 'update'] },
+    { resource: 'cost_centers', actions: ['read', 'create', 'update'] },
+    { resource: 'financial_years', actions: ['read', 'create', 'close'] },
+    { resource: 'vouchers', actions: ['read', 'create', 'update', 'post', 'cancel'] },
+    { resource: 'ledger', actions: ['read'] },
+    { resource: 'reports', actions: ['read'] },
+    { resource: 'attachments', actions: ['read', 'manage'] },
+    { resource: 'mappings', actions: ['manage'] },
+  ];
   const accountsFinanceAdminRole = await prisma.accountsDynamicRole.upsert({
     where: { institute_id_name: { institute_id: instId, name: 'Finance Admin' } },
-    update: {},
+    update: { permissions: accountsFinanceAdminPermissions },
     create: {
       institute_id: instId,
       name: 'Finance Admin',
       description: 'Full access to Chart of Accounts, Vouchers, Ledger, Reports, and Financial Year closing',
-      permissions: [
-        { resource: 'coa', actions: ['read', 'create', 'update'] },
-        { resource: 'cost_centers', actions: ['read', 'create', 'update'] },
-        { resource: 'financial_years', actions: ['read', 'create', 'close'] },
-        { resource: 'vouchers', actions: ['read', 'create', 'post', 'cancel'] },
-        { resource: 'ledger', actions: ['read'] },
-        { resource: 'reports', actions: ['read'] },
-        { resource: 'attachments', actions: ['read', 'manage'] },
-        { resource: 'mappings', actions: ['manage'] },
-      ],
+      permissions: accountsFinanceAdminPermissions,
     },
   });
 

@@ -3232,6 +3232,7 @@ model VoucherEntry {
 
   @@index([accountId, voucherDate])
   @@index([voucherId])
+  @@index([costCenterId])
   @@map("voucher_entries")
 }
 

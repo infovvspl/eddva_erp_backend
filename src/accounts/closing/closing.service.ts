@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { BalanceType, FinancialYearStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountsAuditService } from '../common/accounts-audit.service';
@@ -69,11 +69,16 @@ export class ClosingService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       let processed = 0;
+      let totalDebitClosing = 0;
+      let totalCreditClosing = 0;
+
       for (const { id: accountId } of accounts) {
         const opening = await this.getOpeningBalanceForFy(accountId, fy);
         const move = movementByAccount.get(accountId) ?? { debit: 0, credit: 0 };
         const closingSigned = toSigned(opening.amount, opening.type) + move.debit - move.credit;
         const closing = fromSigned(closingSigned);
+        if (closing.type === BalanceType.DEBIT) totalDebitClosing += closing.amount;
+        else totalCreditClosing += closing.amount;
 
         await tx.accountPeriodBalance.upsert({
           where: { fyId_accountId: { fyId, accountId } },
@@ -93,6 +98,16 @@ export class ClosingService {
           },
         });
         processed++;
+      }
+
+      // Section 19/26: never mark a financial year closed on top of a broken
+      // book — every posted voucher is individually balanced at creation, so
+      // this can only fail from a genuine data corruption, but that is
+      // exactly when closing must abort instead of silently freezing bad data.
+      if (Math.abs(totalDebitClosing - totalCreditClosing) > 0.01) {
+        throw new InternalServerErrorException(
+          `Accounting integrity check failed — cannot close financial year "${fy.fyLabel}": total debit closing balances (${totalDebitClosing.toFixed(2)}) do not equal total credit closing balances (${totalCreditClosing.toFixed(2)})`,
+        );
       }
 
       const closedFy = await tx.financialYear.update({

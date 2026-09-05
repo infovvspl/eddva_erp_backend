@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { VoucherStatus } from '@prisma/client';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { AccountsJwtGuard } from '../auth/accounts-jwt.guard';
@@ -9,6 +9,7 @@ import { AccountsUser } from '../auth/accounts-user.decorator';
 import type { AccountsPlatformUser } from '../auth/accounts-auth.service';
 import { VouchersService } from './vouchers.service';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
+import { UpdateVoucherDto } from './dto/update-voucher.dto';
 import { CancelVoucherDto } from './dto/cancel-voucher.dto';
 
 @ApiTags('Accounts / Vouchers')
@@ -61,6 +62,14 @@ export class VouchersController {
   @ApiParam({ name: 'id' })
   findOne(@Param('id') id: string, @AccountsUser() user: AccountsPlatformUser) {
     return this.vouchersService.findOne(id, user);
+  }
+
+  @Patch(':id')
+  @RequirePermission({ resource: 'vouchers', action: 'update' })
+  @ApiOperation({ summary: 'Edit a draft voucher (narration, reference, date, and/or a full replacement of its entries) — only while status is DRAFT' })
+  @ApiParam({ name: 'id' })
+  update(@Param('id') id: string, @Body() dto: UpdateVoucherDto, @AccountsUser() user: AccountsPlatformUser) {
+    return this.vouchersService.update(id, dto, user);
   }
 
   @Post(':id/post')
