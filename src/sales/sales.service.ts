@@ -14,6 +14,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { NumberingService } from '../numbering/numbering.service';
 import { AuditService } from '../audit/audit.service';
+import { AutoPostingService } from '../accounts/auto-posting/auto-posting.service';
 import { calculateLineTax } from '../common/utils/tax-calculator';
 import { extractUserContext, scopeWhere } from '../common/utils/institute-scope.util';
 import {
@@ -34,6 +35,7 @@ export class SalesService {
     private prisma: PrismaService,
     private numberingService: NumberingService,
     private auditService: AuditService,
+    private autoPostingService: AutoPostingService,
   ) {}
 
   // ==========================================
@@ -544,6 +546,15 @@ export class SalesService {
       action: 'POST',
       oldStatus: InvoiceStatus.DRAFT,
       newStatus: InvoiceStatus.POSTED,
+    });
+
+    await this.autoPostingService.postSalesInvoice({
+      instituteId,
+      invoiceId: postedInvoice.id,
+      invoiceNumber: postedInvoice.invoiceNumber,
+      invoiceDate: postedInvoice.invoiceDate,
+      grandTotal: Number(postedInvoice.grandTotal),
+      userId: userId!,
     });
 
     return postedInvoice;

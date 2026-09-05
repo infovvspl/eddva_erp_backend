@@ -37,6 +37,34 @@ enum DocumentType {
   PAYMENT
   RECEIPT
   VISITOR_BADGE
+  JOURNAL_VOUCHER
+  PAYMENT_VOUCHER
+  RECEIPT_VOUCHER
+  CONTRA_VOUCHER
+}
+
+enum AccountNature {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum BalanceType {
+  DEBIT
+  CREDIT
+}
+
+enum VoucherStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum FinancialYearStatus {
+  OPEN
+  CLOSED
 }
 
 enum PoStatus {
@@ -3035,4 +3063,282 @@ model TransportPermission {
   updated_at    DateTime @updatedAt
 
   @@map("transport_permissions_catalog")
+}
+
+// ============================================================
+// ACCOUNTS MODULE (Chart of Accounts, Vouchers, Ledger, Reports)
+// Uses core RBAC (User/Role/Permission) — not a satellite RBAC.
+// voucher_entries is the append-only source of truth; ledger and
+// reports are read-only queries over it, never separate tables.
+// ============================================================
+
+model FinancialYear {
+  id        String              @id @default(uuid())
+  instituteId String?
+  fyLabel   String
+  startDate DateTime
+  endDate   DateTime
+  status    FinancialYearStatus @default(OPEN)
+  closedAt  DateTime?
+  closedBy  String?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  vouchers       Voucher[]
+  periodBalances AccountPeriodBalance[]
+
+  @@unique([instituteId, fyLabel])
+  @@index([instituteId, status])
+  @@map("financial_years")
+}
+
+model AccountGroup {
+  id            String         @id @default(uuid())
+  instituteId   String?
+  groupName     String
+  parentGroupId String?
+  parentGroup   AccountGroup?  @relation("GroupHierarchy", fields: [parentGroupId], references: [id])
+  childGroups   AccountGroup[] @relation("GroupHierarchy")
+  nature        AccountNature
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  ledgerAccounts LedgerAccount[]
+
+  @@unique([instituteId, groupName])
+  @@index([instituteId])
+  @@map("account_groups")
+}
+
+model LedgerAccount {
+  id                 String        @id @default(uuid())
+  instituteId        String?
+  accountCode        String
+  accountName        String
+  groupId            String
+  group              AccountGroup  @relation(fields: [groupId], references: [id])
+  openingBalance     Decimal       @default(0) @db.Decimal(14, 2)
+  openingBalanceType BalanceType   @default(DEBIT)
+  allowVoucherEntry  Boolean       @default(true)
+  isActive           Boolean       @default(true)
+  isCashAccount      Boolean       @default(false)
+  isBankAccount      Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  voucherEntries VoucherEntry[]
+  periodBalances AccountPeriodBalance[]
+  mappings       AccountMapping[]
+
+  @@unique([instituteId, accountCode])
+  @@index([instituteId, isActive])
+  @@index([groupId])
+  @@map("ledger_accounts")
+}
+
+model CostCenter {
+  id          String   @id @default(uuid())
+  instituteId String?
+  name        String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  voucherEntries VoucherEntry[]
+
+  @@unique([instituteId, name])
+  @@index([instituteId])
+  @@map("cost_centers")
+}
+
+model VoucherType {
+  id       String  @id @default(uuid())
+  code     String  @unique
+  name     String
+  prefix   String
+  isActive Boolean @default(true)
+
+  vouchers Voucher[]
+
+  @@map("voucher_types")
+}
+
+// FY-scoped atomic sequence for voucher numbering. Deliberately separate from
+// NumberingService/number_sequences: that service derives its financial-year
+// string from the document date via a fixed Apr-Mar rule, whereas Voucher
+// numbers must be unique per (voucherTypeId, fyId) against this module's own
+// user-managed FinancialYear entity, which need not follow that rule.
+model VoucherNumberSequence {
+  id            String @id @default(uuid())
+  voucherTypeId String
+  fyId          String
+  currentNumber Int    @default(0)
+
+  @@unique([voucherTypeId, fyId])
+  @@map("voucher_number_sequences")
+}
+
+model Voucher {
+  id                String        @id @default(uuid())
+  instituteId       String?
+  voucherNumber     String
+  voucherTypeId     String
+  voucherType       VoucherType   @relation(fields: [voucherTypeId], references: [id])
+  fyId              String
+  financialYear     FinancialYear @relation(fields: [fyId], references: [id])
+  voucherDate       DateTime
+  narration         String?
+  referenceNo       String?
+  totalDebit        Decimal       @default(0) @db.Decimal(14, 2)
+  totalCredit       Decimal       @default(0) @db.Decimal(14, 2)
+  status            VoucherStatus @default(DRAFT)
+  isAutoPosted      Boolean       @default(false)
+  sourceModule      String?
+  sourceReferenceId String?
+  createdBy         String
+  approvedBy        String?
+  postedAt          DateTime?
+  cancelledAt       DateTime?
+  cancelledBy       String?
+  reversalOfId      String?       @unique
+  reversalOf        Voucher?      @relation("VoucherReversal", fields: [reversalOfId], references: [id])
+  reversedBy        Voucher?      @relation("VoucherReversal")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  entries     VoucherEntry[]
+  attachments VoucherAttachment[]
+
+  @@unique([voucherTypeId, fyId, voucherNumber])
+  @@unique([sourceModule, sourceReferenceId])
+  @@index([fyId, status])
+  @@index([instituteId, voucherDate])
+  @@map("vouchers")
+}
+
+model VoucherEntry {
+  id           String        @id @default(uuid())
+  voucherId    String
+  voucher      Voucher       @relation(fields: [voucherId], references: [id])
+  accountId    String
+  account      LedgerAccount @relation(fields: [accountId], references: [id])
+  debitAmount  Decimal       @default(0) @db.Decimal(14, 2)
+  creditAmount Decimal       @default(0) @db.Decimal(14, 2)
+  costCenterId String?
+  costCenter   CostCenter?   @relation(fields: [costCenterId], references: [id])
+  narration    String?
+  voucherDate  DateTime
+  createdAt    DateTime      @default(now())
+
+  @@index([accountId, voucherDate])
+  @@index([voucherId])
+  @@map("voucher_entries")
+}
+
+model VoucherAttachment {
+  id         String   @id @default(uuid())
+  voucherId  String
+  voucher    Voucher  @relation(fields: [voucherId], references: [id])
+  fileUrl    String
+  uploadedBy String
+  uploadedAt DateTime @default(now())
+
+  @@index([voucherId])
+  @@map("voucher_attachments")
+}
+
+model AccountPeriodBalance {
+  id                 String        @id @default(uuid())
+  fyId               String
+  financialYear      FinancialYear @relation(fields: [fyId], references: [id])
+  accountId          String
+  account            LedgerAccount @relation(fields: [accountId], references: [id])
+  openingBalance     Decimal       @db.Decimal(14, 2)
+  openingBalanceType BalanceType
+  closingBalance     Decimal       @db.Decimal(14, 2)
+  closingBalanceType BalanceType
+  createdAt          DateTime      @default(now())
+
+  @@unique([fyId, accountId])
+  @@map("account_period_balances")
+}
+
+model AccountMapping {
+  id          String        @id @default(uuid())
+  instituteId String?
+  mappingKey  String
+  accountId   String
+  account     LedgerAccount @relation(fields: [accountId], references: [id])
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([instituteId, mappingKey])
+  @@map("account_mappings")
+}
+
+// Parallel dynamic-role RBAC for Accounts — same architecture as
+// Library/Sports/Canteen/Front Office/Inventory/Transport: an independent
+// JWT space for Accounts staff (Accounts Clerk/Accountant/Finance Admin) who
+// may or may not exist as core `users` rows.
+model AccountsDynamicRole {
+  role_id      Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json     @default("[]")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_roles AccountsUserDynamicRole[]
+
+  @@unique([institute_id, name])
+  @@map("accounts_dynamic_roles")
+}
+
+model AccountsUserDynamicRole {
+  id            Int                 @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  username      String
+  password_hash String
+  is_active     Boolean             @default(true)
+  role_id       Int
+  assigned_at   DateTime            @default(now())
+  role          AccountsDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+
+  @@unique([institute_id, eddva_user_id])
+  @@unique([institute_id, username])
+  @@map("accounts_user_dynamic_roles")
+}
+
+model AccountsSsoSession {
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  acc_token     String   @unique
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@map("accounts_sso_sessions")
+}
+
+model AccountsPermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("accounts_permissions_catalog")
 }

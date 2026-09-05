@@ -618,6 +618,138 @@ async function main() {
   console.log('✅ Sales Workflow Data & Inventory Transactions seeded successfully!');
 
   // ==========================================
+  // ACCOUNTS SEEDING
+  // ==========================================
+  console.log('--- Seeding Accounts Module (Voucher Types, Financial Year, Starter Chart of Accounts) ---');
+
+  const voucherTypesData = [
+    { code: 'JOURNAL', name: 'Journal Voucher', prefix: 'JRN-' },
+    { code: 'PAYMENT', name: 'Payment Voucher', prefix: 'PMT-' },
+    { code: 'RECEIPT', name: 'Receipt Voucher', prefix: 'RCT-' },
+    { code: 'CONTRA', name: 'Contra Voucher', prefix: 'CTR-' },
+  ];
+  for (const vt of voucherTypesData) {
+    await prisma.voucherType.upsert({
+      where: { code: vt.code },
+      update: { name: vt.name, prefix: vt.prefix },
+      create: { code: vt.code, name: vt.name, prefix: vt.prefix },
+    });
+  }
+
+  let fy2627 = await prisma.financialYear.findFirst({ where: { fyLabel: '2026-27', instituteId: instId } });
+  if (!fy2627) {
+    fy2627 = await prisma.financialYear.create({
+      data: {
+        fyLabel: '2026-27',
+        startDate: new Date('2026-04-01'),
+        endDate: new Date('2027-03-31'),
+        instituteId: instId,
+      },
+    });
+  }
+
+  const groupDefs = [
+    { key: 'CURRENT_ASSETS', name: 'Current Assets', nature: 'ASSET' as const, parent: null as string | null },
+    { key: 'FIXED_ASSETS', name: 'Fixed Assets', nature: 'ASSET' as const, parent: null },
+    { key: 'CURRENT_LIABILITIES', name: 'Current Liabilities', nature: 'LIABILITY' as const, parent: null },
+    { key: 'CAPITAL', name: 'Capital & Reserves', nature: 'EQUITY' as const, parent: null },
+    { key: 'INCOME', name: 'Income', nature: 'INCOME' as const, parent: null },
+    { key: 'DIRECT_EXPENSES', name: 'Direct Expenses', nature: 'EXPENSE' as const, parent: null },
+    { key: 'INDIRECT_EXPENSES', name: 'Indirect Expenses', nature: 'EXPENSE' as const, parent: null },
+  ];
+  const groupIdByKey = new Map<string, string>();
+  for (const g of groupDefs) {
+    let group = await prisma.accountGroup.findFirst({ where: { groupName: g.name, instituteId: instId } });
+    if (!group) {
+      group = await prisma.accountGroup.create({ data: { groupName: g.name, nature: g.nature, instituteId: instId } });
+    }
+    groupIdByKey.set(g.key, group.id);
+  }
+
+  const ledgerAccountDefs = [
+    { code: 'CASH-001', name: 'Cash in Hand', group: 'CURRENT_ASSETS', isCash: true, isBank: false },
+    { code: 'BANK-001', name: 'Bank Account - Main', group: 'CURRENT_ASSETS', isCash: false, isBank: true },
+    { code: 'AR-001', name: 'Accounts Receivable', group: 'CURRENT_ASSETS', isCash: false, isBank: false },
+    { code: 'AP-001', name: 'Accounts Payable', group: 'CURRENT_LIABILITIES', isCash: false, isBank: false },
+    { code: 'CAP-001', name: "Owner's Capital", group: 'CAPITAL', isCash: false, isBank: false },
+    { code: 'INC-001', name: 'Sales Income', group: 'INCOME', isCash: false, isBank: false },
+    { code: 'EXP-001', name: 'Purchase Expense', group: 'DIRECT_EXPENSES', isCash: false, isBank: false },
+    { code: 'EXP-002', name: 'Office Expenses', group: 'INDIRECT_EXPENSES', isCash: false, isBank: false },
+  ];
+  const accountIdByCode = new Map<string, string>();
+  for (const a of ledgerAccountDefs) {
+    let account = await prisma.ledgerAccount.findFirst({ where: { accountCode: a.code, instituteId: instId } });
+    if (!account) {
+      account = await prisma.ledgerAccount.create({
+        data: {
+          accountCode: a.code,
+          accountName: a.name,
+          groupId: groupIdByKey.get(a.group)!,
+          instituteId: instId,
+          isCashAccount: a.isCash,
+          isBankAccount: a.isBank,
+        },
+      });
+    }
+    accountIdByCode.set(a.code, account.id);
+  }
+
+  const mappingDefs = [
+    { key: 'AR', code: 'AR-001' },
+    { key: 'AP', code: 'AP-001' },
+    { key: 'SALES_INCOME', code: 'INC-001' },
+    { key: 'PURCHASE_EXPENSE', code: 'EXP-001' },
+    { key: 'CASH', code: 'CASH-001' },
+    { key: 'BANK', code: 'BANK-001' },
+  ];
+  for (const m of mappingDefs) {
+    await prisma.accountMapping.upsert({
+      where: { instituteId_mappingKey: { instituteId: instId, mappingKey: m.key } },
+      update: { accountId: accountIdByCode.get(m.code)! },
+      create: { instituteId: instId, mappingKey: m.key, accountId: accountIdByCode.get(m.code)! },
+    });
+  }
+
+  // Accounts dynamic RBAC (parallel to the core RBAC used by Sales/Purchase —
+  // same architecture as Library/Sports/Canteen/Front Office/Inventory/Transport)
+  const accountsFinanceAdminRole = await prisma.accountsDynamicRole.upsert({
+    where: { institute_id_name: { institute_id: instId, name: 'Finance Admin' } },
+    update: {},
+    create: {
+      institute_id: instId,
+      name: 'Finance Admin',
+      description: 'Full access to Chart of Accounts, Vouchers, Ledger, Reports, and Financial Year closing',
+      permissions: [
+        { resource: 'coa', actions: ['read', 'create', 'update'] },
+        { resource: 'cost_centers', actions: ['read', 'create', 'update'] },
+        { resource: 'financial_years', actions: ['read', 'create', 'close'] },
+        { resource: 'vouchers', actions: ['read', 'create', 'post', 'cancel'] },
+        { resource: 'ledger', actions: ['read'] },
+        { resource: 'reports', actions: ['read'] },
+        { resource: 'attachments', actions: ['read', 'manage'] },
+        { resource: 'mappings', actions: ['manage'] },
+      ],
+    },
+  });
+
+  const accountsDemoPasswordHash = await bcrypt.hash('Accountant#2026', 10);
+  await prisma.accountsUserDynamicRole.upsert({
+    where: { institute_id_eddva_user_id: { institute_id: instId, eddva_user_id: 'usr_accountant_demo' } },
+    update: { role_id: accountsFinanceAdminRole.role_id },
+    create: {
+      institute_id: instId,
+      eddva_user_id: 'usr_accountant_demo',
+      user_name: 'Demo Accountant',
+      user_email: 'accountant.demo@eddva.com',
+      username: 'accountant_demo',
+      password_hash: accountsDemoPasswordHash,
+      role_id: accountsFinanceAdminRole.role_id,
+    },
+  });
+
+  console.log('✅ Accounts Module (Voucher Types, Financial Year, Starter Chart of Accounts, Mappings, Dynamic RBAC) seeded successfully!');
+
+  // ==========================================
   // CANTEEN SEEDING
   // ==========================================
   console.log('--- Seeding Canteen Permissions & Roles ---');
