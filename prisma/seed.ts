@@ -1,15 +1,4 @@
-import {
-  PrismaClient,
-  DocumentType,
-  PoStatus,
-  GrnStatus,
-  SoStatus,
-  InvoiceStatus,
-  PaymentStatus,
-  VendorStatus,
-  Status,
-  InventoryTransactionType,
-} from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -18,44 +7,6 @@ async function main() {
   console.log('--- Seeding System Permissions ---');
 
   const permissionsData = [
-    // Sales Permissions
-    { key: 'sales.dashboard.view', desc: 'View Sales Dashboard & Overview' },
-    { key: 'sales.customer.view', desc: 'View Customers Directory & Details' },
-    { key: 'sales.customer.create', desc: 'Create New Customer Record' },
-    { key: 'sales.customer.update', desc: 'Update Customer Information' },
-    { key: 'sales.order.view', desc: 'View Sales Orders' },
-    { key: 'sales.order.create', desc: 'Create Sales Order' },
-    { key: 'sales.order.update', desc: 'Update Sales Order' },
-    { key: 'sales.order.cancel', desc: 'Cancel Sales Order' },
-    { key: 'sales.invoice.view', desc: 'View Sales Invoices & Register' },
-    { key: 'sales.invoice.create', desc: 'Create & Post Sales Invoice' },
-    { key: 'sales.receipt.view', desc: 'View Sales Payment Receipts' },
-    { key: 'sales.receipt.create', desc: 'Record Customer Receipt Payment' },
-    { key: 'sales.report.view', desc: 'View Sales Financial Reports' },
-
-    // Purchase Permissions
-    { key: 'purchase.dashboard.view', desc: 'View Purchase Dashboard & Overview' },
-    { key: 'purchase.vendor.view', desc: 'View Vendors Directory & Profiles' },
-    { key: 'purchase.vendor.create', desc: 'Create New Vendor Record' },
-    { key: 'purchase.vendor.update', desc: 'Update Vendor Profile' },
-    { key: 'purchase.po.view', desc: 'View Purchase Orders' },
-    { key: 'purchase.po.create', desc: 'Create Purchase Order' },
-    { key: 'purchase.po.update', desc: 'Update Purchase Order' },
-    { key: 'purchase.po.approve', desc: 'Approve Purchase Order' },
-    { key: 'purchase.po.cancel', desc: 'Cancel Purchase Order' },
-    { key: 'purchase.grn.view', desc: 'View Goods Receipt Notes (GRN)' },
-    { key: 'purchase.grn.create', desc: 'Receive Stock & Create GRN' },
-    { key: 'purchase.invoice.view', desc: 'View Purchase Invoices & AP Register' },
-    { key: 'purchase.invoice.create', desc: 'Create Purchase Invoice' },
-    { key: 'purchase.payment.view', desc: 'View Vendor AP Payments' },
-    { key: 'purchase.payment.create', desc: 'Make Vendor Payment' },
-    { key: 'purchase.report.view', desc: 'View Purchase Reports & Registers' },
-
-    // Master Data Permissions
-    { key: 'item.view', desc: 'View Item Master List' },
-    { key: 'item.create', desc: 'Create Item Master Record' },
-    { key: 'item.edit', desc: 'Edit Item Master Record' },
-
     // Institute Admin Permissions
     { key: 'institute_admin.users.view', desc: 'View Institute Users' },
     { key: 'institute_admin.users.manage', desc: 'Create, Edit & Manage Institute Users' },
@@ -80,7 +31,7 @@ async function main() {
 
   console.log('✅ System Permissions seeded successfully!');
 
-  console.log('--- Seeding Roles & Demo Accounts ---');
+  console.log('--- Seeding Institute Administrator Role & Demo Account ---');
   const passwordHash = await bcrypt.hash('Password@123', 10);
   const instId = 'INST_DEMO_101';
 
@@ -94,38 +45,7 @@ async function main() {
       perms: allPerms.map((p) => p.permissionKey),
       user: { name: 'Institute Admin', email: 'admin@eddva.com' },
     },
-    {
-      name: 'Sales Manager',
-      desc: 'Manages customers, sales orders, invoices, and sales reports',
-      perms: allPerms
-        .filter((p) => p.permissionKey.startsWith('sales.') || p.permissionKey.startsWith('item.'))
-        .map((p) => p.permissionKey),
-      user: { name: 'Sales Manager User', email: 'sales.mgr@eddva.com' },
-    },
-    {
-      name: 'Purchase Manager',
-      desc: 'Manages vendors, POs, GRNs, purchase invoices, and payments',
-      perms: allPerms
-        .filter((p) => p.permissionKey.startsWith('purchase.') || p.permissionKey.startsWith('item.'))
-        .map((p) => p.permissionKey),
-      user: { name: 'Purchase Manager User', email: 'purchase.mgr@eddva.com' },
-    },
-    {
-      name: 'Operations Lead',
-      desc: 'Access to Sales and Purchase applications',
-      perms: allPerms
-        .filter(
-          (p) =>
-            p.permissionKey.startsWith('sales.') ||
-            p.permissionKey.startsWith('purchase.') ||
-            p.permissionKey.startsWith('item.'),
-        )
-        .map((p) => p.permissionKey),
-      user: { name: 'Operations Lead User', email: 'ops.lead@eddva.com' },
-    },
   ];
-
-  let adminUser: any = null;
 
   for (const rCfg of rolesConfig) {
     let role = await prisma.role.findFirst({
@@ -156,7 +76,7 @@ async function main() {
       });
     }
 
-    const u = await prisma.user.upsert({
+    await prisma.user.upsert({
       where: { email: rCfg.user.email },
       update: {
         name: rCfg.user.name,
@@ -171,451 +91,9 @@ async function main() {
         roleId: role.id,
       },
     });
-
-    if (rCfg.user.email === 'admin@eddva.com') {
-      adminUser = u;
-    }
   }
 
-  console.log('✅ Roles and Users seeded successfully!');
-
-  console.log('--- Seeding Master Data (1 Row Each) ---');
-
-  // 1. Item Category
-  let category = await prisma.itemCategory.findFirst({ where: { categoryName: 'Electronics & Hardware' } });
-  if (!category) {
-    category = await prisma.itemCategory.create({
-      data: {
-        categoryName: 'Electronics & Hardware',
-        instituteId: instId,
-        status: Status.ACTIVE,
-      },
-    });
-  }
-
-  // 2. Unit of Measure (UOM)
-  let uom = await prisma.uom.findFirst({ where: { code: 'PCS' } });
-  if (!uom) {
-    uom = await prisma.uom.create({
-      data: {
-        code: 'PCS',
-        name: 'Pieces',
-        status: Status.ACTIVE,
-      },
-    });
-  }
-
-  // 3. Tax Code
-  let taxCode = await prisma.taxCode.findFirst({ where: { name: 'GST 18%' } });
-  if (!taxCode) {
-    taxCode = await prisma.taxCode.create({
-      data: {
-        name: 'GST 18%',
-        cgstPct: 9.0,
-        sgstPct: 9.0,
-        igstPct: 18.0,
-        effectiveFrom: new Date(),
-        status: Status.ACTIVE,
-      },
-    });
-  }
-
-  // 4. Payment Term
-  let paymentTerm = await prisma.paymentTerm.findFirst({ where: { termName: 'Net 30 Days' } });
-  if (!paymentTerm) {
-    paymentTerm = await prisma.paymentTerm.create({
-      data: {
-        termName: 'Net 30 Days',
-        days: 30,
-        status: Status.ACTIVE,
-      },
-    });
-  }
-
-  // 5. Warehouse
-  let warehouse = await prisma.warehouse.findFirst({ where: { name: 'Central Main Warehouse' } });
-  if (!warehouse) {
-    warehouse = await prisma.warehouse.create({
-      data: {
-        name: 'Central Main Warehouse',
-        address: '100 Technology Parkway, Building A, San Jose, CA',
-        isDefault: true,
-        instituteId: instId,
-        status: Status.ACTIVE,
-      },
-    });
-  }
-
-  // 6. Item Master
-  let item = await prisma.item.findFirst({ where: { itemCode: 'SKU-MON-27' } });
-  if (!item) {
-    item = await prisma.item.create({
-      data: {
-        itemCode: 'SKU-MON-27',
-        itemName: 'Dell UltraSharp 27" 4K Monitor',
-        categoryId: category.id,
-        uomId: uom.id,
-        hsnSacCode: '84713010',
-        purchasePrice: 250.0,
-        salesPrice: 350.0,
-        taxCodeId: taxCode.id,
-        quantity: 50.0,
-        instituteId: instId,
-        status: Status.ACTIVE,
-      },
-    });
-  }
-
-  // 7. Vendor (with Contact & Bank Detail)
-  let vendor = await prisma.vendor.findFirst({ where: { vendorCode: 'VEND-TECH-01' } });
-  if (!vendor) {
-    vendor = await prisma.vendor.create({
-      data: {
-        vendorCode: 'VEND-TECH-01',
-        vendorName: 'Tech Supplies Global Pvt Ltd',
-        gstin: '27AAACT1234F1Z1',
-        taxId: 'TAX-VEND-9988',
-        addressLine1: '100 Technology Parkway',
-        city: 'San Jose',
-        state: 'CA',
-        pincode: '95110',
-        paymentTermId: paymentTerm.id,
-        creditLimit: 50000.0,
-        status: VendorStatus.ACTIVE,
-        instituteId: instId,
-        contacts: {
-          create: {
-            name: 'John Doe',
-            designation: 'Account Manager',
-            email: 'johndoe@techsupplies.com',
-            phone: '+1-555-0144',
-          },
-        },
-        bankDetails: {
-          create: {
-            accountNo: '9876543210',
-            ifsc: 'SVBKUS6S',
-            swift: 'SVBKUS6SXXX',
-            bankName: 'Silicon Valley Bank',
-            isPrimary: true,
-          },
-        },
-      },
-    });
-  }
-
-  // 8. Customer (with Contact)
-  let customer = await prisma.customer.findFirst({ where: { customerCode: 'CUST-ACME-01' } });
-  if (!customer) {
-    customer = await prisma.customer.create({
-      data: {
-        customerCode: 'CUST-ACME-01',
-        customerName: 'Acme Educational Academy',
-        gstin: '27AABCA5678G1Z2',
-        addressLine1: '500 Innovation Way',
-        city: 'Boston',
-        state: 'MA',
-        pincode: '02108',
-        paymentTermId: paymentTerm.id,
-        creditLimit: 25000.0,
-        status: Status.ACTIVE,
-        instituteId: instId,
-        contacts: {
-          create: {
-            name: 'Jane Smith',
-            designation: 'Procurement Officer',
-            email: 'janesmith@acmeacademy.edu',
-            phone: '+1-555-0188',
-          },
-        },
-      },
-    });
-  }
-
-  console.log('✅ Master Data, Vendor & Customer seeded successfully!');
-
-  console.log('--- Seeding Purchase Workflow Data (1 Row Each) ---');
-
-  // 9. Number Sequences
-  const docTypes = [
-    { type: DocumentType.PO, prefix: 'PO/2026-27/' },
-    { type: DocumentType.GRN, prefix: 'GRN/2026-27/' },
-    { type: DocumentType.PURCHASE_INVOICE, prefix: 'PI/2026-27/' },
-    { type: DocumentType.SALES_ORDER, prefix: 'SO/2026-27/' },
-    { type: DocumentType.SALES_INVOICE, prefix: 'SI/2026-27/' },
-    { type: DocumentType.PAYMENT, prefix: 'PAYMENT/2026-27/' },
-    { type: DocumentType.RECEIPT, prefix: 'RECEIPT/2026-27/' },
-  ];
-
-  for (const dt of docTypes) {
-    await prisma.numberSequence.upsert({
-      where: {
-        documentType_financialYear: {
-          documentType: dt.type,
-          financialYear: '2026-27',
-        },
-      },
-      update: {},
-      create: {
-        documentType: dt.type,
-        financialYear: '2026-27',
-        prefix: dt.prefix,
-        currentNumber: 1,
-      },
-    });
-  }
-
-  // 10. Purchase Order
-  let po = await prisma.purchaseOrder.findFirst({
-    where: { poNumber: 'PO/2026-27/0001' },
-    include: { items: true },
-  });
-  if (!po) {
-    po = await prisma.purchaseOrder.create({
-      data: {
-        poNumber: 'PO/2026-27/0001',
-        vendorId: vendor.id,
-        poDate: new Date(),
-        expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        warehouseId: warehouse.id,
-        status: PoStatus.APPROVED,
-        subtotal: 2500.0,
-        taxAmount: 450.0,
-        discount: 0.0,
-        grandTotal: 2950.0,
-        createdBy: adminUser.id,
-        approvedBy: adminUser.id,
-        instituteId: instId,
-        items: {
-          create: [
-            {
-              itemId: item.id,
-              quantity: 10,
-              unitPrice: 250.0,
-              taxCodeId: taxCode.id,
-              lineTotal: 2950.0,
-              receivedQty: 10,
-            },
-          ],
-        },
-      },
-      include: { items: true },
-    });
-  }
-
-  // 11. Goods Receipt Note (GRN)
-  let grn = await prisma.goodsReceiptNote.findFirst({ where: { grnNumber: 'GRN/2026-27/0001' } });
-  if (!grn) {
-    grn = await prisma.goodsReceiptNote.create({
-      data: {
-        grnNumber: 'GRN/2026-27/0001',
-        poId: po.id,
-        vendorId: vendor.id,
-        receivedDate: new Date(),
-        warehouseId: warehouse.id,
-        status: GrnStatus.CONFIRMED,
-        createdBy: adminUser.id,
-        instituteId: instId,
-        items: {
-          create: [
-            {
-              poItemId: po.items[0].id,
-              itemId: item.id,
-              receivedQty: 10,
-              acceptedQty: 9,
-              rejectedQty: 1,
-            },
-          ],
-        },
-      },
-    });
-  }
-
-  // 12. Purchase Invoice
-  let pi = await prisma.purchaseInvoice.findFirst({ where: { invoiceNumber: 'PI/2026-27/0001' } });
-  if (!pi) {
-    pi = await prisma.purchaseInvoice.create({
-      data: {
-        invoiceNumber: 'PI/2026-27/0001',
-        vendorInvoiceNumber: 'INV-TECH-8899',
-        vendorId: vendor.id,
-        poId: po.id,
-        grnId: grn.id,
-        invoiceDate: new Date(),
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        subtotal: 2250.0,
-        taxAmount: 405.0,
-        discount: 0.0,
-        grandTotal: 2655.0,
-        paymentStatus: PaymentStatus.PAID,
-        status: InvoiceStatus.POSTED,
-        createdBy: adminUser.id,
-        postedBy: adminUser.id,
-        postedAt: new Date(),
-        instituteId: instId,
-        items: {
-          create: [
-            {
-              itemId: item.id,
-              quantity: 9,
-              unitPrice: 250.0,
-              taxCodeId: taxCode.id,
-              cgstAmount: 202.5,
-              sgstAmount: 202.5,
-              igstAmount: 0.0,
-              lineTotal: 2655.0,
-            },
-          ],
-        },
-      },
-    });
-  }
-
-  // 13. Purchase Payment
-  let purchasePayment = await prisma.purchasePayment.findFirst({ where: { paymentNumber: 'PAYMENT/2026-27/0001' } });
-  if (!purchasePayment) {
-    purchasePayment = await prisma.purchasePayment.create({
-      data: {
-        paymentNumber: 'PAYMENT/2026-27/0001',
-        purchaseInvoiceId: pi.id,
-        paymentDate: new Date(),
-        amount: 2655.0,
-        mode: 'BANK_TRANSFER' as any,
-        referenceNo: 'TXN-BANK-998877',
-        createdBy: adminUser.id,
-        instituteId: instId,
-      },
-    });
-  }
-
-  console.log('✅ Purchase Workflow Data seeded successfully!');
-
-  console.log('--- Seeding Sales Workflow Data (1 Row Each) ---');
-
-  // 14. Sales Order
-  let so = await prisma.salesOrder.findFirst({ where: { soNumber: 'SO/2026-27/0001' } });
-  if (!so) {
-    so = await prisma.salesOrder.create({
-      data: {
-        soNumber: 'SO/2026-27/0001',
-        customerId: customer.id,
-        soDate: new Date(),
-        deliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        status: SoStatus.CONFIRMED,
-        subtotal: 1750.0,
-        taxAmount: 315.0,
-        discount: 0.0,
-        grandTotal: 2065.0,
-        createdBy: adminUser.id,
-        instituteId: instId,
-        items: {
-          create: [
-            {
-              itemId: item.id,
-              quantity: 5,
-              unitPrice: 350.0,
-              taxCodeId: taxCode.id,
-              lineTotal: 2065.0,
-              invoicedQty: 5,
-            },
-          ],
-        },
-      },
-      include: { items: true },
-    });
-  }
-
-  // 15. Sales Invoice
-  let si = await prisma.salesInvoice.findFirst({ where: { invoiceNumber: 'SI/2026-27/0001' } });
-  if (!si) {
-    si = await prisma.salesInvoice.create({
-      data: {
-        invoiceNumber: 'SI/2026-27/0001',
-        customerId: customer.id,
-        soId: so.id,
-        invoiceDate: new Date(),
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        subtotal: 1750.0,
-        taxAmount: 315.0,
-        discount: 0.0,
-        grandTotal: 2065.0,
-        paymentStatus: PaymentStatus.PAID,
-        status: InvoiceStatus.POSTED,
-        createdBy: adminUser.id,
-        postedBy: adminUser.id,
-        postedAt: new Date(),
-        instituteId: instId,
-        items: {
-          create: [
-            {
-              itemId: item.id,
-              quantity: 5,
-              unitPrice: 350.0,
-              taxCodeId: taxCode.id,
-              cgstAmount: 157.5,
-              sgstAmount: 157.5,
-              igstAmount: 0.0,
-              lineTotal: 2065.0,
-            },
-          ],
-        },
-      },
-    });
-  }
-
-  // 16. Sales Receipt
-  let salesReceipt = await prisma.salesReceipt.findFirst({ where: { receiptNumber: 'RECEIPT/2026-27/0001' } });
-  if (!salesReceipt) {
-    salesReceipt = await prisma.salesReceipt.create({
-      data: {
-        receiptNumber: 'RECEIPT/2026-27/0001',
-        salesInvoiceId: si.id,
-        receiptDate: new Date(),
-        amount: 2065.0,
-        mode: 'BANK_TRANSFER' as any,
-        referenceNo: 'RECPT-BANK-112233',
-        createdBy: adminUser.id,
-        instituteId: instId,
-      },
-    });
-  }
-
-  // 17. Inventory Transaction
-  let invTxn = await prisma.inventoryTransaction.findFirst({ where: { documentNumber: 'GRN/2026-27/0001' } });
-  if (!invTxn) {
-    invTxn = await prisma.inventoryTransaction.create({
-      data: {
-        itemId: item.id,
-        warehouseId: warehouse.id,
-        transactionType: InventoryTransactionType.PURCHASE_GRN,
-        referenceType: 'GRN',
-        referenceId: grn.id,
-        documentNumber: grn.grnNumber,
-        quantityIn: 9,
-        quantityOut: 0,
-        balanceQuantity: 50,
-        remarks: 'Stock received via GRN GRN/2026-27/0001',
-        createdBy: adminUser.id,
-        instituteId: instId,
-      },
-    });
-  }
-
-  // 18. Audit Log
-  let auditLog = await prisma.auditLog.findFirst({ where: { entityType: 'PurchaseOrder' } });
-  if (!auditLog) {
-    await prisma.auditLog.create({
-      data: {
-        userId: adminUser.id,
-        entityType: 'PurchaseOrder',
-        entityId: po.id,
-        action: 'Purchase Order Approved',
-        metadata: { poNumber: po.poNumber, grandTotal: po.grandTotal },
-      },
-    });
-  }
-
-  console.log('✅ Sales Workflow Data & Inventory Transactions seeded successfully!');
+  console.log('✅ Institute Administrator Role and Demo Account seeded successfully!');
 
   // ==========================================
   // ACCOUNTS SEEDING
@@ -710,8 +188,7 @@ async function main() {
     });
   }
 
-  // Accounts dynamic RBAC (parallel to the core RBAC used by Sales/Purchase —
-  // same architecture as Library/Sports/Canteen/Front Office/Inventory/Transport)
+  // Accounts dynamic RBAC (same architecture as Library/Sports/Canteen/Front Office/Inventory/Transport)
   const accountsFinanceAdminPermissions = [
     { resource: 'coa', actions: ['read', 'create', 'update'] },
     { resource: 'cost_centers', actions: ['read', 'create', 'update'] },
@@ -858,13 +335,13 @@ async function main() {
     create: { name: 'CANTEEN_ADMIN', description: 'Full Canteen business operations (No RBAC management permissions)', isSystem: true },
   });
 
-  const canteenManagerRole = await prisma.canteenRole.upsert({
+  await prisma.canteenRole.upsert({
     where: { name: 'CANTEEN_MANAGER' },
     update: { description: 'Manages menu, items, members, orders, shifts, payments, reports, and wallets', isSystem: true },
     create: { name: 'CANTEEN_MANAGER', description: 'Manages menu, items, members, orders, shifts, payments, reports, and wallets', isSystem: true },
   });
 
-  const canteenCounterRole = await prisma.canteenRole.upsert({
+  await prisma.canteenRole.upsert({
     where: { name: 'CANTEEN_COUNTER_STAFF' },
     update: { description: 'Counter operations for terminal shifts, barcode lookup, order creation, payments, and wallet top-ups', isSystem: true },
     create: { name: 'CANTEEN_COUNTER_STAFF', description: 'Counter operations for terminal shifts, barcode lookup, order creation, payments, and wallet top-ups', isSystem: true },
@@ -890,7 +367,7 @@ async function main() {
     create: { name: 'Snacks & Beverages', displayOrder: 1 },
   });
 
-  const menuItem = await prisma.canteenMenuItem.upsert({
+  await prisma.canteenMenuItem.upsert({
     where: { id: 'CANTEEN_ITEM_101' },
     update: { name: 'Classic Veg Burger', price: 80.0, categoryId: canteenCategory.id, foodType: 'VEG' },
     create: {
@@ -937,6 +414,166 @@ async function main() {
   });
 
   console.log('✅ Canteen Permissions, Roles & Demo Data seeded successfully!');
+
+  // ==========================================
+  // SALES & PURCHASE MODULE SEEDING
+  // ==========================================
+  console.log('--- Seeding Sales & Purchase Module (Masters, Demo Vendors/Customers/Items, Dynamic RBAC) ---');
+
+  const spCategoryDefs = ['Electronics', 'Stationery', 'Furniture'];
+  const spCategoryIdByName = new Map<string, number>();
+  for (const name of spCategoryDefs) {
+    const category = await prisma.spItemCategory.upsert({
+      where: { institute_id_name: { institute_id: instId, name } },
+      update: {},
+      create: { institute_id: instId, name },
+    });
+    spCategoryIdByName.set(name, category.category_id);
+  }
+
+  const spUomDefs = [{ name: 'Piece', symbol: 'pc' }, { name: 'Box', symbol: 'box' }];
+  const spUomIdByName = new Map<string, number>();
+  for (const u of spUomDefs) {
+    const uom = await prisma.spUom.upsert({
+      where: { institute_id_name: { institute_id: instId, name: u.name } },
+      update: {},
+      create: { institute_id: instId, name: u.name, symbol: u.symbol },
+    });
+    spUomIdByName.set(u.name, uom.uom_id);
+  }
+
+  const spTaxCodeDefs = [
+    { name: 'GST 0%', cgst_pct: 0, sgst_pct: 0, igst_pct: 0 },
+    { name: 'GST 5%', cgst_pct: 2.5, sgst_pct: 2.5, igst_pct: 0 },
+    { name: 'GST 12%', cgst_pct: 6, sgst_pct: 6, igst_pct: 0 },
+    { name: 'GST 18%', cgst_pct: 9, sgst_pct: 9, igst_pct: 0 },
+    { name: 'GST 28%', cgst_pct: 14, sgst_pct: 14, igst_pct: 0 },
+  ];
+  const spTaxCodeIdByName = new Map<string, number>();
+  for (const t of spTaxCodeDefs) {
+    let taxCode = await prisma.spTaxCode.findFirst({ where: { institute_id: instId, name: t.name } });
+    if (!taxCode) {
+      taxCode = await prisma.spTaxCode.create({
+        data: { institute_id: instId, name: t.name, cgst_pct: t.cgst_pct, sgst_pct: t.sgst_pct, igst_pct: t.igst_pct, effective_from: new Date('2026-04-01') },
+      });
+    }
+    spTaxCodeIdByName.set(t.name, taxCode.tax_code_id);
+  }
+
+  const spPaymentTermDefs = [
+    { term_name: 'COD', days: 0 },
+    { term_name: 'Net 15', days: 15 },
+    { term_name: 'Net 30', days: 30 },
+    { term_name: 'Net 60', days: 60 },
+  ];
+  const spPaymentTermIdByName = new Map<string, number>();
+  for (const p of spPaymentTermDefs) {
+    const term = await prisma.spPaymentTerm.upsert({
+      where: { institute_id_term_name: { institute_id: instId, term_name: p.term_name } },
+      update: {},
+      create: { institute_id: instId, term_name: p.term_name, days: p.days },
+    });
+    spPaymentTermIdByName.set(p.term_name, term.payment_term_id);
+  }
+
+  const spWarehouse = await prisma.spWarehouse.upsert({
+    where: { institute_id_name: { institute_id: instId, name: 'Main Store' } },
+    update: {},
+    create: { institute_id: instId, name: 'Main Store', address: 'Main Campus Store Room', is_default: true },
+  });
+
+  const spVendorDefs = [
+    { code: 'VN/SEED/00001', name: 'ABC Suppliers', gstin: '27ABCDE1111F1Z5', city: 'Pune', state: 'Maharashtra' },
+    { code: 'VN/SEED/00002', name: 'XYZ Traders', gstin: '27ABCDE2222F1Z5', city: 'Mumbai', state: 'Maharashtra' },
+  ];
+  for (const v of spVendorDefs) {
+    await prisma.spVendor.upsert({
+      where: { institute_id_vendor_code: { institute_id: instId, vendor_code: v.code } },
+      update: {},
+      create: {
+        institute_id: instId, vendor_code: v.code, vendor_name: v.name, gstin: v.gstin, city: v.city, state: v.state,
+        payment_term_id: spPaymentTermIdByName.get('Net 30'), credit_limit: 200000,
+      },
+    });
+  }
+
+  const spCustomerDefs = [
+    { code: 'CN/SEED/00001', name: 'Customer A', city: 'Pune', state: 'Maharashtra' },
+    { code: 'CN/SEED/00002', name: 'Customer B', city: 'Nashik', state: 'Maharashtra' },
+  ];
+  for (const c of spCustomerDefs) {
+    await prisma.spCustomer.upsert({
+      where: { institute_id_customer_code: { institute_id: instId, customer_code: c.code } },
+      update: {},
+      create: {
+        institute_id: instId, customer_code: c.code, customer_name: c.name, city: c.city, state: c.state,
+        payment_term_id: spPaymentTermIdByName.get('Net 15'), credit_limit: 100000,
+      },
+    });
+  }
+
+  const spItemDefs = [
+    { code: 'IT/SEED/00001', name: 'Laptop', category: 'Electronics', uom: 'Piece', hsn: '8471', purchase_price: 45000, sales_price: 52000, tax: 'GST 18%' },
+    { code: 'IT/SEED/00002', name: 'Printer', category: 'Electronics', uom: 'Piece', hsn: '8443', purchase_price: 12000, sales_price: 14500, tax: 'GST 18%' },
+    { code: 'IT/SEED/00003', name: 'Office Chair', category: 'Furniture', uom: 'Piece', hsn: '9401', purchase_price: 3500, sales_price: 4500, tax: 'GST 12%' },
+    { code: 'IT/SEED/00004', name: 'Paper (Ream)', category: 'Stationery', uom: 'Box', hsn: '4802', purchase_price: 220, sales_price: 280, tax: 'GST 5%' },
+  ];
+  for (const i of spItemDefs) {
+    await prisma.spItem.upsert({
+      where: { institute_id_item_code: { institute_id: instId, item_code: i.code } },
+      update: {},
+      create: {
+        institute_id: instId, item_code: i.code, item_name: i.name,
+        category_id: spCategoryIdByName.get(i.category)!, uom_id: spUomIdByName.get(i.uom)!,
+        hsn_sac_code: i.hsn, purchase_price: i.purchase_price, sales_price: i.sales_price, tax_code_id: spTaxCodeIdByName.get(i.tax),
+      },
+    });
+  }
+
+  // Sales & Purchase dynamic RBAC (same architecture as Accounts/Canteen/Front Office/Inventory/Transport)
+  const spFullPermissions = [
+    { resource: 'masters', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'vendors', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'customers', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'items', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'purchase_orders', actions: ['read', 'create', 'update', 'delete', 'submit', 'approve', 'reject', 'cancel'] },
+    { resource: 'approval_rules', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'grns', actions: ['read', 'create', 'update', 'delete', 'post', 'cancel'] },
+    { resource: 'purchase_invoices', actions: ['read', 'create', 'update', 'delete', 'post', 'cancel'] },
+    { resource: 'purchase_payments', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'sales_orders', actions: ['read', 'create', 'update', 'delete', 'confirm', 'cancel'] },
+    { resource: 'sales_invoices', actions: ['read', 'create', 'update', 'delete', 'post', 'cancel'] },
+    { resource: 'sales_receipts', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'reports', actions: ['read'] },
+    { resource: 'dashboard', actions: ['read'] },
+  ];
+  const spAdminRole = await prisma.salesPurchaseDynamicRole.upsert({
+    where: { institute_id_name: { institute_id: instId, name: 'Purchase & Sales Admin' } },
+    update: { permissions: spFullPermissions },
+    create: {
+      institute_id: instId,
+      name: 'Purchase & Sales Admin',
+      description: 'Full access to vendors, customers, items, purchase and sales workflows, and registers',
+      permissions: spFullPermissions,
+    },
+  });
+
+  const spDemoPasswordHash = await bcrypt.hash('SalesPurchase#2026', 10);
+  await prisma.salesPurchaseUserDynamicRole.upsert({
+    where: { institute_id_eddva_user_id: { institute_id: instId, eddva_user_id: 'usr_sp_admin_demo' } },
+    update: { role_id: spAdminRole.role_id, password_hash: spDemoPasswordHash },
+    create: {
+      institute_id: instId,
+      eddva_user_id: 'usr_sp_admin_demo',
+      user_name: 'Demo Purchase & Sales Admin',
+      user_email: 'sp.admin.demo@eddva.com',
+      username: 'sp_admin_demo',
+      password_hash: spDemoPasswordHash,
+      role_id: spAdminRole.role_id,
+    },
+  });
+
+  console.log('✅ Sales & Purchase Module (Masters, Demo Vendors/Customers/Items, Dynamic RBAC) seeded successfully!');
 }
 
 main()

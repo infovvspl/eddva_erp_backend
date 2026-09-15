@@ -100,7 +100,7 @@ export class CanteenOrdersService {
     return this.prisma.$transaction(async (tx) => {
       // Generate unique order number
       const orderNumber = await this.numberingService.generateNextNumber(
-        DocumentType.SALES_ORDER,
+        DocumentType.CANTEEN_ORDER,
         new Date(),
         tx,
       );

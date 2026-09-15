@@ -5,11 +5,6 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuditModule } from './audit/audit.module';
 import { NumberingModule } from './numbering/numbering.module';
 import { AuthModule } from './auth/auth.module';
-import { MastersModule } from './masters/masters.module';
-import { PartiesModule } from './parties/parties.module';
-import { PurchaseModule } from './purchase/purchase.module';
-import { SalesModule } from './sales/sales.module';
-import { ReportsModule } from './reports/reports.module';
 import { PdfModule } from './pdf/pdf.module';
 import { CanteenModule } from './canteen/canteen.module';
 import { LibraryModule } from './library/library.module';
@@ -18,6 +13,7 @@ import { FrontOfficeModule } from './front-office/front-office.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { TransportModule } from './transport/transport.module';
 import { AccountsModule } from './accounts/accounts.module';
+import { SalesPurchaseModule } from './sales-purchase/sales-purchase.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -29,11 +25,6 @@ import { AppService } from './app.service';
     AuditModule,
     NumberingModule,
     AuthModule,
-    MastersModule,
-    PartiesModule,
-    PurchaseModule,
-    SalesModule,
-    ReportsModule,
     PdfModule,
     CanteenModule,
     LibraryModule,
@@ -42,6 +33,7 @@ import { AppService } from './app.service';
     InventoryModule,
     TransportModule,
     AccountsModule,
+    SalesPurchaseModule,
   ],
   controllers: [AppController],
   providers: [AppService],

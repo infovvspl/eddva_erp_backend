@@ -1,0 +1,22 @@
+/** entityType strings used with the shared core AuditService (via SalesPurchaseAuditService). */
+export const SP_ENTITY = {
+  ITEM_CATEGORY: 'sp_item_category',
+  UOM: 'sp_uom',
+  TAX_CODE: 'sp_tax_code',
+  PAYMENT_TERM: 'sp_payment_term',
+  WAREHOUSE: 'sp_warehouse',
+  VENDOR: 'sp_vendor',
+  VENDOR_CONTACT: 'sp_vendor_contact',
+  VENDOR_BANK_DETAIL: 'sp_vendor_bank_detail',
+  CUSTOMER: 'sp_customer',
+  CUSTOMER_CONTACT: 'sp_customer_contact',
+  ITEM: 'sp_item',
+  PURCHASE_ORDER: 'sp_purchase_order',
+  PO_APPROVAL_RULE: 'sp_approval_rule',
+  GRN: 'sp_grn',
+  PURCHASE_INVOICE: 'sp_purchase_invoice',
+  PURCHASE_PAYMENT: 'sp_purchase_payment',
+  SALES_ORDER: 'sp_sales_order',
+  SALES_INVOICE: 'sp_sales_invoice',
+  SALES_RECEIPT: 'sp_sales_receipt',
+} as const;

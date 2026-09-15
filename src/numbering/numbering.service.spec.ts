@@ -40,7 +40,10 @@ describe('NumberingService', () => {
       { currentNumber: 5, prefix: 'PO/2026-27/' },
     ]);
 
-    const docNum = await service.generateNextNumber(DocumentType.PO, new Date('2026-05-01'));
+    const docNum = await service.generateNextNumber(
+      DocumentType.SP_PURCHASE_ORDER,
+      new Date('2026-05-01'),
+    );
     expect(docNum).toBe('PO/2026-27/00005');
   });
 });

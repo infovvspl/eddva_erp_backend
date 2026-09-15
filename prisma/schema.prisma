@@ -22,25 +22,31 @@ enum RoleStatus {
   INACTIVE
 }
 
-enum VendorStatus {
-  ACTIVE
-  INACTIVE
-  BLACKLISTED
-}
-
 enum DocumentType {
-  PO
-  GRN
-  PURCHASE_INVOICE
-  SALES_ORDER
-  SALES_INVOICE
-  PAYMENT
-  RECEIPT
   VISITOR_BADGE
   JOURNAL_VOUCHER
   PAYMENT_VOUCHER
   RECEIPT_VOUCHER
   CONTRA_VOUCHER
+  CANTEEN_ORDER
+  SP_VENDOR
+  SP_CUSTOMER
+  SP_ITEM
+  SP_WAREHOUSE
+  SP_PURCHASE_ORDER
+  SP_GRN
+  SP_PURCHASE_INVOICE
+  SP_SALES_ORDER
+  SP_SALES_INVOICE
+}
+
+enum PaymentMode {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+  CARD
+  OTHER
 }
 
 enum AccountNature {
@@ -67,86 +73,23 @@ enum FinancialYearStatus {
   CLOSED
 }
 
-enum PoStatus {
-  DRAFT
-  PENDING_APPROVAL
-  APPROVED
-  REJECTED
-  PARTIALLY_RECEIVED
-  CLOSED
-  CANCELLED
-}
-
-enum PoApprovalAction {
-  SUBMIT
-  APPROVE
-  REJECT
-}
-
-enum GrnStatus {
-  DRAFT
-  CONFIRMED
-  CANCELLED
-}
-
-enum InvoiceStatus {
-  DRAFT
-  POSTED
-  CANCELLED
-}
-
-enum PaymentStatus {
-  UNPAID
-  PARTIALLY_PAID
-  PAID
-}
-
-enum SoStatus {
-  DRAFT
-  CONFIRMED
-  PARTIALLY_INVOICED
-  INVOICED
-  CANCELLED
-}
-
-enum PaymentMode {
-  CASH
-  BANK_TRANSFER
-  UPI
-  CHEQUE
-  CARD
-  OTHER
-}
-
 model User {
-  id                      String                 @id @default(uuid())
+  id                      String               @id @default(uuid())
   instituteId             String?
   name                    String
-  email                   String                 @unique
+  email                   String               @unique
   passwordHash            String
   roleId                  String
-  role                    Role                   @relation(fields: [roleId], references: [id])
-  status                  UserStatus             @default(ACTIVE)
-  createdAt               DateTime               @default(now())
-  updatedAt               DateTime               @updatedAt
-  createdPurchaseOrders   PurchaseOrder[]        @relation("CreatedPOs")
-  approvedPurchaseOrders  PurchaseOrder[]        @relation("ApprovedPOs")
-  poApprovals             PoApproval[]
-  createdGrns             GoodsReceiptNote[]     @relation("CreatedGRNs")
-  createdPurchaseInvoices PurchaseInvoice[]      @relation("CreatedPIs")
-  postedPurchaseInvoices  PurchaseInvoice[]      @relation("PostedPIs")
-  createdPurchasePayments PurchasePayment[]
-  createdSalesOrders      SalesOrder[]           @relation("CreatedSOs")
-  createdSalesInvoices    SalesInvoice[]         @relation("CreatedSIs")
-  postedSalesInvoices     SalesInvoice[]         @relation("PostedSIs")
-  createdSalesReceipts    SalesReceipt[]
+  role                    Role                 @relation(fields: [roleId], references: [id])
+  status                  UserStatus           @default(ACTIVE)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
   auditLogs               AuditLog[]
-  inventoryTransactions   InventoryTransaction[]
   canteenUserRoles        CanteenUserRole[]
   canteenShifts           CanteenPosShift[]
-  createdCanteenOrders    CanteenOrder[]         @relation("CreatedCanteenOrders")
-  receivedCanteenPayments CanteenPayment[]       @relation("ReceivedCanteenPayments")
-  approvedCanteenTopups   CanteenWalletTopup[]   @relation("ApprovedCanteenTopups")
+  createdCanteenOrders    CanteenOrder[]       @relation("CreatedCanteenOrders")
+  receivedCanteenPayments CanteenPayment[]     @relation("ReceivedCanteenPayments")
+  approvedCanteenTopups   CanteenWalletTopup[] @relation("ApprovedCanteenTopups")
 
   @@map("users")
 }
@@ -161,7 +104,6 @@ model Role {
   updatedAt       DateTime         @default(now()) @updatedAt
   users           User[]
   rolePermissions RolePermission[]
-  approvalRules   ApprovalRule[]
 
   @@unique([roleName, instituteId])
   @@map("roles")
@@ -190,185 +132,6 @@ model RolePermission {
   @@map("role_permissions")
 }
 
-model ItemCategory {
-  id           String  @id @default(uuid())
-  instituteId  String?
-  categoryName String  @unique
-  status       Status  @default(ACTIVE)
-  items        Item[]
-
-  @@map("item_categories")
-}
-
-model Uom {
-  id     String @id @default(uuid())
-  name   String
-  code   String @unique
-  status Status @default(ACTIVE)
-  items  Item[]
-
-  @@map("uom")
-}
-
-model Item {
-  id                    String                 @id @default(uuid())
-  instituteId           String?
-  itemCode              String                 @unique
-  itemName              String
-  categoryId            String
-  category              ItemCategory           @relation(fields: [categoryId], references: [id])
-  uomId                 String
-  uom                   Uom                    @relation(fields: [uomId], references: [id])
-  hsnSacCode            String
-  purchasePrice         Decimal                @db.Decimal(12, 2)
-  salesPrice            Decimal                @db.Decimal(12, 2)
-  taxCodeId             String
-  taxCode               TaxCode                @relation(fields: [taxCodeId], references: [id])
-  quantity              Decimal                @default(0) @db.Decimal(12, 3)
-  status                Status                 @default(ACTIVE)
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  poItems               PurchaseOrderItem[]
-  grnItems              GrnItem[]
-  piItems               PurchaseInvoiceItem[]
-  soItems               SalesOrderItem[]
-  siItems               SalesInvoiceItem[]
-  inventoryTransactions InventoryTransaction[]
-
-  @@map("items")
-}
-
-model TaxCode {
-  id            String                @id @default(uuid())
-  name          String
-  cgstPct       Decimal               @db.Decimal(5, 2)
-  sgstPct       Decimal               @db.Decimal(5, 2)
-  igstPct       Decimal               @db.Decimal(5, 2)
-  effectiveFrom DateTime
-  status        Status                @default(ACTIVE)
-  createdAt     DateTime              @default(now())
-  items         Item[]
-  poItems       PurchaseOrderItem[]
-  piItems       PurchaseInvoiceItem[]
-  soItems       SalesOrderItem[]
-  siItems       SalesInvoiceItem[]
-
-  @@map("tax_codes")
-}
-
-model PaymentTerm {
-  id        String     @id @default(uuid())
-  termName  String     @unique
-  days      Int
-  status    Status     @default(ACTIVE)
-  vendors   Vendor[]
-  customers Customer[]
-
-  @@map("payment_terms")
-}
-
-model Warehouse {
-  id                    String                 @id @default(uuid())
-  instituteId           String?
-  name                  String
-  address               String
-  isDefault             Boolean                @default(false)
-  status                Status                 @default(ACTIVE)
-  purchaseOrders        PurchaseOrder[]
-  goodsReceiptNotes     GoodsReceiptNote[]
-  inventoryTransactions InventoryTransaction[]
-
-  @@map("warehouses")
-}
-
-model Vendor {
-  id                String             @id @default(uuid())
-  instituteId       String?
-  vendorCode        String             @unique
-  vendorName        String
-  gstin             String?
-  taxId             String?
-  addressLine1      String
-  addressLine2      String?
-  city              String
-  state             String
-  pincode           String
-  paymentTermId     String
-  paymentTerm       PaymentTerm        @relation(fields: [paymentTermId], references: [id])
-  creditLimit       Decimal            @default(0) @db.Decimal(12, 2)
-  status            VendorStatus       @default(ACTIVE)
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  contacts          VendorContact[]
-  bankDetails       VendorBankDetail[]
-  purchaseOrders    PurchaseOrder[]
-  goodsReceiptNotes GoodsReceiptNote[]
-  purchaseInvoices  PurchaseInvoice[]
-
-  @@map("vendors")
-}
-
-model VendorContact {
-  id          String  @id @default(uuid())
-  vendorId    String
-  vendor      Vendor  @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  name        String
-  designation String?
-  phone       String
-  email       String
-
-  @@map("vendor_contacts")
-}
-
-model VendorBankDetail {
-  id        String  @id @default(uuid())
-  vendorId  String
-  vendor    Vendor  @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  accountNo String
-  ifsc      String
-  swift     String?
-  bankName  String
-  isPrimary Boolean @default(false)
-
-  @@map("vendor_bank_details")
-}
-
-model Customer {
-  id            String            @id @default(uuid())
-  instituteId   String?
-  customerCode  String            @unique
-  customerName  String
-  gstin         String?
-  addressLine1  String
-  addressLine2  String?
-  city          String
-  state         String
-  pincode       String
-  paymentTermId String
-  paymentTerm   PaymentTerm       @relation(fields: [paymentTermId], references: [id])
-  creditLimit   Decimal           @default(0) @db.Decimal(12, 2)
-  status        Status            @default(ACTIVE)
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  contacts      CustomerContact[]
-  salesOrders   SalesOrder[]
-  salesInvoices SalesInvoice[]
-
-  @@map("customers")
-}
-
-model CustomerContact {
-  id          String   @id @default(uuid())
-  customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  name        String
-  designation String?
-  phone       String
-  email       String
-
-  @@map("customer_contacts")
-}
-
 model NumberSequence {
   id            String       @id @default(uuid())
   documentType  DocumentType
@@ -378,298 +141,6 @@ model NumberSequence {
 
   @@unique([documentType, financialYear])
   @@map("number_sequences")
-}
-
-model ApprovalRule {
-  id             String       @id @default(uuid())
-  documentType   DocumentType @default(PO)
-  minAmount      Decimal      @db.Decimal(12, 2)
-  maxAmount      Decimal?     @db.Decimal(12, 2)
-  requiredRoleId String
-  requiredRole   Role         @relation(fields: [requiredRoleId], references: [id])
-  approvalLevel  Int
-  status         Status       @default(ACTIVE)
-
-  @@map("approval_rules")
-}
-
-model PurchaseOrder {
-  id                   String              @id @default(uuid())
-  instituteId          String?
-  poNumber             String              @unique
-  vendorId             String
-  vendor               Vendor              @relation(fields: [vendorId], references: [id])
-  poDate               DateTime
-  expectedDeliveryDate DateTime
-  warehouseId          String
-  warehouse            Warehouse           @relation(fields: [warehouseId], references: [id])
-  status               PoStatus            @default(DRAFT)
-  subtotal             Decimal             @db.Decimal(12, 2)
-  taxAmount            Decimal             @db.Decimal(12, 2)
-  discount             Decimal             @default(0) @db.Decimal(12, 2)
-  grandTotal           Decimal             @db.Decimal(12, 2)
-  createdBy            String
-  creator              User                @relation("CreatedPOs", fields: [createdBy], references: [id])
-  approvedBy           String?
-  approver             User?               @relation("ApprovedPOs", fields: [approvedBy], references: [id])
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
-  items                PurchaseOrderItem[]
-  approvals            PoApproval[]
-  goodsReceiptNotes    GoodsReceiptNote[]
-  purchaseInvoices     PurchaseInvoice[]
-
-  @@index([vendorId])
-  @@index([instituteId])
-  @@map("purchase_orders")
-}
-
-model PurchaseOrderItem {
-  id          String        @id @default(uuid())
-  poId        String
-  po          PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
-  itemId      String
-  item        Item          @relation(fields: [itemId], references: [id])
-  quantity    Decimal       @db.Decimal(12, 2)
-  unitPrice   Decimal       @db.Decimal(12, 2)
-  taxCodeId   String
-  taxCode     TaxCode       @relation(fields: [taxCodeId], references: [id])
-  lineTotal   Decimal       @db.Decimal(12, 2)
-  receivedQty Decimal       @default(0) @db.Decimal(12, 2)
-  grnItems    GrnItem[]
-
-  @@map("purchase_order_items")
-}
-
-model PoApproval {
-  id            String           @id @default(uuid())
-  poId          String
-  po            PurchaseOrder    @relation(fields: [poId], references: [id], onDelete: Cascade)
-  approverId    String
-  approver      User             @relation(fields: [approverId], references: [id])
-  action        PoApprovalAction
-  remarks       String?
-  actionAt      DateTime         @default(now())
-  approvalLevel Int
-
-  @@map("po_approvals")
-}
-
-model GoodsReceiptNote {
-  id               String            @id @default(uuid())
-  instituteId      String?
-  grnNumber        String            @unique
-  poId             String
-  po               PurchaseOrder     @relation(fields: [poId], references: [id])
-  vendorId         String
-  vendor           Vendor            @relation(fields: [vendorId], references: [id])
-  receivedDate     DateTime
-  warehouseId      String
-  warehouse        Warehouse         @relation(fields: [warehouseId], references: [id])
-  status           GrnStatus         @default(DRAFT)
-  createdBy        String
-  creator          User              @relation("CreatedGRNs", fields: [createdBy], references: [id])
-  createdAt        DateTime          @default(now())
-  items            GrnItem[]
-  purchaseInvoices PurchaseInvoice[]
-
-  @@index([instituteId])
-  @@map("goods_receipt_notes")
-}
-
-model GrnItem {
-  id          String            @id @default(uuid())
-  grnId       String
-  grn         GoodsReceiptNote  @relation(fields: [grnId], references: [id], onDelete: Cascade)
-  poItemId    String
-  poItem      PurchaseOrderItem @relation(fields: [poItemId], references: [id])
-  itemId      String
-  item        Item              @relation(fields: [itemId], references: [id])
-  receivedQty Decimal           @db.Decimal(12, 2)
-  acceptedQty Decimal           @db.Decimal(12, 2)
-  rejectedQty Decimal           @db.Decimal(12, 2)
-
-  @@map("grn_items")
-}
-
-model PurchaseInvoice {
-  id                  String                @id @default(uuid())
-  instituteId         String?
-  invoiceNumber       String                @unique
-  vendorInvoiceNumber String
-  vendorId            String
-  vendor              Vendor                @relation(fields: [vendorId], references: [id])
-  poId                String?
-  po                  PurchaseOrder?        @relation(fields: [poId], references: [id])
-  grnId               String?
-  grn                 GoodsReceiptNote?     @relation(fields: [grnId], references: [id])
-  invoiceDate         DateTime
-  dueDate             DateTime
-  subtotal            Decimal               @db.Decimal(12, 2)
-  taxAmount           Decimal               @db.Decimal(12, 2)
-  discount            Decimal               @default(0) @db.Decimal(12, 2)
-  grandTotal          Decimal               @db.Decimal(12, 2)
-  paymentStatus       PaymentStatus         @default(UNPAID)
-  status              InvoiceStatus         @default(DRAFT)
-  createdBy           String
-  creator             User                  @relation("CreatedPIs", fields: [createdBy], references: [id])
-  postedBy            String?
-  poster              User?                 @relation("PostedPIs", fields: [postedBy], references: [id])
-  postedAt            DateTime?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  items               PurchaseInvoiceItem[]
-  payments            PurchasePayment[]
-
-  @@index([status, invoiceDate])
-  @@index([vendorId])
-  @@index([instituteId])
-  @@map("purchase_invoices")
-}
-
-model PurchaseInvoiceItem {
-  id                String          @id @default(uuid())
-  purchaseInvoiceId String
-  purchaseInvoice   PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
-  itemId            String
-  item              Item            @relation(fields: [itemId], references: [id])
-  quantity          Decimal         @db.Decimal(12, 2)
-  unitPrice         Decimal         @db.Decimal(12, 2)
-  taxCodeId         String
-  taxCode           TaxCode         @relation(fields: [taxCodeId], references: [id])
-  cgstAmount        Decimal         @db.Decimal(12, 2)
-  sgstAmount        Decimal         @db.Decimal(12, 2)
-  igstAmount        Decimal         @db.Decimal(12, 2)
-  lineTotal         Decimal         @db.Decimal(12, 2)
-
-  @@map("purchase_invoice_items")
-}
-
-model PurchasePayment {
-  id                String          @id @default(uuid())
-  instituteId       String?
-  paymentNumber     String          @unique
-  purchaseInvoiceId String
-  purchaseInvoice   PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id])
-  paymentDate       DateTime
-  amount            Decimal         @db.Decimal(12, 2)
-  mode              PaymentMode
-  referenceNo       String?
-  createdBy         String
-  creator           User            @relation(fields: [createdBy], references: [id])
-  createdAt         DateTime        @default(now())
-
-  @@index([instituteId])
-  @@map("purchase_payments")
-}
-
-model SalesOrder {
-  id            String           @id @default(uuid())
-  instituteId   String?
-  soNumber      String           @unique
-  customerId    String
-  customer      Customer         @relation(fields: [customerId], references: [id])
-  soDate        DateTime
-  deliveryDate  DateTime
-  status        SoStatus         @default(DRAFT)
-  subtotal      Decimal          @db.Decimal(12, 2)
-  taxAmount     Decimal          @db.Decimal(12, 2)
-  discount      Decimal          @default(0) @db.Decimal(12, 2)
-  grandTotal    Decimal          @db.Decimal(12, 2)
-  createdBy     String
-  creator       User             @relation("CreatedSOs", fields: [createdBy], references: [id])
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  items         SalesOrderItem[]
-  salesInvoices SalesInvoice[]
-
-  @@index([customerId])
-  @@index([instituteId])
-  @@map("sales_orders")
-}
-
-model SalesOrderItem {
-  id          String     @id @default(uuid())
-  soId        String
-  so          SalesOrder @relation(fields: [soId], references: [id], onDelete: Cascade)
-  itemId      String
-  item        Item       @relation(fields: [itemId], references: [id])
-  quantity    Decimal    @db.Decimal(12, 2)
-  unitPrice   Decimal    @db.Decimal(12, 2)
-  taxCodeId   String
-  taxCode     TaxCode    @relation(fields: [taxCodeId], references: [id])
-  lineTotal   Decimal    @db.Decimal(12, 2)
-  invoicedQty Decimal    @default(0) @db.Decimal(12, 2)
-
-  @@map("sales_order_items")
-}
-
-model SalesInvoice {
-  id            String             @id @default(uuid())
-  instituteId   String?
-  invoiceNumber String             @unique
-  customerId    String
-  customer      Customer           @relation(fields: [customerId], references: [id])
-  soId          String?
-  so            SalesOrder?        @relation(fields: [soId], references: [id])
-  invoiceDate   DateTime
-  dueDate       DateTime
-  subtotal      Decimal            @db.Decimal(12, 2)
-  taxAmount     Decimal            @db.Decimal(12, 2)
-  discount      Decimal            @default(0) @db.Decimal(12, 2)
-  grandTotal    Decimal            @db.Decimal(12, 2)
-  paymentStatus PaymentStatus      @default(UNPAID)
-  status        InvoiceStatus      @default(DRAFT)
-  createdBy     String
-  creator       User               @relation("CreatedSIs", fields: [createdBy], references: [id])
-  postedBy      String?
-  poster        User?              @relation("PostedSIs", fields: [postedBy], references: [id])
-  postedAt      DateTime?
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  items         SalesInvoiceItem[]
-  receipts      SalesReceipt[]
-
-  @@index([status, invoiceDate])
-  @@index([customerId])
-  @@index([instituteId])
-  @@map("sales_invoices")
-}
-
-model SalesInvoiceItem {
-  id             String       @id @default(uuid())
-  salesInvoiceId String
-  salesInvoice   SalesInvoice @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
-  itemId         String
-  item           Item         @relation(fields: [itemId], references: [id])
-  quantity       Decimal      @db.Decimal(12, 2)
-  unitPrice      Decimal      @db.Decimal(12, 2)
-  taxCodeId      String
-  taxCode        TaxCode      @relation(fields: [taxCodeId], references: [id])
-  cgstAmount     Decimal      @db.Decimal(12, 2)
-  sgstAmount     Decimal      @db.Decimal(12, 2)
-  igstAmount     Decimal      @db.Decimal(12, 2)
-  lineTotal      Decimal      @db.Decimal(12, 2)
-
-  @@map("sales_invoice_items")
-}
-
-model SalesReceipt {
-  id             String       @id @default(uuid())
-  instituteId    String?
-  receiptNumber  String       @unique
-  salesInvoiceId String
-  salesInvoice   SalesInvoice @relation(fields: [salesInvoiceId], references: [id])
-  receiptDate    DateTime
-  amount         Decimal      @db.Decimal(12, 2)
-  mode           PaymentMode
-  referenceNo    String?
-  createdBy      String
-  creator        User         @relation(fields: [createdBy], references: [id])
-  createdAt      DateTime     @default(now())
-
-  @@index([instituteId])
-  @@map("sales_receipts")
 }
 
 model AuditLog {
@@ -686,39 +157,6 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@map("audit_logs")
-}
-
-enum InventoryTransactionType {
-  PURCHASE_GRN
-  SALES_DISPATCH
-  STOCK_ADJUSTMENT
-  OPENING_STOCK
-  RETURN_IN
-  RETURN_OUT
-}
-
-model InventoryTransaction {
-  id              String                   @id @default(uuid())
-  instituteId     String?
-  itemId          String
-  item            Item                     @relation(fields: [itemId], references: [id])
-  warehouseId     String?
-  warehouse       Warehouse?               @relation(fields: [warehouseId], references: [id])
-  transactionType InventoryTransactionType
-  referenceType   String
-  referenceId     String
-  documentNumber  String
-  quantityIn      Decimal                  @default(0) @db.Decimal(12, 3)
-  quantityOut     Decimal                  @default(0) @db.Decimal(12, 3)
-  balanceQuantity Decimal                  @db.Decimal(12, 3)
-  remarks         String?
-  createdBy       String
-  creator         User                     @relation(fields: [createdBy], references: [id])
-  createdAt       DateTime                 @default(now())
-
-  @@index([itemId, createdAt])
-  @@index([instituteId])
-  @@map("inventory_transactions")
 }
 
 // ==========================================
@@ -3073,16 +2511,16 @@ model TransportPermission {
 // ============================================================
 
 model FinancialYear {
-  id        String              @id @default(uuid())
+  id          String              @id @default(uuid())
   instituteId String?
-  fyLabel   String
-  startDate DateTime
-  endDate   DateTime
-  status    FinancialYearStatus @default(OPEN)
-  closedAt  DateTime?
-  closedBy  String?
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  fyLabel     String
+  startDate   DateTime
+  endDate     DateTime
+  status      FinancialYearStatus @default(OPEN)
+  closedAt    DateTime?
+  closedBy    String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
   vouchers       Voucher[]
   periodBalances AccountPeriodBalance[]
@@ -3111,20 +2549,20 @@ model AccountGroup {
 }
 
 model LedgerAccount {
-  id                 String        @id @default(uuid())
+  id                 String       @id @default(uuid())
   instituteId        String?
   accountCode        String
   accountName        String
   groupId            String
-  group              AccountGroup  @relation(fields: [groupId], references: [id])
-  openingBalance     Decimal       @default(0) @db.Decimal(14, 2)
-  openingBalanceType BalanceType   @default(DEBIT)
-  allowVoucherEntry  Boolean       @default(true)
-  isActive           Boolean       @default(true)
-  isCashAccount      Boolean       @default(false)
-  isBankAccount      Boolean       @default(false)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  group              AccountGroup @relation(fields: [groupId], references: [id])
+  openingBalance     Decimal      @default(0) @db.Decimal(14, 2)
+  openingBalanceType BalanceType  @default(DEBIT)
+  allowVoucherEntry  Boolean      @default(true)
+  isActive           Boolean      @default(true)
+  isCashAccount      Boolean      @default(false)
+  isBankAccount      Boolean      @default(false)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   voucherEntries VoucherEntry[]
   periodBalances AccountPeriodBalance[]
@@ -3342,4 +2780,751 @@ model AccountsPermission {
   updated_at    DateTime @updatedAt
 
   @@map("accounts_permissions_catalog")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sales & Purchase Management Module
+// Masters (vendors/customers/items/item categories/UOM/tax codes/payment
+// terms/warehouses) → Purchase (PO → approval → GRN → Purchase Invoice,
+// three-way matched → Purchase Payment) → Sales (Sales Order → Sales
+// Invoice → Sales Receipt) → read-only Purchase/Sales Registers (queries
+// over posted invoices — never separate tables).
+//
+// RBAC is the same parallel dynamic-role architecture as Front Office/
+// Inventory/Transport (independent JWT, SSO exchange + direct login,
+// dynamic roles with a live resource:action permission catalog). Top-level
+// masters and documents carry institute_id, mirroring Transport's
+// multi-tenant scoping (chosen over Inventory's single-tenant style since
+// these are per-institute financial records).
+//
+// Financial-year-aware document numbering reuses the core NumberingService
+// (number_sequences / DocumentType) rather than a parallel mechanism.
+// Deliberately does NOT FK into Accounts' FinancialYear model — each RBAC
+// island (Accounts included) stays independent, so financial_year columns
+// below store the same FY label string NumberingService already derives
+// (e.g. "2026-27") rather than a cross-module foreign key.
+// ─────────────────────────────────────────────────────────────────────────
+
+enum SpPartyStatus {
+  ACTIVE
+  INACTIVE
+  BLACKLISTED
+}
+
+enum SpPaymentMode {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+  CARD
+  OTHER
+}
+
+enum SpItemStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SpPoStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PARTIALLY_RECEIVED
+  CLOSED
+  CANCELLED
+}
+
+enum SpPoApprovalAction {
+  APPROVED
+  REJECTED
+}
+
+enum SpGrnStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum SpInvoiceStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum SpPaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+}
+
+enum SpSoStatus {
+  DRAFT
+  CONFIRMED
+  PARTIALLY_INVOICED
+  CLOSED
+  CANCELLED
+}
+
+model SpVendor {
+  vendor_id       Int            @id @default(autoincrement())
+  institute_id    String
+  vendor_code     String
+  vendor_name     String
+  gstin           String?
+  tax_id          String?
+  address_line1   String?
+  address_line2   String?
+  city            String?
+  state           String?
+  pincode         String?
+  payment_term_id Int?
+  payment_term    SpPaymentTerm? @relation(fields: [payment_term_id], references: [payment_term_id])
+  credit_limit    Decimal        @default(0) @db.Decimal(14, 2)
+  status          SpPartyStatus  @default(ACTIVE)
+  created_by      String?
+  updated_by      String?
+  deleted_at      DateTime?
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  contacts          SpVendorContact[]
+  bank_details      SpVendorBankDetail[]
+  purchase_orders   SpPurchaseOrder[]
+  grns              SpGrn[]
+  purchase_invoices SpPurchaseInvoice[]
+
+  @@unique([institute_id, vendor_code])
+  @@index([institute_id, status])
+  @@index([vendor_name])
+  @@index([gstin])
+  @@map("sp_vendors")
+}
+
+model SpVendorContact {
+  contact_id  Int      @id @default(autoincrement())
+  vendor_id   Int
+  vendor      SpVendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+  name        String
+  designation String?
+  phone       String?
+  email       String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([vendor_id])
+  @@map("sp_vendor_contacts")
+}
+
+model SpVendorBankDetail {
+  bank_id    Int      @id @default(autoincrement())
+  vendor_id  Int
+  vendor     SpVendor @relation(fields: [vendor_id], references: [vendor_id], onDelete: Cascade)
+  account_no String
+  ifsc       String?
+  swift      String?
+  bank_name  String
+  is_primary Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([vendor_id])
+  @@map("sp_vendor_bank_details")
+}
+
+model SpCustomer {
+  customer_id     Int            @id @default(autoincrement())
+  institute_id    String
+  customer_code   String
+  customer_name   String
+  gstin           String?
+  tax_id          String?
+  address_line1   String?
+  address_line2   String?
+  city            String?
+  state           String?
+  pincode         String?
+  payment_term_id Int?
+  payment_term    SpPaymentTerm? @relation(fields: [payment_term_id], references: [payment_term_id])
+  credit_limit    Decimal        @default(0) @db.Decimal(14, 2)
+  status          SpPartyStatus  @default(ACTIVE)
+  created_by      String?
+  updated_by      String?
+  deleted_at      DateTime?
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  contacts       SpCustomerContact[]
+  sales_orders   SpSalesOrder[]
+  sales_invoices SpSalesInvoice[]
+
+  @@unique([institute_id, customer_code])
+  @@index([institute_id, status])
+  @@index([customer_name])
+  @@index([gstin])
+  @@map("sp_customers")
+}
+
+model SpCustomerContact {
+  contact_id  Int        @id @default(autoincrement())
+  customer_id Int
+  customer    SpCustomer @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade)
+  name        String
+  designation String?
+  phone       String?
+  email       String?
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  @@index([customer_id])
+  @@map("sp_customer_contacts")
+}
+
+model SpItemCategory {
+  category_id  Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  status       Status   @default(ACTIVE)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  items SpItem[]
+
+  @@unique([institute_id, name])
+  @@map("sp_item_categories")
+}
+
+model SpUom {
+  uom_id       Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  symbol       String
+  status       Status   @default(ACTIVE)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  items SpItem[]
+
+  @@unique([institute_id, name])
+  @@map("sp_uoms")
+}
+
+// Tax codes are versioned, never edited in place once used — a rate change
+// creates a new row with a later effective_from instead of mutating the old
+// one. Transaction lines always snapshot their own rates/amounts regardless,
+// so historical documents never depend on this table's current contents.
+model SpTaxCode {
+  tax_code_id    Int      @id @default(autoincrement())
+  institute_id   String
+  name           String
+  cgst_pct       Decimal  @default(0) @db.Decimal(5, 2)
+  sgst_pct       Decimal  @default(0) @db.Decimal(5, 2)
+  igst_pct       Decimal  @default(0) @db.Decimal(5, 2)
+  effective_from DateTime @db.Date
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+  created_by     String?
+
+  items    SpItem[]
+  po_items SpPurchaseOrderItem[]
+  so_items SpSalesOrderItem[]
+
+  @@index([institute_id, name, effective_from])
+  @@map("sp_tax_codes")
+}
+
+model SpPaymentTerm {
+  payment_term_id Int      @id @default(autoincrement())
+  institute_id    String
+  term_name       String
+  days            Int
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  vendors   SpVendor[]
+  customers SpCustomer[]
+
+  @@unique([institute_id, term_name])
+  @@map("sp_payment_terms")
+}
+
+model SpWarehouse {
+  warehouse_id Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  address      String?
+  is_default   Boolean  @default(false)
+  status       Status   @default(ACTIVE)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  purchase_orders SpPurchaseOrder[]
+  grns            SpGrn[]
+
+  @@unique([institute_id, name])
+  @@map("sp_warehouses")
+}
+
+model SpItem {
+  item_id        Int            @id @default(autoincrement())
+  institute_id   String
+  item_code      String
+  item_name      String
+  category_id    Int
+  category       SpItemCategory @relation(fields: [category_id], references: [category_id])
+  uom_id         Int
+  uom            SpUom          @relation(fields: [uom_id], references: [uom_id])
+  hsn_sac_code   String?
+  purchase_price Decimal        @default(0) @db.Decimal(14, 2)
+  sales_price    Decimal        @default(0) @db.Decimal(14, 2)
+  tax_code_id    Int?
+  tax_code       SpTaxCode?     @relation(fields: [tax_code_id], references: [tax_code_id])
+  status         SpItemStatus   @default(ACTIVE)
+  created_at     DateTime       @default(now())
+  updated_at     DateTime       @updatedAt
+
+  po_items  SpPurchaseOrderItem[]
+  grn_items SpGrnItem[]
+  pi_items  SpPurchaseInvoiceItem[]
+  so_items  SpSalesOrderItem[]
+  si_items  SpSalesInvoiceItem[]
+
+  @@unique([institute_id, item_code])
+  @@index([institute_id, status])
+  @@index([item_name])
+  @@map("sp_items")
+}
+
+model SpPurchaseOrder {
+  po_id                  Int         @id @default(autoincrement())
+  institute_id           String
+  po_number              String
+  financial_year         String
+  vendor_id              Int
+  vendor                 SpVendor    @relation(fields: [vendor_id], references: [vendor_id])
+  po_date                DateTime    @db.Date
+  expected_delivery_date DateTime?   @db.Date
+  warehouse_id           Int
+  warehouse              SpWarehouse @relation(fields: [warehouse_id], references: [warehouse_id])
+  status                 SpPoStatus  @default(DRAFT)
+  subtotal               Decimal     @default(0) @db.Decimal(14, 2)
+  tax_amount             Decimal     @default(0) @db.Decimal(14, 2)
+  discount               Decimal     @default(0) @db.Decimal(14, 2)
+  grand_total            Decimal     @default(0) @db.Decimal(14, 2)
+  created_by             String
+  submitted_at           DateTime?
+  approved_by            String?
+  approved_at            DateTime?
+  rejected_by            String?
+  rejected_at            DateTime?
+  rejection_reason       String?
+  cancelled_by           String?
+  cancelled_at           DateTime?
+  created_at             DateTime    @default(now())
+  updated_at             DateTime    @updatedAt
+
+  items             SpPurchaseOrderItem[]
+  approvals         SpPoApproval[]
+  grns              SpGrn[]
+  purchase_invoices SpPurchaseInvoice[]
+
+  @@unique([institute_id, po_number])
+  @@index([institute_id, status])
+  @@index([vendor_id])
+  @@index([po_date])
+  @@map("sp_purchase_orders")
+}
+
+model SpPurchaseOrderItem {
+  po_item_id        Int             @id @default(autoincrement())
+  purchase_order_id Int
+  purchase_order    SpPurchaseOrder @relation(fields: [purchase_order_id], references: [po_id], onDelete: Cascade)
+  item_id           Int
+  item              SpItem          @relation(fields: [item_id], references: [item_id])
+  quantity          Decimal         @db.Decimal(14, 3)
+  unit_price        Decimal         @db.Decimal(14, 2)
+  tax_code_id       Int?
+  tax_code          SpTaxCode?      @relation(fields: [tax_code_id], references: [tax_code_id])
+  line_discount     Decimal         @default(0) @db.Decimal(14, 2)
+  line_tax_amount   Decimal         @default(0) @db.Decimal(14, 2)
+  line_total        Decimal         @default(0) @db.Decimal(14, 2)
+  received_qty      Decimal         @default(0) @db.Decimal(14, 3)
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+
+  grn_items SpGrnItem[]
+  pi_items  SpPurchaseInvoiceItem[]
+
+  @@index([purchase_order_id])
+  @@index([item_id])
+  @@map("sp_purchase_order_items")
+}
+
+model SpPoApproval {
+  approval_id Int                @id @default(autoincrement())
+  po_id       Int
+  po          SpPurchaseOrder    @relation(fields: [po_id], references: [po_id], onDelete: Cascade)
+  approver_id String
+  action      SpPoApprovalAction
+  remarks     String?
+  action_at   DateTime           @default(now())
+
+  @@index([po_id])
+  @@map("sp_po_approvals")
+}
+
+// Configurable approval thresholds (section 21/22 of the module spec) —
+// amount bands optionally tied to a required approver role, evaluated in
+// `sequence` order so a very large PO can require multiple sign-offs. Never
+// hardcoded in application logic.
+model SpApprovalRule {
+  rule_id          Int                       @id @default(autoincrement())
+  institute_id     String
+  name             String
+  min_amount       Decimal                   @default(0) @db.Decimal(14, 2)
+  max_amount       Decimal?                  @db.Decimal(14, 2)
+  approver_role_id Int?
+  approver_role    SalesPurchaseDynamicRole? @relation(fields: [approver_role_id], references: [role_id])
+  sequence         Int                       @default(1)
+  is_active        Boolean                   @default(true)
+  created_at       DateTime                  @default(now())
+  updated_at       DateTime                  @updatedAt
+
+  @@index([institute_id, is_active, min_amount])
+  @@map("sp_approval_rules")
+}
+
+model SpGrn {
+  grn_id            Int             @id @default(autoincrement())
+  institute_id      String
+  grn_number        String
+  financial_year    String
+  purchase_order_id Int
+  purchase_order    SpPurchaseOrder @relation(fields: [purchase_order_id], references: [po_id])
+  vendor_id         Int
+  vendor            SpVendor        @relation(fields: [vendor_id], references: [vendor_id])
+  received_date     DateTime        @db.Date
+  warehouse_id      Int
+  warehouse         SpWarehouse     @relation(fields: [warehouse_id], references: [warehouse_id])
+  status            SpGrnStatus     @default(DRAFT)
+  created_by        String
+  cancelled_by      String?
+  cancelled_at      DateTime?
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+
+  items             SpGrnItem[]
+  purchase_invoices SpPurchaseInvoice[]
+
+  @@unique([institute_id, grn_number])
+  @@index([institute_id, status])
+  @@index([purchase_order_id])
+  @@index([vendor_id])
+  @@map("sp_grns")
+}
+
+model SpGrnItem {
+  grn_item_id  Int                 @id @default(autoincrement())
+  grn_id       Int
+  grn          SpGrn               @relation(fields: [grn_id], references: [grn_id], onDelete: Cascade)
+  po_item_id   Int
+  po_item      SpPurchaseOrderItem @relation(fields: [po_item_id], references: [po_item_id])
+  item_id      Int
+  item         SpItem              @relation(fields: [item_id], references: [item_id])
+  received_qty Decimal             @db.Decimal(14, 3)
+  accepted_qty Decimal             @db.Decimal(14, 3)
+  rejected_qty Decimal             @default(0) @db.Decimal(14, 3)
+  created_at   DateTime            @default(now())
+
+  pi_items SpPurchaseInvoiceItem[]
+
+  @@index([grn_id])
+  @@index([po_item_id])
+  @@map("sp_grn_items")
+}
+
+model SpPurchaseInvoice {
+  pi_id                 Int              @id @default(autoincrement())
+  institute_id          String
+  invoice_number        String
+  financial_year        String
+  vendor_invoice_number String
+  vendor_id             Int
+  vendor                SpVendor         @relation(fields: [vendor_id], references: [vendor_id])
+  purchase_order_id     Int?
+  purchase_order        SpPurchaseOrder? @relation(fields: [purchase_order_id], references: [po_id])
+  grn_id                Int?
+  grn                   SpGrn?           @relation(fields: [grn_id], references: [grn_id])
+  invoice_date          DateTime         @db.Date
+  due_date              DateTime?        @db.Date
+  subtotal              Decimal          @default(0) @db.Decimal(14, 2)
+  tax_amount            Decimal          @default(0) @db.Decimal(14, 2)
+  discount              Decimal          @default(0) @db.Decimal(14, 2)
+  grand_total           Decimal          @default(0) @db.Decimal(14, 2)
+  paid_amount           Decimal          @default(0) @db.Decimal(14, 2)
+  payment_status        SpPaymentStatus  @default(UNPAID)
+  status                SpInvoiceStatus  @default(DRAFT)
+  created_by            String
+  posted_by             String?
+  posted_at             DateTime?
+  cancelled_by          String?
+  cancelled_at          DateTime?
+  created_at            DateTime         @default(now())
+  updated_at            DateTime         @updatedAt
+
+  items    SpPurchaseInvoiceItem[]
+  payments SpPurchasePayment[]
+
+  @@unique([institute_id, invoice_number])
+  @@index([institute_id, status, invoice_date])
+  @@index([vendor_id])
+  @@index([purchase_order_id])
+  @@index([grn_id])
+  @@index([vendor_invoice_number])
+  @@map("sp_purchase_invoices")
+}
+
+// Snapshot of commercial/tax values at posting time — later changes to
+// SpItem price, SpTaxCode rates, or the item master must never alter these.
+model SpPurchaseInvoiceItem {
+  pi_item_id    Int                  @id @default(autoincrement())
+  pi_id         Int
+  invoice       SpPurchaseInvoice    @relation(fields: [pi_id], references: [pi_id], onDelete: Cascade)
+  po_item_id    Int?
+  po_item       SpPurchaseOrderItem? @relation(fields: [po_item_id], references: [po_item_id])
+  grn_item_id   Int?
+  grn_item      SpGrnItem?           @relation(fields: [grn_item_id], references: [grn_item_id])
+  item_id       Int
+  item          SpItem               @relation(fields: [item_id], references: [item_id])
+  quantity      Decimal              @db.Decimal(14, 3)
+  unit_price    Decimal              @db.Decimal(14, 2)
+  cgst_rate     Decimal              @default(0) @db.Decimal(5, 2)
+  sgst_rate     Decimal              @default(0) @db.Decimal(5, 2)
+  igst_rate     Decimal              @default(0) @db.Decimal(5, 2)
+  cgst_amount   Decimal              @default(0) @db.Decimal(14, 2)
+  sgst_amount   Decimal              @default(0) @db.Decimal(14, 2)
+  igst_amount   Decimal              @default(0) @db.Decimal(14, 2)
+  line_discount Decimal              @default(0) @db.Decimal(14, 2)
+  line_total    Decimal              @default(0) @db.Decimal(14, 2)
+
+  @@index([pi_id])
+  @@index([item_id])
+  @@map("sp_purchase_invoice_items")
+}
+
+model SpPurchasePayment {
+  payment_id   Int               @id @default(autoincrement())
+  institute_id String
+  pi_id        Int
+  invoice      SpPurchaseInvoice @relation(fields: [pi_id], references: [pi_id])
+  payment_date DateTime          @db.Date
+  amount       Decimal           @db.Decimal(14, 2)
+  mode         SpPaymentMode
+  reference_no String?
+  created_by   String
+  created_at   DateTime          @default(now())
+  updated_at   DateTime          @updatedAt
+
+  @@index([pi_id])
+  @@index([institute_id, payment_date])
+  @@map("sp_purchase_payments")
+}
+
+model SpSalesOrder {
+  so_id          Int        @id @default(autoincrement())
+  institute_id   String
+  so_number      String
+  financial_year String
+  customer_id    Int
+  customer       SpCustomer @relation(fields: [customer_id], references: [customer_id])
+  so_date        DateTime   @db.Date
+  delivery_date  DateTime?  @db.Date
+  status         SpSoStatus @default(DRAFT)
+  subtotal       Decimal    @default(0) @db.Decimal(14, 2)
+  tax_amount     Decimal    @default(0) @db.Decimal(14, 2)
+  discount       Decimal    @default(0) @db.Decimal(14, 2)
+  grand_total    Decimal    @default(0) @db.Decimal(14, 2)
+  created_by     String
+  confirmed_at   DateTime?
+  cancelled_by   String?
+  cancelled_at   DateTime?
+  created_at     DateTime   @default(now())
+  updated_at     DateTime   @updatedAt
+
+  items          SpSalesOrderItem[]
+  sales_invoices SpSalesInvoice[]
+
+  @@unique([institute_id, so_number])
+  @@index([institute_id, status])
+  @@index([customer_id])
+  @@index([so_date])
+  @@map("sp_sales_orders")
+}
+
+model SpSalesOrderItem {
+  so_item_id      Int          @id @default(autoincrement())
+  sales_order_id  Int
+  sales_order     SpSalesOrder @relation(fields: [sales_order_id], references: [so_id], onDelete: Cascade)
+  item_id         Int
+  item            SpItem       @relation(fields: [item_id], references: [item_id])
+  quantity        Decimal      @db.Decimal(14, 3)
+  unit_price      Decimal      @db.Decimal(14, 2)
+  tax_code_id     Int?
+  tax_code        SpTaxCode?   @relation(fields: [tax_code_id], references: [tax_code_id])
+  line_discount   Decimal      @default(0) @db.Decimal(14, 2)
+  line_tax_amount Decimal      @default(0) @db.Decimal(14, 2)
+  line_total      Decimal      @default(0) @db.Decimal(14, 2)
+  invoiced_qty    Decimal      @default(0) @db.Decimal(14, 3)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+
+  si_items SpSalesInvoiceItem[]
+
+  @@index([sales_order_id])
+  @@index([item_id])
+  @@map("sp_sales_order_items")
+}
+
+model SpSalesInvoice {
+  si_id          Int             @id @default(autoincrement())
+  institute_id   String
+  invoice_number String
+  financial_year String
+  customer_id    Int
+  customer       SpCustomer      @relation(fields: [customer_id], references: [customer_id])
+  sales_order_id Int?
+  sales_order    SpSalesOrder?   @relation(fields: [sales_order_id], references: [so_id])
+  invoice_date   DateTime        @db.Date
+  due_date       DateTime?       @db.Date
+  subtotal       Decimal         @default(0) @db.Decimal(14, 2)
+  tax_amount     Decimal         @default(0) @db.Decimal(14, 2)
+  discount       Decimal         @default(0) @db.Decimal(14, 2)
+  grand_total    Decimal         @default(0) @db.Decimal(14, 2)
+  paid_amount    Decimal         @default(0) @db.Decimal(14, 2)
+  payment_status SpPaymentStatus @default(UNPAID)
+  status         SpInvoiceStatus @default(DRAFT)
+  created_by     String
+  posted_by      String?
+  posted_at      DateTime?
+  cancelled_by   String?
+  cancelled_at   DateTime?
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+
+  items    SpSalesInvoiceItem[]
+  receipts SpSalesReceipt[]
+
+  @@unique([institute_id, invoice_number])
+  @@index([institute_id, status, invoice_date])
+  @@index([customer_id])
+  @@index([sales_order_id])
+  @@map("sp_sales_invoices")
+}
+
+model SpSalesInvoiceItem {
+  si_item_id    Int               @id @default(autoincrement())
+  si_id         Int
+  invoice       SpSalesInvoice    @relation(fields: [si_id], references: [si_id], onDelete: Cascade)
+  so_item_id    Int?
+  so_item       SpSalesOrderItem? @relation(fields: [so_item_id], references: [so_item_id])
+  item_id       Int
+  item          SpItem            @relation(fields: [item_id], references: [item_id])
+  quantity      Decimal           @db.Decimal(14, 3)
+  unit_price    Decimal           @db.Decimal(14, 2)
+  cgst_rate     Decimal           @default(0) @db.Decimal(5, 2)
+  sgst_rate     Decimal           @default(0) @db.Decimal(5, 2)
+  igst_rate     Decimal           @default(0) @db.Decimal(5, 2)
+  cgst_amount   Decimal           @default(0) @db.Decimal(14, 2)
+  sgst_amount   Decimal           @default(0) @db.Decimal(14, 2)
+  igst_amount   Decimal           @default(0) @db.Decimal(14, 2)
+  line_discount Decimal           @default(0) @db.Decimal(14, 2)
+  line_total    Decimal           @default(0) @db.Decimal(14, 2)
+
+  @@index([si_id])
+  @@index([item_id])
+  @@map("sp_sales_invoice_items")
+}
+
+model SpSalesReceipt {
+  receipt_id   Int            @id @default(autoincrement())
+  institute_id String
+  si_id        Int
+  invoice      SpSalesInvoice @relation(fields: [si_id], references: [si_id])
+  receipt_date DateTime       @db.Date
+  amount       Decimal        @db.Decimal(14, 2)
+  mode         SpPaymentMode
+  reference_no String?
+  created_by   String
+  created_at   DateTime       @default(now())
+  updated_at   DateTime       @updatedAt
+
+  @@index([si_id])
+  @@index([institute_id, receipt_date])
+  @@map("sp_sales_receipts")
+}
+
+// ─── Sales & Purchase RBAC — parallel dynamic-role system, same architecture as Front Office/Inventory/Transport ───
+
+model SalesPurchaseDynamicRole {
+  role_id      Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json     @default("[]")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_roles     SalesPurchaseUserDynamicRole[]
+  approval_rules SpApprovalRule[]
+
+  @@unique([institute_id, name])
+  @@map("sales_purchase_dynamic_roles")
+}
+
+model SalesPurchaseUserDynamicRole {
+  id            Int                      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  username      String
+  password_hash String
+  is_active     Boolean                  @default(true)
+  role_id       Int
+  assigned_at   DateTime                 @default(now())
+  role          SalesPurchaseDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+
+  @@unique([institute_id, eddva_user_id])
+  @@unique([institute_id, username])
+  @@map("sales_purchase_user_dynamic_roles")
+}
+
+model SalesPurchaseSsoSession {
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  sp_token      String   @unique
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@map("sales_purchase_sso_sessions")
+}
+
+model SalesPurchasePermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("sales_purchase_permissions_catalog")
 }
