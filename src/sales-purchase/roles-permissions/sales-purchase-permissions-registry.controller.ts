@@ -21,6 +21,8 @@ import {
   UpdateSalesPurchaseCustomPermissionDto,
 } from './dto/create-custom-permission.dto';
 import { SalesPurchaseJwtGuard } from '../auth/sales-purchase-jwt.guard';
+import { SalesPurchaseUser } from '../auth/sales-purchase-user.decorator';
+import type { SalesPurchasePlatformUser } from '../auth/sales-purchase-auth.service';
 
 @ApiTags('Sales & Purchase / Dynamic Permissions Registry')
 @ApiBearerAuth()
@@ -41,10 +43,13 @@ export class SalesPurchasePermissionsRegistryController {
   @Post()
   @ApiOperation({
     summary:
-      'Register a new dynamic custom permission in PostgreSQL DB (Institute Admin)',
+      'Register a new dynamic custom permission in PostgreSQL DB (Institute Admin only)',
   })
-  createPermission(@Body() dto: CreateSalesPurchaseCustomPermissionDto) {
-    return this.svc.createPermission(dto);
+  createPermission(
+    @SalesPurchaseUser() actor: SalesPurchasePlatformUser,
+    @Body() dto: CreateSalesPurchaseCustomPermissionDto,
+  ) {
+    return this.svc.createPermission(actor, dto);
   }
 
   @Get(':id')
@@ -59,28 +64,32 @@ export class SalesPurchasePermissionsRegistryController {
 
   @Patch(':id')
   @ApiOperation({
-    summary: 'Update dynamic permission details or toggle active status',
+    summary: 'Update dynamic permission details or toggle active status (Institute Admin only)',
   })
   @ApiParam({
     name: 'id',
     description: 'permission_id of the Dynamic Permission to update (e.g. 1)',
   })
   updatePermission(
+    @SalesPurchaseUser() actor: SalesPurchasePlatformUser,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateSalesPurchaseCustomPermissionDto,
   ) {
-    return this.svc.updatePermission(id, dto);
+    return this.svc.updatePermission(actor, id, dto);
   }
 
   @Delete(':id')
   @ApiOperation({
-    summary: 'Delete custom dynamic permission (non-system permissions only)',
+    summary: 'Delete custom dynamic permission (non-system permissions only, Institute Admin only)',
   })
   @ApiParam({
     name: 'id',
     description: 'permission_id of the Custom Permission to delete (e.g. 1)',
   })
-  deletePermission(@Param('id', ParseIntPipe) id: number) {
-    return this.svc.deletePermission(id);
+  deletePermission(
+    @SalesPurchaseUser() actor: SalesPurchasePlatformUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.svc.deletePermission(actor, id);
   }
 }

@@ -55,6 +55,7 @@ export class SalesPurchaseDynamicRolesService {
   }
 
   async listRoles(actor: SalesPurchasePlatformUser) {
+    this.requireInstituteAdmin(actor);
     return this.prisma.salesPurchaseDynamicRole.findMany({
       where: { institute_id: actor.institute_id },
       include: { _count: { select: { user_roles: true } } },
@@ -62,10 +63,31 @@ export class SalesPurchaseDynamicRolesService {
     });
   }
 
+  /**
+   * `user_roles` is selected field-by-field rather than `include: true` so
+   * password_hash — a bcrypt hash, but still not something a role lookup
+   * should ever return — can never leak through this endpoint, regardless
+   * of who else touches this query later.
+   */
   async getRole(actor: SalesPurchasePlatformUser, roleId: number) {
+    this.requireInstituteAdmin(actor);
     const role = await this.prisma.salesPurchaseDynamicRole.findFirst({
       where: { role_id: roleId, institute_id: actor.institute_id },
-      include: { user_roles: true },
+      include: {
+        user_roles: {
+          select: {
+            id: true,
+            institute_id: true,
+            eddva_user_id: true,
+            user_name: true,
+            user_email: true,
+            username: true,
+            is_active: true,
+            role_id: true,
+            assigned_at: true,
+          },
+        },
+      },
     });
     if (!role) throw new NotFoundException(`Role #${roleId} not found`);
     return role;
@@ -176,6 +198,7 @@ export class SalesPurchaseDynamicRolesService {
   }
 
   async listUserAssignments(actor: SalesPurchasePlatformUser) {
+    this.requireInstituteAdmin(actor);
     const list = await this.prisma.salesPurchaseUserDynamicRole.findMany({
       where: { institute_id: actor.institute_id },
       include: { role: true },

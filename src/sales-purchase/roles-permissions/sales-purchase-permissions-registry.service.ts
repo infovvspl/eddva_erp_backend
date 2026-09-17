@@ -11,6 +11,8 @@ import {
   UpdateSalesPurchaseCustomPermissionDto,
 } from './dto/create-custom-permission.dto';
 import { SALES_PURCHASE_RESOURCE_CATALOG } from './dto/create-dynamic-role.dto';
+import { SalesPurchasePlatformUser } from '../auth/sales-purchase-auth.service';
+import { isSpAdmin } from '../common/sales-purchase-access.service';
 
 @Injectable()
 export class SalesPurchasePermissionsRegistryService implements OnModuleInit {
@@ -102,7 +104,11 @@ export class SalesPurchasePermissionsRegistryService implements OnModuleInit {
     return perm;
   }
 
-  async createPermission(dto: CreateSalesPurchaseCustomPermissionDto) {
+  async createPermission(
+    actor: SalesPurchasePlatformUser,
+    dto: CreateSalesPurchaseCustomPermissionDto,
+  ) {
+    this.requireInstituteAdmin(actor);
     const key = `${dto.resource.trim().toLowerCase()}:${dto.action.trim().toLowerCase()}`;
     const existing = await this.prisma.salesPurchasePermission.findUnique({
       where: { key },
@@ -128,9 +134,11 @@ export class SalesPurchasePermissionsRegistryService implements OnModuleInit {
   }
 
   async updatePermission(
+    actor: SalesPurchasePlatformUser,
     id: number,
     dto: UpdateSalesPurchaseCustomPermissionDto,
   ) {
+    this.requireInstituteAdmin(actor);
     await this.getPermission(id);
     return this.prisma.salesPurchasePermission.update({
       where: { permission_id: id },
@@ -143,7 +151,8 @@ export class SalesPurchasePermissionsRegistryService implements OnModuleInit {
     });
   }
 
-  async deletePermission(id: number) {
+  async deletePermission(actor: SalesPurchasePlatformUser, id: number) {
+    this.requireInstituteAdmin(actor);
     const perm = await this.getPermission(id);
     if (perm.is_system) {
       throw new ForbiddenException(
@@ -153,5 +162,13 @@ export class SalesPurchasePermissionsRegistryService implements OnModuleInit {
     return this.prisma.salesPurchasePermission.delete({
       where: { permission_id: id },
     });
+  }
+
+  private requireInstituteAdmin(actor: SalesPurchasePlatformUser) {
+    if (!isSpAdmin(actor)) {
+      throw new ForbiddenException(
+        'Only Institute Admin can manage the Sales & Purchase permission catalog',
+      );
+    }
   }
 }

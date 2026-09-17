@@ -64,7 +64,7 @@ export class SalesPurchaseDynamicRolesController {
 
   @Get('user-assignments')
   @ApiOperation({
-    summary: 'List all user-role assignments for this institute',
+    summary: 'List all user-role assignments for this institute (Institute Admin only)',
   })
   listAssignments(@SalesPurchaseUser() actor: SalesPurchasePlatformUser) {
     return this.svc.listUserAssignments(actor);
@@ -112,7 +112,7 @@ export class SalesPurchaseDynamicRolesController {
 
   @Get()
   @ApiOperation({
-    summary: 'List all custom Sales & Purchase roles for this institute',
+    summary: 'List all custom Sales & Purchase roles for this institute (Institute Admin only)',
   })
   listRoles(@SalesPurchaseUser() actor: SalesPurchasePlatformUser) {
     return this.svc.listRoles(actor);
@@ -121,7 +121,7 @@ export class SalesPurchaseDynamicRolesController {
   @Get(':id')
   @ApiOperation({
     summary:
-      'Get a specific dynamic Sales & Purchase role with user assignments',
+      'Get a specific dynamic Sales & Purchase role with user assignments (Institute Admin only)',
   })
   @ApiParam({ name: 'id', description: 'role_id (e.g. 1)' })
   getRole(
