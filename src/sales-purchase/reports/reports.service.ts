@@ -117,12 +117,16 @@ export class ReportsService {
         vendor: line.invoice.vendor,
         item: line.item,
         quantity: line.quantity,
+        // line_total = taxable_value + cgst + sgst + igst (see calcInvoiceLine
+        // in money.util.ts) — taxable_value is already net of line_discount,
+        // so subtracting the tax components alone recovers it. Adding
+        // line_discount back on top (the old formula) reintroduced the
+        // discount and reported the pre-discount gross instead.
         taxableValue:
           Number(line.line_total) -
           Number(line.cgst_amount) -
           Number(line.sgst_amount) -
-          Number(line.igst_amount) +
-          Number(line.line_discount),
+          Number(line.igst_amount),
         cgst: line.cgst_amount,
         sgst: line.sgst_amount,
         igst: line.igst_amount,
@@ -231,12 +235,12 @@ export class ReportsService {
         customer: line.invoice.customer,
         item: line.item,
         quantity: line.quantity,
+        // See purchaseRegister() above for why this excludes line_discount.
         taxableValue:
           Number(line.line_total) -
           Number(line.cgst_amount) -
           Number(line.sgst_amount) -
-          Number(line.igst_amount) +
-          Number(line.line_discount),
+          Number(line.igst_amount),
         cgst: line.cgst_amount,
         sgst: line.sgst_amount,
         igst: line.igst_amount,

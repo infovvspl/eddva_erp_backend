@@ -29,33 +29,32 @@ export class SalesPurchasePermissionsRegistryService implements OnModuleInit {
     }
   }
 
-  /** Auto-seeds system default permissions into the sales_purchase_permissions_catalog table */
+  /**
+   * Auto-seeds system default permissions into the
+   * sales_purchase_permissions_catalog table. Previously did a
+   * findUnique + conditional create per (resource, action) pair — up to
+   * ~140 sequential round-trips on every cold start. A single
+   * createMany({ skipDuplicates: true }) does the same idempotent upsert
+   * (the unique `key` constraint makes Postgres skip rows that already
+   * exist) in one query.
+   */
   async seedDefaultPermissions() {
-    for (const item of SALES_PURCHASE_RESOURCE_CATALOG) {
-      for (const action of item.available_actions) {
-        const key = `${item.resource}:${action}`;
-        const name = `${action.toUpperCase()} ${item.name}`;
-
-        const existing = await this.prisma.salesPurchasePermission.findUnique({
-          where: { key },
-        });
-
-        if (!existing) {
-          await this.prisma.salesPurchasePermission.create({
-            data: {
-              key,
-              resource: item.resource,
-              action,
-              name,
-              category: item.name,
-              description: item.description,
-              is_system: true,
-              is_active: true,
-            },
-          });
-        }
-      }
-    }
+    const data = SALES_PURCHASE_RESOURCE_CATALOG.flatMap((item) =>
+      item.available_actions.map((action) => ({
+        key: `${item.resource}:${action}`,
+        resource: item.resource,
+        action,
+        name: `${action.toUpperCase()} ${item.name}`,
+        category: item.name,
+        description: item.description,
+        is_system: true,
+        is_active: true,
+      })),
+    );
+    await this.prisma.salesPurchasePermission.createMany({
+      data,
+      skipDuplicates: true,
+    });
   }
 
   async listPermissions() {

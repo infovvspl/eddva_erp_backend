@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { INSTITUTE_ADMIN_ROLE_NAMES } from '../common/institute-admin-role-names';
 
 export interface SalesPurchasePlatformUser {
   eddva_user_id: string;
@@ -90,11 +91,9 @@ export class SalesPurchaseAuthService {
       user_name,
       user_email,
       user_role,
-      is_institute_admin: [
-        'INSTITUTE_ADMIN',
-        'INSTITUTE ADMINISTRATOR',
-        'INSTITUTE_ADMINISTRATOR',
-      ].includes(user_role),
+      is_institute_admin: (
+        INSTITUTE_ADMIN_ROLE_NAMES as readonly string[]
+      ).includes(user_role),
     };
 
     const expiresIn = 60 * 60 * 24; // 24 hours
@@ -245,11 +244,9 @@ export class SalesPurchaseAuthService {
         user_role,
         is_institute_admin:
           decoded.is_institute_admin === true ||
-          [
-            'INSTITUTE_ADMIN',
-            'INSTITUTE ADMINISTRATOR',
-            'INSTITUTE_ADMINISTRATOR',
-          ].includes(user_role),
+          (INSTITUTE_ADMIN_ROLE_NAMES as readonly string[]).includes(
+            user_role,
+          ),
         role_id:
           typeof decoded.role_id === 'number' ? decoded.role_id : undefined,
         role_name:

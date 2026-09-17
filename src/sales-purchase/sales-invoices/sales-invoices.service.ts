@@ -148,20 +148,45 @@ export class SalesInvoicesService {
     }
   }
 
-  /** Sales order line quantity matching (module spec §30): cumulative invoiced qty across non-cancelled invoices must never exceed the ordered quantity. */
+  /**
+   * Sales order line quantity matching (module spec §30): cumulative
+   * invoiced qty across non-cancelled invoices must never exceed the
+   * ordered quantity.
+   *
+   * Ownership scoping: so_item_id is resolved through a join back to its
+   * own sp_sales_orders row, filtered by the caller's institute_id and
+   * (when the invoice itself is linked to a specific sales order) that
+   * exact order — never by raw PK alone, so a line can't reference another
+   * institute's or another sales order's line and still pass.
+   *
+   * Concurrency: `tx` must be an active transaction; the referenced SO item
+   * row is locked with FOR UPDATE before its "already invoiced" total is
+   * computed, so two invoices racing against the same line serialize
+   * instead of both reading the same pre-write total and both passing —
+   * mirrors the row-locking approach in PurchaseInvoiceMatchService.
+   */
   private async validateOrderQuantities(
     tx: any,
+    instituteId: string,
     excludeInvoiceId: number,
+    salesOrderId: number | undefined,
     lines: BuiltLine[],
   ) {
     for (const line of lines) {
       if (!line.so_item_id) continue;
-      const soItem = await tx.spSalesOrderItem.findUnique({
-        where: { so_item_id: line.so_item_id },
-      });
+      const soItemRows = (await tx.$queryRaw(Prisma.sql`
+        SELECT soi.so_item_id, soi.quantity
+        FROM sp_sales_order_items soi
+        JOIN sp_sales_orders so ON so.so_id = soi.sales_order_id
+        WHERE soi.so_item_id = ${line.so_item_id}
+          AND so.institute_id = ${instituteId}
+          ${salesOrderId ? Prisma.sql`AND so.so_id = ${salesOrderId}` : Prisma.empty}
+        FOR UPDATE OF soi
+      `)) as Array<{ so_item_id: number; quantity: Prisma.Decimal }>;
+      const soItem = soItemRows[0];
       if (!soItem)
         throw new NotFoundException(
-          `Sales order item #${line.so_item_id} not found`,
+          `Sales order item #${line.so_item_id} not found${salesOrderId ? ` on sales order #${salesOrderId}` : ''}`,
         );
 
       const alreadyInvoiced = await tx.spSalesInvoiceItem.aggregate({
@@ -201,13 +226,24 @@ export class SalesInvoicesService {
     );
 
     const lines = await this.buildLines(instituteId, dto.items);
-    await this.validateOrderQuantities(this.prisma, 0, lines);
 
     const totals = this.computeTotals(lines, dto.discount ?? 0);
     const invoiceDate = new Date(dto.invoice_date);
     const financial_year = this.numbering.getFinancialYear(invoiceDate);
 
+    // Match validation runs inside the same transaction as the write (with
+    // a row lock on the referenced SO item) rather than before it —
+    // otherwise two concurrent creates could both validate against the same
+    // pre-write "already invoiced" total and jointly over-invoice.
     const invoice = await this.prisma.$transaction(async (tx) => {
+      await this.validateOrderQuantities(
+        tx,
+        instituteId,
+        0,
+        dto.sales_order_id,
+        lines,
+      );
+
       const invoice_number = await this.numbering.generateNextNumber(
         DocumentType.SP_SALES_INVOICE,
         invoiceDate,
@@ -335,13 +371,23 @@ export class SalesInvoicesService {
     let lines: BuiltLine[] | undefined;
     if (dto.items) {
       lines = await this.buildLines(instituteId, dto.items);
-      await this.validateOrderQuantities(this.prisma, id, lines);
     }
 
     const discount = dto.discount ?? toNumber(existing.discount);
+    const effectiveSalesOrderId =
+      dto.sales_order_id ?? existing.sales_order_id ?? undefined;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (lines) {
+        // Same reasoning as create(): validate inside the transaction, with
+        // a row lock, right before the write that depends on it.
+        await this.validateOrderQuantities(
+          tx,
+          instituteId,
+          id,
+          effectiveSalesOrderId,
+          lines,
+        );
         await tx.spSalesInvoiceItem.deleteMany({ where: { si_id: id } });
       }
       const totals = lines
@@ -416,7 +462,13 @@ export class SalesInvoicesService {
     }));
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      await this.validateOrderQuantities(tx, id, lines);
+      await this.validateOrderQuantities(
+        tx,
+        instituteId,
+        id,
+        invoice.sales_order_id ?? undefined,
+        lines,
+      );
 
       const result = await tx.spSalesInvoice.updateMany({
         where: { si_id: id, status: SpInvoiceStatus.DRAFT },

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../common/business-exception';
 
@@ -21,27 +22,59 @@ export interface MatchLineInput {
  * - Quantity vs GRN: cumulative invoiced quantity against a given GRN item
  *   must not exceed its accepted_qty — goods that were received but
  *   rejected, or never received at all, can never be invoiced.
- * Runs inside the same transaction as posting so the check and the write
- * are atomic.
+ *
+ * Ownership scoping: every po_item_id/grn_item_id is resolved through a
+ * join back to its own sp_purchase_orders/sp_grns row, filtered by the
+ * caller's institute_id and (when the invoice itself is linked to a
+ * specific PO/GRN) that exact document — never by raw PK alone. Without
+ * this, a line could reference another institute's (or another vendor's)
+ * PO/GRN item and the match would still "pass".
+ *
+ * Concurrency: `tx` must be an active database transaction. Each referenced
+ * PO/GRN item row is locked with `FOR UPDATE` before its "already invoiced"
+ * total is computed, so two invoices racing to match against the same line
+ * serialize on that row instead of both reading the same pre-write total
+ * and both passing — the same atomic-guard intent as the conditional
+ * UPDATEs used elsewhere in this module (GRN receiving, PO/SO quantity
+ * tracking), adapted here since there is no single counter column to
+ * increment — the "already invoiced" total is a live SUM over sibling rows.
  */
 @Injectable()
 export class PurchaseInvoiceMatchService {
   constructor(private readonly prisma: PrismaService) {}
 
   async validate(
-    tx: PrismaService | any,
+    tx: any,
+    instituteId: string,
     excludeInvoiceId: number,
+    purchaseOrderId: number | undefined,
+    grnId: number | undefined,
     lines: MatchLineInput[],
   ) {
     const client = tx ?? this.prisma;
 
     for (const line of lines) {
       if (line.po_item_id) {
-        const poItem = await client.spPurchaseOrderItem.findUnique({
-          where: { po_item_id: line.po_item_id },
-        });
-        if (!poItem)
-          throw new NotFoundException(`PO item #${line.po_item_id} not found`);
+        const poItemRows = (await client.$queryRaw(Prisma.sql`
+          SELECT poi.po_item_id, poi.unit_price, poi.quantity, poi.received_qty
+          FROM sp_purchase_order_items poi
+          JOIN sp_purchase_orders po ON po.po_id = poi.purchase_order_id
+          WHERE poi.po_item_id = ${line.po_item_id}
+            AND po.institute_id = ${instituteId}
+            ${purchaseOrderId ? Prisma.sql`AND po.po_id = ${purchaseOrderId}` : Prisma.empty}
+          FOR UPDATE OF poi
+        `)) as Array<{
+          po_item_id: number;
+          unit_price: Prisma.Decimal;
+          quantity: Prisma.Decimal;
+          received_qty: Prisma.Decimal;
+        }>;
+        const poItem = poItemRows[0];
+        if (!poItem) {
+          throw new NotFoundException(
+            `PO item #${line.po_item_id} not found${purchaseOrderId ? ` on purchase order #${purchaseOrderId}` : ''}`,
+          );
+        }
 
         if (Number(poItem.unit_price) !== Number(line.unit_price)) {
           throw new BusinessException(
@@ -81,13 +114,25 @@ export class PurchaseInvoiceMatchService {
       }
 
       if (line.grn_item_id) {
-        const grnItem = await client.spGrnItem.findUnique({
-          where: { grn_item_id: line.grn_item_id },
-        });
-        if (!grnItem)
+        const grnItemRows = (await client.$queryRaw(Prisma.sql`
+          SELECT gi.grn_item_id, gi.accepted_qty, gi.received_qty
+          FROM sp_grn_items gi
+          JOIN sp_grns g ON g.grn_id = gi.grn_id
+          WHERE gi.grn_item_id = ${line.grn_item_id}
+            AND g.institute_id = ${instituteId}
+            ${grnId ? Prisma.sql`AND g.grn_id = ${grnId}` : Prisma.empty}
+          FOR UPDATE OF gi
+        `)) as Array<{
+          grn_item_id: number;
+          accepted_qty: Prisma.Decimal;
+          received_qty: Prisma.Decimal;
+        }>;
+        const grnItem = grnItemRows[0];
+        if (!grnItem) {
           throw new NotFoundException(
-            `GRN item #${line.grn_item_id} not found`,
+            `GRN item #${line.grn_item_id} not found${grnId ? ` on GRN #${grnId}` : ''}`,
           );
+        }
 
         const alreadyInvoiced = await client.spPurchaseInvoiceItem.aggregate({
           where: {

@@ -147,6 +147,17 @@ export class PurchaseInvoicesService {
         throw new BadRequestException(
           `Purchase order ${po.po_number} does not belong to the selected vendor`,
         );
+      // Without this, an invoice linked straight to a PO (no GRN in
+      // between) could be posted against a PO that was never approved —
+      // silently bypassing the approval workflow (module spec §26/§45).
+      if (
+        !(['APPROVED', 'PARTIALLY_RECEIVED', 'CLOSED'] as string[]).includes(
+          po.status,
+        )
+      )
+        throw new BadRequestException(
+          `Purchase order ${po.po_number} is ${po.status}; only an APPROVED, PARTIALLY_RECEIVED, or CLOSED purchase order can be invoiced against`,
+        );
     }
     if (grnId) {
       const grn = await this.prisma.spGrn.findFirst({
@@ -185,13 +196,25 @@ export class PurchaseInvoicesService {
       quantity: Number(l.quantity),
       unit_price: Number(l.unit_price),
     }));
-    await this.match.validate(this.prisma, 0, matchLines);
 
     const totals = this.computeTotals(lines, dto.discount ?? 0);
     const invoiceDate = new Date(dto.invoice_date);
     const financial_year = this.numbering.getFinancialYear(invoiceDate);
 
+    // Match validation runs inside the same transaction as the write (with
+    // row locks on the referenced PO/GRN items) rather than before it —
+    // otherwise two concurrent creates could both validate against the same
+    // pre-write "already invoiced" total and jointly over-invoice.
     const invoice = await this.prisma.$transaction(async (tx) => {
+      await this.match.validate(
+        tx,
+        instituteId,
+        0,
+        dto.purchase_order_id,
+        dto.grn_id,
+        matchLines,
+      );
+
       const invoice_number = await this.numbering.generateNextNumber(
         DocumentType.SP_PURCHASE_INVOICE,
         invoiceDate,
@@ -332,22 +355,35 @@ export class PurchaseInvoicesService {
     }
 
     let lines: Awaited<ReturnType<typeof this.buildLines>> | undefined;
+    let matchLines: MatchLineInput[] | undefined;
     if (dto.items) {
       lines = await this.buildLines(instituteId, dto.items);
-      const matchLines: MatchLineInput[] = lines.map((l) => ({
+      matchLines = lines.map((l) => ({
         item_id: l.item_id,
         po_item_id: l.po_item_id,
         grn_item_id: l.grn_item_id,
         quantity: Number(l.quantity),
         unit_price: Number(l.unit_price),
       }));
-      await this.match.validate(this.prisma, id, matchLines);
     }
 
     const discount = dto.discount ?? toNumber(existing.discount);
+    const effectivePurchaseOrderId =
+      dto.purchase_order_id ?? existing.purchase_order_id ?? undefined;
+    const effectiveGrnId = dto.grn_id ?? existing.grn_id ?? undefined;
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (lines) {
+      if (lines && matchLines) {
+        // Same reasoning as create(): validate inside the transaction, with
+        // row locks, right before the write that depends on it.
+        await this.match.validate(
+          tx,
+          instituteId,
+          id,
+          effectivePurchaseOrderId,
+          effectiveGrnId,
+          matchLines,
+        );
         await tx.spPurchaseInvoiceItem.deleteMany({ where: { pi_id: id } });
       }
       const totals = lines
@@ -419,7 +455,14 @@ export class PurchaseInvoicesService {
     }));
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      await this.match.validate(tx, id, matchLines);
+      await this.match.validate(
+        tx,
+        instituteId,
+        id,
+        invoice.purchase_order_id ?? undefined,
+        invoice.grn_id ?? undefined,
+        matchLines,
+      );
 
       const result = await tx.spPurchaseInvoice.updateMany({
         where: { pi_id: id, status: SpInvoiceStatus.DRAFT },

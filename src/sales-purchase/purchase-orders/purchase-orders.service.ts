@@ -487,6 +487,19 @@ export class PurchaseOrdersService {
         `Purchase order ${po.po_number} has goods receipt notes recorded against it and cannot be cancelled`,
       );
     }
+    // A purchase invoice can be linked directly to a PO with no GRN in
+    // between (see assertLinkedDocuments in purchase-invoices.service.ts),
+    // so the GRN check above alone isn't sufficient — this was previously
+    // missed, allowing a PO to be cancelled while a live invoice still
+    // referenced it.
+    const invoiceCount = await this.prisma.spPurchaseInvoice.count({
+      where: { purchase_order_id: id, status: { not: 'CANCELLED' } },
+    });
+    if (invoiceCount > 0) {
+      throw new BadRequestException(
+        `Purchase order ${po.po_number} has purchase invoices recorded against it and cannot be cancelled`,
+      );
+    }
 
     const updated = await this.prisma.spPurchaseOrder.update({
       where: { po_id: id },

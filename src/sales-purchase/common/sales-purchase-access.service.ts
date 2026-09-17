@@ -1,14 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SalesPurchasePlatformUser } from '../auth/sales-purchase-auth.service';
+import { INSTITUTE_ADMIN_ROLE_NAMES } from './institute-admin-role-names';
 
 interface PermissionRule {
   resource: string;
   actions: string[];
 }
 
+/**
+ * Previously duplicated as 4 independently-drifting checks (two array
+ * literals in sales-purchase-auth.service.ts, one narrower single-string
+ * comparison here, and a fourth copy of that narrower check inlined in
+ * SalesPurchaseInstituteAdminViewOnlyGuard). All four now use
+ * INSTITUTE_ADMIN_ROLE_NAMES from institute-admin-role-names.ts.
+ */
 export function isSpAdmin(actor: SalesPurchasePlatformUser): boolean {
-  return actor.is_institute_admin || actor.user_role === 'INSTITUTE_ADMIN';
+  return (
+    actor.is_institute_admin ||
+    INSTITUTE_ADMIN_ROLE_NAMES.includes(actor.user_role as (typeof INSTITUTE_ADMIN_ROLE_NAMES)[number])
+  );
 }
 
 /**
@@ -73,11 +84,18 @@ export class SalesPurchaseAccessService {
     );
   }
 
-  /** Resolves the acting user's own SalesPurchaseDynamicRole row_id, for role-gated approval checks. */
+  /**
+   * Resolves the acting user's own SalesPurchaseDynamicRole row_id, for
+   * role-gated approval checks (module spec §21's approval-rule role
+   * matching). Deliberately always re-reads the live, active assignment
+   * rather than trusting `actor.role_id` from the JWT — that token can be
+   * valid for up to 24h, and approval authority must not survive a
+   * revoked or reassigned role for that long. Only called for non-admin
+   * actors (callers already short-circuit on isSpAdmin(actor) first).
+   */
   async resolveRoleId(
     actor: SalesPurchasePlatformUser,
   ): Promise<number | undefined> {
-    if (actor.role_id) return actor.role_id;
     const assignment = await this.prisma.salesPurchaseUserDynamicRole.findFirst(
       {
         where: {

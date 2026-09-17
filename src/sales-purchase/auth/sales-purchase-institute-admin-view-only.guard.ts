@@ -4,14 +4,24 @@ import {
   ExecutionContext,
   ForbiddenException,
 } from '@nestjs/common';
+import { isSpAdmin } from '../common/sales-purchase-access.service';
 
 /**
  * Institute Admins have view-only access to Sales & Purchase operational
  * tasks (vendors/customers/items/purchase orders/GRNs/invoices/payments/
- * sales orders/receipts/reports) — full write access only to Roles &
- * Permissions and Auth sub-routes, so they can configure the module.
- * Mirrors InventoryInstituteAdminViewOnlyGuard/
- * TransportInstituteAdminViewOnlyGuard exactly.
+ * sales orders/receipts/reports). Mirrors
+ * InventoryInstituteAdminViewOnlyGuard/TransportInstituteAdminViewOnlyGuard.
+ *
+ * There used to be a path-substring exemption here for the Roles &
+ * Permissions and Auth routes ("/sales-purchase/roles" etc. always passes")
+ * — it was dead code: this guard is never attached to
+ * SalesPurchaseDynamicRolesController, SalesPurchasePermissionsRegistryController,
+ * or SalesPurchaseAuthController (`@UseGuards` on those only lists
+ * SalesPurchaseJwtGuard), so requests to those paths never reach this
+ * guard's canActivate() at all. Institute Admin write access there is
+ * enforced by requireInstituteAdmin()/isSpAdmin() inside those services
+ * directly. Removed rather than replaced with route metadata, since the
+ * case it guarded against doesn't currently occur.
  */
 @Injectable()
 export class SalesPurchaseInstituteAdminViewOnlyGuard implements CanActivate {
@@ -20,22 +30,9 @@ export class SalesPurchaseInstituteAdminViewOnlyGuard implements CanActivate {
     const user = req.salesPurchaseUser;
 
     if (!user) return true; // SalesPurchaseJwtGuard handles unauthenticated requests
-
-    const isInstituteAdmin =
-      user.is_institute_admin || user.user_role === 'INSTITUTE_ADMIN';
-    if (!isInstituteAdmin) return true;
+    if (!isSpAdmin(user)) return true;
 
     const readMethods = ['GET', 'HEAD', 'OPTIONS'];
-
-    const path: string = req.path || req.url || '';
-    if (
-      path.includes('/sales-purchase/roles') ||
-      path.includes('/sales-purchase/permissions') ||
-      path.includes('/sales-purchase/auth')
-    ) {
-      return true;
-    }
-
     if (!readMethods.includes(req.method.toUpperCase())) {
       throw new ForbiddenException(
         'Institute Admin has view-only access to Sales & Purchase operational tasks. ' +
