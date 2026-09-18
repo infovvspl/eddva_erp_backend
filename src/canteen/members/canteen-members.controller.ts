@@ -13,15 +13,16 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { CanteenMembersService } from './canteen-members.service';
 import { CreateCanteenMemberDto } from './dto/create-canteen-member.dto';
 import { UpdateCanteenMemberDto } from './dto/update-canteen-member.dto';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CanteenPermissionsGuard } from '../guards/canteen-permissions.guard';
+import { CanteenJwtGuard } from '../auth/canteen-jwt.guard';
+import { CanteenInstituteAdminViewOnlyGuard } from '../auth/canteen-institute-admin-view-only.guard';
+import { CanteenPermissionsGuard } from '../auth/canteen-permissions.guard';
 import { RequireCanteenPermission } from '../decorators/require-canteen-permission.decorator';
-import { GetUser } from '../../auth/decorators/get-user.decorator';
+import { CanteenUser } from '../auth/canteen-user.decorator';
 import { CanteenMemberType } from '@prisma/client';
 
 @ApiTags('Canteen Member Management')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, CanteenPermissionsGuard)
+@UseGuards(CanteenJwtGuard, CanteenInstituteAdminViewOnlyGuard, CanteenPermissionsGuard)
 @Controller('api/canteen/members')
 export class CanteenMembersController {
   constructor(private readonly membersService: CanteenMembersService) {}
@@ -29,8 +30,8 @@ export class CanteenMembersController {
   @ApiOperation({ summary: 'Register new canteen member' })
   @RequireCanteenPermission('canteen.member.create')
   @Post()
-  async createMember(@Body() dto: CreateCanteenMemberDto, @GetUser() user: any) {
-    return this.membersService.createMember(dto, user?.id || user?.userId);
+  async createMember(@Body() dto: CreateCanteenMemberDto, @CanteenUser() user: any) {
+    return this.membersService.createMember(dto, user?.id);
   }
 
   @ApiOperation({ summary: 'List canteen members (with search, memberType, barcode, pagination)' })
@@ -80,15 +81,15 @@ export class CanteenMembersController {
   async updateMember(
     @Param('id') id: string,
     @Body() dto: UpdateCanteenMemberDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.membersService.updateMember(id, dto, user?.id || user?.userId);
+    return this.membersService.updateMember(id, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Delete canteen member profile' })
   @RequireCanteenPermission('canteen.member.delete')
   @Delete(':id')
-  async deleteMember(@Param('id') id: string, @GetUser() user: any) {
-    return this.membersService.deleteMember(id, user?.id || user?.userId);
+  async deleteMember(@Param('id') id: string, @CanteenUser() user: any) {
+    return this.membersService.deleteMember(id, user?.id);
   }
 }

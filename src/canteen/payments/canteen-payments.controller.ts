@@ -11,14 +11,15 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CanteenPaymentsService } from './canteen-payments.service';
 import { CreateCanteenPaymentDto } from './dto/create-canteen-payment.dto';
 import { RefundCanteenPaymentDto } from './dto/refund-canteen-payment.dto';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CanteenPermissionsGuard } from '../guards/canteen-permissions.guard';
+import { CanteenJwtGuard } from '../auth/canteen-jwt.guard';
+import { CanteenInstituteAdminViewOnlyGuard } from '../auth/canteen-institute-admin-view-only.guard';
+import { CanteenPermissionsGuard } from '../auth/canteen-permissions.guard';
 import { RequireCanteenPermission } from '../decorators/require-canteen-permission.decorator';
-import { GetUser } from '../../auth/decorators/get-user.decorator';
+import { CanteenUser } from '../auth/canteen-user.decorator';
 
 @ApiTags('Canteen Payments Management')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, CanteenPermissionsGuard)
+@UseGuards(CanteenJwtGuard, CanteenInstituteAdminViewOnlyGuard, CanteenPermissionsGuard)
 @Controller('api/canteen')
 export class CanteenPaymentsController {
   constructor(private readonly paymentsService: CanteenPaymentsService) {}
@@ -29,9 +30,9 @@ export class CanteenPaymentsController {
   async processPayment(
     @Param('orderId') orderId: string,
     @Body() dto: CreateCanteenPaymentDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.paymentsService.processPayment(orderId, dto, user?.id || user?.userId);
+    return this.paymentsService.processPayment(orderId, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Get payment records for order' })
@@ -54,8 +55,8 @@ export class CanteenPaymentsController {
   async refundPayment(
     @Param('id') id: string,
     @Body() dto: RefundCanteenPaymentDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.paymentsService.refundPayment(id, dto, user?.id || user?.userId);
+    return this.paymentsService.refundPayment(id, dto, user?.id);
   }
 }

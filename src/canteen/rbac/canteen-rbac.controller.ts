@@ -18,14 +18,14 @@ import { UpdateCanteenPermissionDto } from './dto/update-canteen-permission.dto'
 import { AssignUserCanteenRoleDto } from './dto/assign-user-canteen-role.dto';
 import { CreateCanteenUserDto } from './dto/create-canteen-user.dto';
 import { UpdateCanteenUserDto } from './dto/update-canteen-user.dto';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CanteenPermissionsGuard } from '../guards/canteen-permissions.guard';
+import { CanteenJwtGuard } from '../auth/canteen-jwt.guard';
+import { CanteenPermissionsGuard } from '../auth/canteen-permissions.guard';
 import { RequireCanteenPermission } from '../decorators/require-canteen-permission.decorator';
-import { GetUser } from '../../auth/decorators/get-user.decorator';
+import { CanteenUser } from '../auth/canteen-user.decorator';
 
 @ApiTags('Canteen RBAC Management (Institute Admin Only)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, CanteenPermissionsGuard)
+@UseGuards(CanteenJwtGuard, CanteenPermissionsGuard)
 @Controller('api/canteen')
 export class CanteenRbacController {
   constructor(private readonly rbacService: CanteenRbacService) {}
@@ -39,9 +39,9 @@ export class CanteenRbacController {
   @Post('permissions')
   async createPermission(
     @Body() dto: CreateCanteenPermissionDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.rbacService.createPermission(dto, user?.id || user?.userId);
+    return this.rbacService.createPermission(dto, user?.id);
   }
 
   @ApiOperation({ summary: 'List all Canteen permissions (Institute Admin only)' })
@@ -64,16 +64,16 @@ export class CanteenRbacController {
   async updatePermission(
     @Param('id') id: string,
     @Body() dto: UpdateCanteenPermissionDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.rbacService.updatePermission(id, dto, user?.id || user?.userId);
+    return this.rbacService.updatePermission(id, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Delete custom Canteen permission (Institute Admin only)' })
   @RequireCanteenPermission('canteen.permission.delete')
   @Delete('permissions/:id')
-  async deletePermission(@Param('id') id: string, @GetUser() user: any) {
-    return this.rbacService.deletePermission(id, user?.id || user?.userId);
+  async deletePermission(@Param('id') id: string, @CanteenUser() user: any) {
+    return this.rbacService.deletePermission(id, user?.id);
   }
 
   // ==========================================
@@ -83,8 +83,8 @@ export class CanteenRbacController {
   @ApiOperation({ summary: 'Create Canteen role (Institute Admin only)' })
   @RequireCanteenPermission('canteen.role.create')
   @Post('roles')
-  async createRole(@Body() dto: CreateCanteenRoleDto, @GetUser() user: any) {
-    return this.rbacService.createRole(dto, user?.id || user?.userId);
+  async createRole(@Body() dto: CreateCanteenRoleDto, @CanteenUser() user: any) {
+    return this.rbacService.createRole(dto, user?.id);
   }
 
   @ApiOperation({ summary: 'List Canteen roles (Institute Admin only)' })
@@ -107,16 +107,16 @@ export class CanteenRbacController {
   async updateRole(
     @Param('id') id: string,
     @Body() dto: UpdateCanteenRoleDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.rbacService.updateRole(id, dto, user?.id || user?.userId);
+    return this.rbacService.updateRole(id, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Delete Canteen role (Institute Admin only)' })
   @RequireCanteenPermission('canteen.role.delete')
   @Delete('roles/:id')
-  async deleteRole(@Param('id') id: string, @GetUser() user: any) {
-    return this.rbacService.deleteRole(id, user?.id || user?.userId);
+  async deleteRole(@Param('id') id: string, @CanteenUser() user: any) {
+    return this.rbacService.deleteRole(id, user?.id);
   }
 
   // --- Role Permissions ---
@@ -134,9 +134,9 @@ export class CanteenRbacController {
   async assignRolePermissions(
     @Param('id') id: string,
     @Body() dto: AssignCanteenPermissionsDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.rbacService.assignRolePermissions(id, dto, user?.id || user?.userId);
+    return this.rbacService.assignRolePermissions(id, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Add single permission to Canteen role (ON toggle - Institute Admin only)' })
@@ -145,9 +145,9 @@ export class CanteenRbacController {
   async addPermissionToRole(
     @Param('id') id: string,
     @Param('permissionId') permissionId: string,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.rbacService.addPermissionToRole(id, permissionId, user?.id || user?.userId);
+    return this.rbacService.addPermissionToRole(id, permissionId, user?.id);
   }
 
   @ApiOperation({ summary: 'Remove single permission from Canteen role (OFF toggle - Institute Admin only)' })
@@ -156,9 +156,9 @@ export class CanteenRbacController {
   async removePermissionFromRole(
     @Param('id') id: string,
     @Param('permissionId') permissionId: string,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.rbacService.removePermissionFromRole(id, permissionId, user?.id || user?.userId);
+    return this.rbacService.removePermissionFromRole(id, permissionId, user?.id);
   }
 
   // ==========================================
@@ -170,9 +170,9 @@ export class CanteenRbacController {
   @Post('users')
   async createUser(
     @Body() dto: CreateCanteenUserDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.rbacService.createUser(dto, user?.id || user?.userId);
+    return this.rbacService.createUser(dto, user?.id, user?.institute_id);
   }
 
   @ApiOperation({ summary: 'List Canteen users (Institute Admin only)' })
@@ -200,9 +200,9 @@ export class CanteenRbacController {
   async updateUser(
     @Param('id') id: string,
     @Body() dto: UpdateCanteenUserDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.rbacService.updateUser(id, dto, user?.id || user?.userId);
+    return this.rbacService.updateUser(id, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Assign Canteen role to user (Institute Admin only)' })
@@ -211,9 +211,9 @@ export class CanteenRbacController {
   async assignUserRole(
     @Param('userId') userId: string,
     @Body() dto: AssignUserCanteenRoleDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.rbacService.assignUserRole(userId, dto, user?.id || user?.userId);
+    return this.rbacService.assignUserRole(userId, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Get Canteen roles assigned to user (Institute Admin only)' })
@@ -229,8 +229,8 @@ export class CanteenRbacController {
   async removeUserRole(
     @Param('userId') userId: string,
     @Param('roleId') roleId: string,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.rbacService.removeUserRole(userId, roleId, user?.id || user?.userId);
+    return this.rbacService.removeUserRole(userId, roleId, user?.id);
   }
 }

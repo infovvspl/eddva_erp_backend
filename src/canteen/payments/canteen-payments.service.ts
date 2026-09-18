@@ -168,7 +168,6 @@ export class CanteenPaymentsService {
   async getPaymentsByOrder(orderId: string) {
     return this.prisma.canteenPayment.findMany({
       where: { orderId },
-      include: { receiver: { select: { id: true, name: true, email: true } } },
       orderBy: { paidAt: 'desc' },
     });
   }
@@ -178,7 +177,6 @@ export class CanteenPaymentsService {
       where: { id },
       include: {
         order: { include: { member: { include: { wallet: true } } } },
-        receiver: { select: { id: true, name: true, email: true } },
       },
     });
     if (!payment) {

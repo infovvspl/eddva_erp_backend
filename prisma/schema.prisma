@@ -85,11 +85,6 @@ model User {
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
   auditLogs               AuditLog[]
-  canteenUserRoles        CanteenUserRole[]
-  canteenShifts           CanteenPosShift[]
-  createdCanteenOrders    CanteenOrder[]       @relation("CreatedCanteenOrders")
-  receivedCanteenPayments CanteenPayment[]     @relation("ReceivedCanteenPayments")
-  approvedCanteenTopups   CanteenWalletTopup[] @relation("ApprovedCanteenTopups")
 
   @@map("users")
 }
@@ -274,11 +269,43 @@ model CanteenUserRole {
   roleId     String
   assignedBy String?
   createdAt  DateTime    @default(now())
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       CanteenUser @relation(fields: [userId], references: [id], onDelete: Cascade)
   role       CanteenRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId])
   @@map("canteen_user_roles")
+}
+
+// ─── Canteen RBAC auth island — parallel dynamic-identity system, same architecture as Sales-Purchase/Transport/Inventory ───
+
+model CanteenUser {
+  id            String            @id @default(uuid())
+  institute_id  String
+  name          String
+  email         String?
+  username      String
+  password_hash String
+  is_active     Boolean           @default(true)
+  created_at    DateTime          @default(now())
+  updated_at    DateTime          @updatedAt
+  user_roles    CanteenUserRole[]
+
+  @@unique([institute_id, username])
+  @@map("canteen_users")
+}
+
+model CanteenSsoSession {
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  canteen_token String   @unique
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@map("canteen_sso_sessions")
 }
 
 // --- Canteen Menu Models ---
@@ -371,7 +398,6 @@ model CanteenPosShift {
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
   terminal     CanteenPosTerminal @relation(fields: [terminalId], references: [id])
-  staff        User               @relation(fields: [staffId], references: [id])
 
   @@map("canteen_pos_shifts")
 }
@@ -395,7 +421,6 @@ model CanteenOrder {
   updatedAt      DateTime             @updatedAt
   member         CanteenMember?       @relation(fields: [memberId], references: [id])
   terminal       CanteenPosTerminal?  @relation(fields: [terminalId], references: [id])
-  creator        User                 @relation("CreatedCanteenOrders", fields: [createdBy], references: [id])
   items          CanteenOrderItem[]
   payments       CanteenPayment[]
 
@@ -431,7 +456,6 @@ model CanteenPayment {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   order          CanteenOrder       @relation(fields: [orderId], references: [id])
-  receiver       User?              @relation("ReceivedCanteenPayments", fields: [receivedBy], references: [id])
 
   @@index([orderId])
   @@map("canteen_payments")
@@ -465,7 +489,6 @@ model CanteenWalletTopup {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   wallet         CanteenWallet      @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  approver       User?              @relation("ApprovedCanteenTopups", fields: [approvedBy], references: [id])
 
   @@index([walletId, topupDate])
   @@map("canteen_wallet_topups")

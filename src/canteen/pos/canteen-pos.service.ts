@@ -157,7 +157,6 @@ export class CanteenPosService {
       },
       include: {
         terminal: true,
-        staff: { select: { id: true, name: true, email: true } },
       },
     });
 
@@ -197,7 +196,6 @@ export class CanteenPosService {
         orderBy: { shiftStart: 'desc' },
         include: {
           terminal: true,
-          staff: { select: { id: true, name: true, email: true } },
         },
       }),
     ]);
@@ -218,7 +216,6 @@ export class CanteenPosService {
       where: { id },
       include: {
         terminal: true,
-        staff: { select: { id: true, name: true, email: true } },
       },
     });
     if (!shift) {
@@ -283,7 +280,6 @@ export class CanteenPosService {
         },
         include: {
           terminal: true,
-          staff: { select: { id: true, name: true, email: true } },
         },
       });
 

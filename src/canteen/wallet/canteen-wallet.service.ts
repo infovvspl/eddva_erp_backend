@@ -237,7 +237,6 @@ export class CanteenWalletService {
     await this.getWalletById(walletId);
     return this.prisma.canteenWalletTopup.findMany({
       where: { walletId },
-      include: { approver: { select: { id: true, name: true, email: true } } },
       orderBy: { topupDate: 'desc' },
     });
   }
@@ -247,7 +246,6 @@ export class CanteenWalletService {
       where: { id },
       include: {
         wallet: { include: { member: true } },
-        approver: { select: { id: true, name: true, email: true } },
       },
     });
     if (!topup) {

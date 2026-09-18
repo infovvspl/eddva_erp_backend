@@ -176,7 +176,6 @@ export class CanteenReportsService {
       where,
       include: {
         terminal: true,
-        staff: { select: { id: true, name: true, email: true } },
       },
       orderBy: { shiftStart: 'desc' },
     });

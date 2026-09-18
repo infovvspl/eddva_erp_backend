@@ -15,14 +15,15 @@ import { CreateCanteenWalletDto } from './dto/create-canteen-wallet.dto';
 import { UpdateCanteenWalletDto } from './dto/update-canteen-wallet.dto';
 import { TopupCanteenWalletDto } from './dto/topup-canteen-wallet.dto';
 import { BlockWalletDto } from './dto/block-wallet.dto';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CanteenPermissionsGuard } from '../guards/canteen-permissions.guard';
+import { CanteenJwtGuard } from '../auth/canteen-jwt.guard';
+import { CanteenInstituteAdminViewOnlyGuard } from '../auth/canteen-institute-admin-view-only.guard';
+import { CanteenPermissionsGuard } from '../auth/canteen-permissions.guard';
 import { RequireCanteenPermission } from '../decorators/require-canteen-permission.decorator';
-import { GetUser } from '../../auth/decorators/get-user.decorator';
+import { CanteenUser } from '../auth/canteen-user.decorator';
 
 @ApiTags('Canteen Wallet & Ledger Management')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, CanteenPermissionsGuard)
+@UseGuards(CanteenJwtGuard, CanteenInstituteAdminViewOnlyGuard, CanteenPermissionsGuard)
 @Controller('api/canteen')
 export class CanteenWalletController {
   constructor(private readonly walletService: CanteenWalletService) {}
@@ -34,9 +35,9 @@ export class CanteenWalletController {
   async createWallet(
     @Param('memberId') memberId: string,
     @Body() dto: CreateCanteenWalletDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.walletService.createWallet(memberId, dto, user?.id || user?.userId);
+    return this.walletService.createWallet(memberId, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Get wallet profile by member ID' })
@@ -59,16 +60,16 @@ export class CanteenWalletController {
   async updateWallet(
     @Param('walletId') walletId: string,
     @Body() dto: UpdateCanteenWalletDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.walletService.updateWallet(walletId, dto, user?.id || user?.userId);
+    return this.walletService.updateWallet(walletId, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Delete empty wallet without transaction history' })
   @RequireCanteenPermission('canteen.wallet.delete')
   @Delete('wallets/:walletId')
-  async deleteWallet(@Param('walletId') walletId: string, @GetUser() user: any) {
-    return this.walletService.deleteWallet(walletId, user?.id || user?.userId);
+  async deleteWallet(@Param('walletId') walletId: string, @CanteenUser() user: any) {
+    return this.walletService.deleteWallet(walletId, user?.id);
   }
 
   // --- Top-ups ---
@@ -78,9 +79,9 @@ export class CanteenWalletController {
   async processTopup(
     @Param('walletId') walletId: string,
     @Body() dto: TopupCanteenWalletDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.walletService.processTopup(walletId, dto, user?.id || user?.userId);
+    return this.walletService.processTopup(walletId, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Get top-up history for wallet' })
@@ -125,15 +126,15 @@ export class CanteenWalletController {
   async blockWallet(
     @Param('walletId') walletId: string,
     @Body() dto: BlockWalletDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.walletService.blockWallet(walletId, dto, user?.id || user?.userId);
+    return this.walletService.blockWallet(walletId, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Unblock student wallet' })
   @RequireCanteenPermission('canteen.wallet.unblock')
   @Post('wallets/:walletId/unblock')
-  async unblockWallet(@Param('walletId') walletId: string, @GetUser() user: any) {
-    return this.walletService.unblockWallet(walletId, user?.id || user?.userId);
+  async unblockWallet(@Param('walletId') walletId: string, @CanteenUser() user: any) {
+    return this.walletService.unblockWallet(walletId, user?.id);
   }
 }

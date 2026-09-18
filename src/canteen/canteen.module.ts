@@ -15,9 +15,10 @@ import { CanteenWalletController } from './wallet/canteen-wallet.controller';
 import { CanteenWalletService } from './wallet/canteen-wallet.service';
 import { CanteenReportsController } from './reports/canteen-reports.controller';
 import { CanteenReportsService } from './reports/canteen-reports.service';
-import { CanteenPermissionsGuard } from './guards/canteen-permissions.guard';
+import { CanteenAuthModule } from './auth/canteen-auth.module';
 
 @Module({
+  imports: [CanteenAuthModule],
   controllers: [
     CanteenRbacController,
     CanteenMenuController,
@@ -37,7 +38,6 @@ import { CanteenPermissionsGuard } from './guards/canteen-permissions.guard';
     CanteenPaymentsService,
     CanteenWalletService,
     CanteenReportsService,
-    CanteenPermissionsGuard,
   ],
   exports: [
     CanteenRbacService,

@@ -15,15 +15,16 @@ import { CreateCanteenOrderDto } from './dto/create-canteen-order.dto';
 import { UpdateCanteenOrderDto } from './dto/update-canteen-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { CanteenOrderItemDto } from './dto/canteen-order-item.dto';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CanteenPermissionsGuard } from '../guards/canteen-permissions.guard';
+import { CanteenJwtGuard } from '../auth/canteen-jwt.guard';
+import { CanteenInstituteAdminViewOnlyGuard } from '../auth/canteen-institute-admin-view-only.guard';
+import { CanteenPermissionsGuard } from '../auth/canteen-permissions.guard';
 import { RequireCanteenPermission } from '../decorators/require-canteen-permission.decorator';
-import { GetUser } from '../../auth/decorators/get-user.decorator';
+import { CanteenUser } from '../auth/canteen-user.decorator';
 import { CanteenOrderStatus, CanteenPaymentStatus } from '@prisma/client';
 
 @ApiTags('Canteen Orders Management')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, CanteenPermissionsGuard)
+@UseGuards(CanteenJwtGuard, CanteenInstituteAdminViewOnlyGuard, CanteenPermissionsGuard)
 @Controller('api/canteen/orders')
 export class CanteenOrdersController {
   constructor(private readonly ordersService: CanteenOrdersService) {}
@@ -31,8 +32,8 @@ export class CanteenOrdersController {
   @ApiOperation({ summary: 'Create Canteen order' })
   @RequireCanteenPermission('canteen.order.create')
   @Post()
-  async createOrder(@Body() dto: CreateCanteenOrderDto, @GetUser() user: any) {
-    return this.ordersService.createOrder(dto, user?.id || user?.userId);
+  async createOrder(@Body() dto: CreateCanteenOrderDto, @CanteenUser() user: any) {
+    return this.ordersService.createOrder(dto, user?.id);
   }
 
   @ApiOperation({ summary: 'List Canteen orders' })
@@ -87,9 +88,9 @@ export class CanteenOrdersController {
   async updateOrder(
     @Param('id') id: string,
     @Body() dto: UpdateCanteenOrderDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.ordersService.updateOrder(id, dto, user?.id || user?.userId);
+    return this.ordersService.updateOrder(id, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Update Canteen order status only' })
@@ -98,16 +99,16 @@ export class CanteenOrdersController {
   async updateOrderStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.ordersService.updateOrderStatus(id, dto, user?.id || user?.userId);
+    return this.ordersService.updateOrderStatus(id, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Cancel Canteen order' })
   @RequireCanteenPermission('canteen.order.cancel')
   @Delete(':id')
-  async cancelOrder(@Param('id') id: string, @GetUser() user: any) {
-    return this.ordersService.cancelOrder(id, user?.id || user?.userId);
+  async cancelOrder(@Param('id') id: string, @CanteenUser() user: any) {
+    return this.ordersService.cancelOrder(id, user?.id);
   }
 
   // --- Order Items ---
@@ -124,9 +125,9 @@ export class CanteenOrdersController {
   async addOrderItem(
     @Param('orderId') orderId: string,
     @Body() dto: CanteenOrderItemDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.ordersService.addOrderItem(orderId, dto, user?.id || user?.userId);
+    return this.ordersService.addOrderItem(orderId, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Update item quantity on unpaid order' })
@@ -136,9 +137,9 @@ export class CanteenOrdersController {
     @Param('orderId') orderId: string,
     @Param('itemId') itemId: string,
     @Body('quantity') quantity: number,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.ordersService.updateOrderItem(orderId, itemId, quantity, user?.id || user?.userId);
+    return this.ordersService.updateOrderItem(orderId, itemId, quantity, user?.id);
   }
 
   @ApiOperation({ summary: 'Remove item from unpaid order' })
@@ -147,8 +148,8 @@ export class CanteenOrdersController {
   async removeOrderItem(
     @Param('orderId') orderId: string,
     @Param('itemId') itemId: string,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.ordersService.removeOrderItem(orderId, itemId, user?.id || user?.userId);
+    return this.ordersService.removeOrderItem(orderId, itemId, user?.id);
   }
 }

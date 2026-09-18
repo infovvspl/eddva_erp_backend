@@ -431,7 +431,7 @@ export class CanteenRbacService {
 
   // --- User Role Assignments ---
   async getUserRoles(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.canteenUser.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found.');
     }
@@ -447,7 +447,7 @@ export class CanteenRbacService {
       throw new ForbiddenException('Users cannot assign Canteen roles to themselves.');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.canteenUser.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('Target user not found.');
     }
@@ -515,12 +515,12 @@ export class CanteenRbacService {
   }
 
   // --- Canteen User Management ---
-  async createUser(dto: CreateCanteenUserDto, actorUserId?: string) {
-    const existing = await this.prisma.user.findUnique({
+  async createUser(dto: CreateCanteenUserDto, actorUserId?: string, instituteId?: string) {
+    const existing = await this.prisma.canteenUser.findFirst({
       where: { email: dto.email },
     });
     if (existing) {
-      throw new ConflictException('User with this email already exists.');
+      throw new ConflictException('Canteen user with this email already exists.');
     }
 
     // Validate canteen role
@@ -531,25 +531,17 @@ export class CanteenRbacService {
       throw new NotFoundException('Specified Canteen role not found.');
     }
 
-    // Get default system role for the user
-    const defaultRole = await this.prisma.role.findFirst({
-      where: { roleName: { in: ['User', 'Staff', 'Canteen Staff'] } },
-    });
-    const fallbackRole = defaultRole || (await this.prisma.role.findFirst());
-    if (!fallbackRole) {
-      throw new BadRequestException('No system role available in system. Please create a role first.');
-    }
-    const systemRoleId = fallbackRole.id;
-
     const passwordHash = await bcrypt.hash(dto.password, 10);
+    const username = dto.email.split('@')[0];
 
     const user = await this.prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
+      const newUser = await tx.canteenUser.create({
         data: {
+          institute_id: instituteId || '',
           name: dto.name,
           email: dto.email,
-          passwordHash,
-          roleId: systemRoleId,
+          username,
+          password_hash: passwordHash,
         },
       });
 
@@ -562,15 +554,16 @@ export class CanteenRbacService {
         },
       });
 
-      return tx.user.findUnique({
+      return tx.canteenUser.findUnique({
         where: { id: newUser.id },
         select: {
           id: true,
           name: true,
           email: true,
-          status: true,
-          createdAt: true,
-          canteenUserRoles: {
+          username: true,
+          is_active: true,
+          created_at: true,
+          user_roles: {
             include: {
               role: true,
             },
@@ -581,7 +574,7 @@ export class CanteenRbacService {
 
     await this.auditService.log({
       userId: actorUserId,
-      entityType: 'User',
+      entityType: 'CanteenUser',
       entityId: user!.id,
       action: 'Canteen User Created',
       metadata: { name: user!.name, email: user!.email, canteenRoleId: dto.roleId },
@@ -591,19 +584,15 @@ export class CanteenRbacService {
   }
 
   async getUsers() {
-    return this.prisma.user.findMany({
-      where: {
-        canteenUserRoles: {
-          some: {},
-        },
-      },
+    return this.prisma.canteenUser.findMany({
       select: {
         id: true,
         name: true,
         email: true,
-        status: true,
-        createdAt: true,
-        canteenUserRoles: {
+        username: true,
+        is_active: true,
+        created_at: true,
+        user_roles: {
           include: {
             role: true,
           },
@@ -614,15 +603,16 @@ export class CanteenRbacService {
   }
 
   async getUserById(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.canteenUser.findUnique({
       where: { id: userId },
       select: {
         id: true,
         name: true,
         email: true,
-        status: true,
-        createdAt: true,
-        canteenUserRoles: {
+        username: true,
+        is_active: true,
+        created_at: true,
+        user_roles: {
           include: {
             role: true,
           },
@@ -636,20 +626,20 @@ export class CanteenRbacService {
   }
 
   async updateUser(userId: string, dto: UpdateCanteenUserDto, actorUserId?: string) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.canteenUser.findUnique({
       where: { id: userId },
-      include: { canteenUserRoles: true },
+      include: { user_roles: true },
     });
     if (!user) {
       throw new NotFoundException('User not found.');
     }
 
     if (dto.email && dto.email !== user.email) {
-      const existing = await this.prisma.user.findUnique({
+      const existing = await this.prisma.canteenUser.findFirst({
         where: { email: dto.email },
       });
       if (existing) {
-        throw new ConflictException('User with this email already exists.');
+        throw new ConflictException('Canteen user with this email already exists.');
       }
     }
 
@@ -657,9 +647,9 @@ export class CanteenRbacService {
       const updateData: any = {};
       if (dto.name) updateData.name = dto.name;
       if (dto.email) updateData.email = dto.email;
-      if (dto.password) updateData.passwordHash = await bcrypt.hash(dto.password, 10);
+      if (dto.password) updateData.password_hash = await bcrypt.hash(dto.password, 10);
 
-      await tx.user.update({
+      await tx.canteenUser.update({
         where: { id: userId },
         data: updateData,
       });
@@ -687,15 +677,16 @@ export class CanteenRbacService {
         });
       }
 
-      return tx.user.findUnique({
+      return tx.canteenUser.findUnique({
         where: { id: userId },
         select: {
           id: true,
           name: true,
           email: true,
-          status: true,
-          createdAt: true,
-          canteenUserRoles: {
+          username: true,
+          is_active: true,
+          created_at: true,
+          user_roles: {
             include: {
               role: true,
             },
@@ -706,7 +697,7 @@ export class CanteenRbacService {
 
     await this.auditService.log({
       userId: actorUserId,
-      entityType: 'User',
+      entityType: 'CanteenUser',
       entityId: userId,
       action: 'Canteen User Updated',
       metadata: { name: updated!.name, email: updated!.email },

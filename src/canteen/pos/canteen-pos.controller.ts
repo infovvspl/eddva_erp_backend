@@ -15,14 +15,15 @@ import { CreatePosTerminalDto } from './dto/create-pos-terminal.dto';
 import { UpdatePosTerminalDto } from './dto/update-pos-terminal.dto';
 import { OpenPosShiftDto } from './dto/open-pos-shift.dto';
 import { ClosePosShiftDto } from './dto/close-pos-shift.dto';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CanteenPermissionsGuard } from '../guards/canteen-permissions.guard';
+import { CanteenJwtGuard } from '../auth/canteen-jwt.guard';
+import { CanteenInstituteAdminViewOnlyGuard } from '../auth/canteen-institute-admin-view-only.guard';
+import { CanteenPermissionsGuard } from '../auth/canteen-permissions.guard';
 import { RequireCanteenPermission } from '../decorators/require-canteen-permission.decorator';
-import { GetUser } from '../../auth/decorators/get-user.decorator';
+import { CanteenUser } from '../auth/canteen-user.decorator';
 
 @ApiTags('Canteen POS Management')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, CanteenPermissionsGuard)
+@UseGuards(CanteenJwtGuard, CanteenInstituteAdminViewOnlyGuard, CanteenPermissionsGuard)
 @Controller('api/canteen')
 export class CanteenPosController {
   constructor(private readonly posService: CanteenPosService) {}
@@ -31,8 +32,8 @@ export class CanteenPosController {
   @ApiOperation({ summary: 'Register POS terminal' })
   @RequireCanteenPermission('canteen.terminal.create')
   @Post('pos-terminals')
-  async createTerminal(@Body() dto: CreatePosTerminalDto, @GetUser() user: any) {
-    return this.posService.createTerminal(dto, user?.id || user?.userId);
+  async createTerminal(@Body() dto: CreatePosTerminalDto, @CanteenUser() user: any) {
+    return this.posService.createTerminal(dto, user?.id);
   }
 
   @ApiOperation({ summary: 'List POS terminals' })
@@ -55,24 +56,24 @@ export class CanteenPosController {
   async updateTerminal(
     @Param('id') id: string,
     @Body() dto: UpdatePosTerminalDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.posService.updateTerminal(id, dto, user?.id || user?.userId);
+    return this.posService.updateTerminal(id, dto, user?.id);
   }
 
   @ApiOperation({ summary: 'Delete POS terminal' })
   @RequireCanteenPermission('canteen.terminal.delete')
   @Delete('pos-terminals/:id')
-  async deleteTerminal(@Param('id') id: string, @GetUser() user: any) {
-    return this.posService.deleteTerminal(id, user?.id || user?.userId);
+  async deleteTerminal(@Param('id') id: string, @CanteenUser() user: any) {
+    return this.posService.deleteTerminal(id, user?.id);
   }
 
   // --- Shifts ---
   @ApiOperation({ summary: 'Open POS terminal shift' })
   @RequireCanteenPermission('canteen.shift.open')
   @Post('shifts/open')
-  async openShift(@Body() dto: OpenPosShiftDto, @GetUser() user: any) {
-    return this.posService.openShift(dto, user?.id || user?.userId);
+  async openShift(@Body() dto: OpenPosShiftDto, @CanteenUser() user: any) {
+    return this.posService.openShift(dto, user?.id);
   }
 
   @ApiOperation({ summary: 'List POS shifts' })
@@ -112,8 +113,8 @@ export class CanteenPosController {
   async closeShift(
     @Param('id') id: string,
     @Body() dto: ClosePosShiftDto,
-    @GetUser() user: any,
+    @CanteenUser() user: any,
   ) {
-    return this.posService.closeShift(id, dto, user?.id || user?.userId);
+    return this.posService.closeShift(id, dto, user?.id);
   }
 }
