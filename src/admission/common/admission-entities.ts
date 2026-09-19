@@ -1,0 +1,21 @@
+/** entityType strings used with the shared core AuditService (via AdmissionAuditService). */
+export const ADM_ENTITY = {
+  SESSION: 'admission_session',
+  PROGRAM: 'admission_program',
+  APPLICANT: 'admission_applicant',
+  ENQUIRY: 'admission_enquiry',
+  ENQUIRY_FOLLOWUP: 'admission_enquiry_followup',
+  APPLICATION: 'admission_application',
+  DOCUMENT: 'admission_document',
+  APPLICATION_FEE: 'admission_application_fee',
+  TEST: 'admission_test',
+  TEST_REGISTRATION: 'admission_test_registration',
+  TEST_RESULT: 'admission_test_result',
+  INTERVIEW: 'admission_interview',
+  INTERVIEW_EVALUATION: 'admission_interview_evaluation',
+  MERIT_LIST: 'admission_merit_list',
+  OFFER: 'admission_offer',
+  FEE_STRUCTURE: 'admission_fee_structure',
+  PAYMENT: 'admission_payment',
+  CONFIRMATION: 'admission_confirmation',
+} as const;

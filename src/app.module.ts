@@ -14,6 +14,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { TransportModule } from './transport/transport.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { SalesPurchaseModule } from './sales-purchase/sales-purchase.module';
+import { AdmissionModule } from './admission/admission.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -34,6 +35,7 @@ import { AppService } from './app.service';
     TransportModule,
     AccountsModule,
     SalesPurchaseModule,
+    AdmissionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

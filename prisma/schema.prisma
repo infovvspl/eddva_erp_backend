@@ -3529,3 +3529,646 @@ model SalesPurchasePermission {
 
   @@map("sales_purchase_permissions_catalog")
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// Admission Management
+// Funnel: Enquiry → Application → Test/Interview → Merit List → Offer →
+//         Admission Fee → Confirmed Admission.
+// `AdmissionApplication.status` is the single authoritative pipeline state.
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum AdmissionSessionStatus {
+  upcoming
+  active
+  closed
+}
+
+enum AdmissionGender {
+  male
+  female
+  other
+}
+
+enum AdmissionEnquirySource {
+  walk_in
+  website
+  referral
+  agent
+  advertisement
+}
+
+enum AdmissionEnquiryStatus {
+  new
+  contacted
+  application_started
+  converted
+  lost
+}
+
+enum AdmissionApplicationStatus {
+  draft
+  submitted
+  under_review
+  test_scheduled
+  shortlisted
+  waitlisted
+  rejected
+  offered
+  admitted
+  cancelled
+}
+
+enum AdmissionDocumentType {
+  birth_certificate
+  previous_marksheet
+  transfer_certificate
+  id_proof
+  photo
+  other
+}
+
+enum AdmissionVerificationStatus {
+  pending
+  verified
+  rejected
+}
+
+enum AdmissionPaymentMode {
+  card
+  upi
+  bank_transfer
+  cash
+}
+
+enum AdmissionFeePaymentStatus {
+  success
+  pending
+  failed
+}
+
+enum AdmissionTestMode {
+  online
+  offline
+}
+
+enum AdmissionTestRegistrationStatus {
+  registered
+  appeared
+  absent
+}
+
+enum AdmissionInterviewMode {
+  online
+  offline
+}
+
+enum AdmissionInterviewStatus {
+  scheduled
+  completed
+  no_show
+  rescheduled
+}
+
+enum AdmissionRecommendation {
+  recommend
+  not_recommend
+  waitlist
+}
+
+enum AdmissionMeritOutcome {
+  selected
+  waitlisted
+  not_selected
+}
+
+enum AdmissionOfferStatus {
+  offered
+  accepted
+  declined
+  expired
+}
+
+enum AdmissionConfirmationStatus {
+  confirmed
+  cancelled
+}
+
+/// Whether the downstream core Student record has been created for a confirmed admission.
+enum AdmissionStudentLinkStatus {
+  pending
+  linked
+}
+
+enum AdmissionNotificationChannel {
+  email
+  sms
+}
+
+enum AdmissionNotificationStatus {
+  queued
+  sent
+  failed
+}
+
+model AdmissionAcademicSession {
+  session_id   Int                    @id @default(autoincrement())
+  institute_id String
+  name         String
+  start_date   DateTime               @db.Date
+  end_date     DateTime               @db.Date
+  status       AdmissionSessionStatus @default(upcoming)
+  created_by   String?
+  created_at   DateTime               @default(now())
+  updated_at   DateTime               @updatedAt
+  deleted_at   DateTime?
+
+  applications   AdmissionApplication[]
+  tests          AdmissionEntranceTest[]
+  merit_lists    AdmissionMeritList[]
+  fee_structures AdmissionFeeStructure[]
+
+  @@index([institute_id, status])
+  @@index([institute_id, name])
+  @@map("admission_academic_sessions")
+}
+
+model AdmissionProgram {
+  program_id           Int       @id @default(autoincrement())
+  institute_id         String
+  name                 String
+  level                String
+  total_seats          Int       @default(0)
+  eligibility_criteria String?
+  created_by           String?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+  deleted_at           DateTime?
+
+  enquiries      AdmissionEnquiry[]
+  applications   AdmissionApplication[]
+  tests          AdmissionEntranceTest[]
+  merit_lists    AdmissionMeritList[]
+  fee_structures AdmissionFeeStructure[]
+
+  @@index([institute_id, name])
+  @@map("admission_programs")
+}
+
+/// The person. One applicant can hold many applications (different programs/sessions).
+model AdmissionApplicant {
+  applicant_id     Int              @id @default(autoincrement())
+  institute_id     String
+  name             String
+  dob              DateTime?        @db.Date
+  gender           AdmissionGender?
+  email            String?
+  phone            String
+  address          String?
+  guardian_name    String?
+  guardian_contact String?
+  photo_url        String?
+  created_by       String?
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+  deleted_at       DateTime?
+
+  applications AdmissionApplication[]
+
+  @@index([institute_id, phone])
+  @@index([institute_id, email])
+  @@index([institute_id, name])
+  @@map("admission_applicants")
+}
+
+model AdmissionEnquiry {
+  enquiry_id   Int                    @id @default(autoincrement())
+  institute_id String
+  name         String
+  phone        String
+  email        String?
+  program_id   Int?
+  program      AdmissionProgram?      @relation(fields: [program_id], references: [program_id])
+  source       AdmissionEnquirySource
+  status       AdmissionEnquiryStatus @default(new)
+  assigned_to  String? // eddva_user_id of an assigned admission staff member — not an FK
+  created_by   String?
+  created_at   DateTime               @default(now())
+  updated_at   DateTime               @updatedAt
+  deleted_at   DateTime?
+
+  followups   AdmissionEnquiryFollowup[]
+  application AdmissionApplication?
+
+  @@index([institute_id, status])
+  @@index([institute_id, assigned_to, status])
+  @@index([institute_id, program_id])
+  @@index([institute_id, created_at])
+  @@map("admission_enquiries")
+}
+
+model AdmissionEnquiryFollowup {
+  followup_id        Int              @id @default(autoincrement())
+  enquiry_id         Int
+  enquiry            AdmissionEnquiry @relation(fields: [enquiry_id], references: [enquiry_id], onDelete: Cascade)
+  notes              String
+  followup_date      DateTime         @db.Date
+  next_followup_date DateTime?        @db.Date
+  updated_by         String
+  created_at         DateTime         @default(now())
+  updated_at         DateTime         @updatedAt
+
+  @@index([enquiry_id, followup_date])
+  @@index([next_followup_date])
+  @@map("admission_enquiry_followups")
+}
+
+model AdmissionApplication {
+  application_id     Int                        @id @default(autoincrement())
+  institute_id       String
+  applicant_id       Int
+  applicant          AdmissionApplicant         @relation(fields: [applicant_id], references: [applicant_id])
+  session_id         Int
+  session            AdmissionAcademicSession   @relation(fields: [session_id], references: [session_id])
+  program_id         Int
+  program            AdmissionProgram           @relation(fields: [program_id], references: [program_id])
+  application_number String                     @unique
+  source_enquiry_id  Int?                       @unique
+  source_enquiry     AdmissionEnquiry?          @relation(fields: [source_enquiry_id], references: [enquiry_id])
+  application_date   DateTime                   @db.Date
+  status             AdmissionApplicationStatus @default(draft)
+  created_by         String?
+  created_at         DateTime                   @default(now())
+  updated_at         DateTime                   @updatedAt
+  deleted_at         DateTime?
+
+  documents          AdmissionApplicationDocument[]
+  fee_payments       AdmissionApplicationFeePayment[]
+  test_registrations AdmissionTestRegistration[]
+  test_results       AdmissionTestResult[]
+  interview          AdmissionInterview?
+  merit_entries      AdmissionMeritListEntry[]
+  offer              AdmissionOffer?
+  payments           AdmissionPayment[]
+  confirmation       AdmissionConfirmation?
+
+  @@index([institute_id, session_id, program_id, status])
+  @@index([institute_id, status])
+  @@index([institute_id, application_date])
+  @@index([applicant_id])
+  @@map("admission_applications")
+}
+
+model AdmissionApplicationDocument {
+  document_id         Int                         @id @default(autoincrement())
+  application_id      Int
+  application         AdmissionApplication        @relation(fields: [application_id], references: [application_id], onDelete: Cascade)
+  document_type       AdmissionDocumentType
+  file_name           String
+  file_url            String
+  mime_type           String
+  size_bytes          Int
+  verification_status AdmissionVerificationStatus @default(pending)
+  verified_by         String?
+  verified_at         DateTime?
+  rejection_reason    String?
+  uploaded_by         String?
+  uploaded_at         DateTime                    @default(now())
+
+  @@index([application_id, document_type])
+  @@index([verification_status])
+  @@map("admission_application_documents")
+}
+
+model AdmissionApplicationFeePayment {
+  payment_id      Int                       @id @default(autoincrement())
+  application_id  Int
+  application     AdmissionApplication      @relation(fields: [application_id], references: [application_id], onDelete: Cascade)
+  amount          Decimal                   @db.Decimal(12, 2)
+  payment_date    DateTime                  @db.Date
+  payment_mode    AdmissionPaymentMode
+  transaction_ref String?
+  status          AdmissionFeePaymentStatus
+  idempotency_key String?
+  recorded_by     String?
+  created_at      DateTime                  @default(now())
+  updated_at      DateTime                  @updatedAt
+
+  @@unique([application_id, idempotency_key])
+  @@index([application_id, status])
+  @@map("admission_application_fee_payments")
+}
+
+model AdmissionEntranceTest {
+  test_id      Int                      @id @default(autoincrement())
+  institute_id String
+  name         String
+  session_id   Int
+  session      AdmissionAcademicSession @relation(fields: [session_id], references: [session_id])
+  program_id   Int
+  program      AdmissionProgram         @relation(fields: [program_id], references: [program_id])
+  test_date    DateTime
+  mode         AdmissionTestMode
+  venue        String?
+  max_marks    Decimal                  @db.Decimal(7, 2)
+  created_by   String?
+  created_at   DateTime                 @default(now())
+  updated_at   DateTime                 @updatedAt
+  deleted_at   DateTime?
+
+  registrations AdmissionTestRegistration[]
+  results       AdmissionTestResult[]
+
+  @@index([institute_id, session_id, program_id])
+  @@index([institute_id, test_date])
+  @@map("admission_entrance_tests")
+}
+
+model AdmissionTestRegistration {
+  registration_id    Int                             @id @default(autoincrement())
+  application_id     Int
+  application        AdmissionApplication            @relation(fields: [application_id], references: [application_id], onDelete: Cascade)
+  test_id            Int
+  test               AdmissionEntranceTest           @relation(fields: [test_id], references: [test_id], onDelete: Cascade)
+  hall_ticket_number String                          @unique
+  status             AdmissionTestRegistrationStatus @default(registered)
+  registered_by      String?
+  created_at         DateTime                        @default(now())
+  updated_at         DateTime                        @updatedAt
+
+  @@unique([application_id, test_id])
+  @@index([test_id, status])
+  @@map("admission_test_registrations")
+}
+
+model AdmissionTestResult {
+  result_id      Int                   @id @default(autoincrement())
+  application_id Int
+  application    AdmissionApplication  @relation(fields: [application_id], references: [application_id], onDelete: Cascade)
+  test_id        Int
+  test           AdmissionEntranceTest @relation(fields: [test_id], references: [test_id], onDelete: Cascade)
+  marks_obtained Decimal               @db.Decimal(7, 2)
+  rank           Int?
+  recorded_by    String?
+  created_at     DateTime              @default(now())
+  updated_at     DateTime              @updatedAt
+
+  @@unique([application_id, test_id])
+  @@index([test_id, rank])
+  @@map("admission_test_results")
+}
+
+model AdmissionInterview {
+  interview_id       Int                      @id @default(autoincrement())
+  application_id     Int                      @unique
+  application        AdmissionApplication     @relation(fields: [application_id], references: [application_id], onDelete: Cascade)
+  scheduled_datetime DateTime
+  mode               AdmissionInterviewMode
+  venue_or_link      String?
+  status             AdmissionInterviewStatus @default(scheduled)
+  created_by         String?
+  created_at         DateTime                 @default(now())
+  updated_at         DateTime                 @updatedAt
+
+  panelists   AdmissionInterviewPanelist[]
+  evaluations AdmissionInterviewEvaluation[]
+
+  @@index([status, scheduled_datetime])
+  @@map("admission_interviews")
+}
+
+/// Evaluators assigned to an interview. When a panel exists only its members may submit an evaluation.
+model AdmissionInterviewPanelist {
+  panelist_id  Int                @id @default(autoincrement())
+  interview_id Int
+  interview    AdmissionInterview @relation(fields: [interview_id], references: [interview_id], onDelete: Cascade)
+  evaluator_id String // eddva_user_id — not an FK
+  created_at   DateTime           @default(now())
+
+  @@unique([interview_id, evaluator_id])
+  @@index([evaluator_id])
+  @@map("admission_interview_panelists")
+}
+
+model AdmissionInterviewEvaluation {
+  evaluation_id  Int                     @id @default(autoincrement())
+  interview_id   Int
+  interview      AdmissionInterview      @relation(fields: [interview_id], references: [interview_id], onDelete: Cascade)
+  evaluator_id   String // eddva_user_id — not an FK
+  evaluator_name String?
+  score          Decimal                 @db.Decimal(5, 2)
+  remarks        String?
+  recommendation AdmissionRecommendation
+  created_at     DateTime                @default(now())
+
+  @@unique([interview_id, evaluator_id])
+  @@map("admission_interview_evaluations")
+}
+
+model AdmissionMeritList {
+  merit_list_id        Int                      @id @default(autoincrement())
+  institute_id         String
+  name                 String?
+  session_id           Int
+  session              AdmissionAcademicSession @relation(fields: [session_id], references: [session_id])
+  program_id           Int
+  program              AdmissionProgram         @relation(fields: [program_id], references: [program_id])
+  criteria_description String
+  published_date       DateTime? // null = draft; set once, on publish
+  published_by         String?
+  created_by           String?
+  created_at           DateTime                 @default(now())
+  updated_at           DateTime                 @updatedAt
+  deleted_at           DateTime?
+
+  entries AdmissionMeritListEntry[]
+
+  @@index([institute_id, session_id, program_id])
+  @@map("admission_merit_lists")
+}
+
+model AdmissionMeritListEntry {
+  entry_id       Int                   @id @default(autoincrement())
+  merit_list_id  Int
+  merit_list     AdmissionMeritList    @relation(fields: [merit_list_id], references: [merit_list_id], onDelete: Cascade)
+  application_id Int
+  application    AdmissionApplication  @relation(fields: [application_id], references: [application_id])
+  rank           Int
+  category       String
+  outcome        AdmissionMeritOutcome
+
+  @@unique([merit_list_id, application_id])
+  @@unique([merit_list_id, rank])
+  @@index([application_id])
+  @@map("admission_merit_list_entries")
+}
+
+model AdmissionOffer {
+  offer_id          Int                  @id @default(autoincrement())
+  application_id    Int                  @unique
+  application       AdmissionApplication @relation(fields: [application_id], references: [application_id], onDelete: Cascade)
+  offer_date        DateTime
+  offer_expiry_date DateTime
+  status            AdmissionOfferStatus @default(offered)
+  seat_category     String
+  issued_by         String?
+  responded_by      String?
+  responded_at      DateTime?
+  response_note     String?
+  created_at        DateTime             @default(now())
+  updated_at        DateTime             @updatedAt
+
+  @@index([status, offer_expiry_date])
+  @@map("admission_offers")
+}
+
+model AdmissionFeeStructure {
+  fee_structure_id Int                      @id @default(autoincrement())
+  institute_id     String
+  program_id       Int
+  program          AdmissionProgram         @relation(fields: [program_id], references: [program_id])
+  session_id       Int
+  session          AdmissionAcademicSession @relation(fields: [session_id], references: [session_id])
+  amount           Decimal                  @db.Decimal(12, 2)
+  due_date         DateTime                 @db.Date
+  created_by       String?
+  created_at       DateTime                 @default(now())
+  updated_at       DateTime                 @updatedAt
+
+  @@unique([program_id, session_id])
+  @@index([institute_id])
+  @@map("admission_fee_structures")
+}
+
+model AdmissionPayment {
+  payment_id      Int                  @id @default(autoincrement())
+  application_id  Int
+  application     AdmissionApplication @relation(fields: [application_id], references: [application_id])
+  amount_paid     Decimal              @db.Decimal(12, 2)
+  payment_date    DateTime             @db.Date
+  payment_mode    AdmissionPaymentMode
+  transaction_ref String?
+  receipt_number  String               @unique
+  idempotency_key String?
+  recorded_by     String?
+  created_at      DateTime             @default(now())
+
+  @@unique([application_id, idempotency_key])
+  @@index([application_id])
+  @@map("admission_payments")
+}
+
+model AdmissionConfirmation {
+  confirmation_id     Int                         @id @default(autoincrement())
+  application_id      Int                         @unique
+  application         AdmissionApplication        @relation(fields: [application_id], references: [application_id])
+  confirmed_date      DateTime
+  enrollment_number   String                      @unique
+  status              AdmissionConfirmationStatus @default(confirmed)
+  confirmed_by        String?
+  cancelled_at        DateTime?
+  cancelled_by        String?
+  cancellation_reason String?
+  /// Reference to the core Student record once the school core system has created it.
+  student_ref         String?
+  student_link_status AdmissionStudentLinkStatus  @default(pending)
+  created_at          DateTime                    @default(now())
+  updated_at          DateTime                    @updatedAt
+
+  @@index([status, student_link_status])
+  @@map("admission_confirmations")
+}
+
+/// DB-logged notification outbox — no SMS/email provider exists in this codebase yet,
+/// so rows stay `queued` until a delivery worker exists. Never marked `sent` speculatively.
+model AdmissionNotification {
+  notification_id Int                          @id @default(autoincrement())
+  institute_id    String
+  entity_type     String
+  entity_id       Int
+  event_type      String
+  channel         AdmissionNotificationChannel @default(email)
+  recipient       String?
+  message         String?
+  status          AdmissionNotificationStatus  @default(queued)
+  sent_at         DateTime?
+  created_at      DateTime                     @default(now())
+
+  @@index([institute_id, event_type])
+  @@index([entity_type, entity_id])
+  @@map("admission_notifications")
+}
+
+model AdmissionDynamicRole {
+  role_id      Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json     @default("[]")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_roles AdmissionUserDynamicRole[]
+
+  @@unique([institute_id, name])
+  @@map("admission_dynamic_roles")
+}
+
+model AdmissionUserDynamicRole {
+  id            Int                  @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  username      String
+  password_hash String
+  is_active     Boolean              @default(true)
+  role_id       Int
+  assigned_at   DateTime             @default(now())
+  role          AdmissionDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+
+  @@unique([institute_id, eddva_user_id])
+  @@unique([institute_id, username])
+  @@map("admission_user_dynamic_roles")
+}
+
+model AdmissionSsoSession {
+  session_id      Int      @id @default(autoincrement())
+  institute_id    String
+  eddva_user_id   String
+  user_name       String
+  user_email      String?
+  user_role       String
+  token_hash      String   @unique // sha256 of the issued token — the token itself is never stored
+  expires_at      DateTime
+  created_at      DateTime @default(now())
+
+  @@map("admission_sso_sessions")
+}
+
+model AdmissionPermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("admission_permissions_catalog")
+}
+
+/// Module-local document-number sequences (application / hall ticket / receipt / enrollment).
+/// Deliberately separate from the shared number_sequences table so Admission stays independent.
+model AdmissionNumberSequence {
+  id             Int    @id @default(autoincrement())
+  sequence_type  String
+  financial_year String
+  prefix         String
+  current_number Int    @default(0)
+
+  @@unique([sequence_type, financial_year])
+  @@map("admission_number_sequences")
+}
