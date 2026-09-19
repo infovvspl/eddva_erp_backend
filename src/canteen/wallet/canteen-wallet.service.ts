@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuditService } from '../../audit/audit.service';
+import { CanteenAuditService } from '../common/canteen-audit.service';
 import { CreateCanteenWalletDto } from './dto/create-canteen-wallet.dto';
 import { UpdateCanteenWalletDto } from './dto/update-canteen-wallet.dto';
 import { TopupCanteenWalletDto } from './dto/topup-canteen-wallet.dto';
@@ -21,7 +21,7 @@ import {
 export class CanteenWalletService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService,
+    private readonly auditService: CanteenAuditService,
   ) {}
 
   // --- Wallets ---

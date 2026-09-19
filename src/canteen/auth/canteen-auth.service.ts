@@ -2,25 +2,25 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
-import { INSTITUTE_ADMIN_ROLE_NAMES } from './institute-admin-role-names';
+import { INSTITUTE_ADMIN_ROLE_NAMES } from '../common/institute-admin-role-names';
 
 export interface CanteenPlatformUser {
-  id: string;
+  eddva_user_id: string;
   institute_id: string;
   user_name: string;
   user_email?: string;
   user_role: string;
   is_institute_admin: boolean;
+  role_id?: number;
+  role_name?: string;
+  permissions?: any;
 }
 
 /**
  * CanteenAuthService — SSO token validation and Canteen JWT issuance.
- * Mirrors SalesPurchaseAuthService/InventoryAuthService/TransportAuthService:
- * an independent auth space for Canteen staff, decoupled from the core
- * `users` table. Unlike Sales-Purchase's single-role-per-assignment model,
- * Canteen supports multiple roles per user, so the issued token carries only
- * the actor's identity (`id`) — permissions are always resolved live via
- * CanteenAccessService, never embedded in the token.
+ * Mirrors SalesPurchaseAuthService: an independent auth space for Canteen
+ * staff (Counter Staff/Canteen Manager/etc.), who may or may not exist as
+ * core `users` rows.
  */
 @Injectable()
 export class CanteenAuthService {
@@ -48,12 +48,21 @@ export class CanteenAuthService {
     throw new UnauthorizedException('Invalid or expired EDDVA session token');
   }
 
+  /**
+   * Deliberately has NO fallback to JWT_SECRET (unlike a naive mirror of the
+   * other modules). A Canteen secret that falls back to the shared ERP secret
+   * lets a bare core Institute Admin JWT pass CanteenJwtGuard without ever
+   * going through SSO exchange, defeating the module's auth isolation. Fail
+   * closed instead.
+   */
   private get canteenJwtSecret(): string {
-    return (
-      process.env.CANTEEN_JWT_SECRET ||
-      process.env.JWT_SECRET ||
-      'canteen_dev_secret'
-    );
+    const secret = process.env.CANTEEN_JWT_SECRET;
+    if (!secret) {
+      throw new Error(
+        'CANTEEN_JWT_SECRET must be set (it must differ from JWT_SECRET)',
+      );
+    }
+    return secret;
   }
 
   /**
@@ -85,7 +94,7 @@ export class CanteenAuthService {
     }
 
     const platformUser: CanteenPlatformUser = {
-      id: eddva_user_id,
+      eddva_user_id,
       institute_id,
       user_name,
       user_email,
@@ -96,11 +105,9 @@ export class CanteenAuthService {
     };
 
     const expiresIn = 60 * 60 * 24; // 24 hours
-    const canteen_token = jwt.sign(
-      { ...platformUser },
-      this.canteenJwtSecret,
-      { expiresIn },
-    );
+    const canteen_token = jwt.sign({ ...platformUser }, this.canteenJwtSecret, {
+      expiresIn,
+    });
 
     const expires_at = new Date(Date.now() + expiresIn * 1000);
     try {
@@ -122,82 +129,116 @@ export class CanteenAuthService {
     return {
       canteen_token,
       user: platformUser,
-      redirect: '/canteen',
+      redirect: '/canteen/permissions',
     };
   }
 
   /**
-   * Direct login for assigned Canteen users (Manager, Counter Staff, etc.).
+   * Direct login for assigned role users (Counter Staff, Canteen Manager,
+   * etc.).
    */
   async directLogin(
     usernameOrEmail: string,
     rawPassword: string,
-  ): Promise<{ canteen_token: string; user: CanteenPlatformUser }> {
-    const canteenUser = await this.prisma.canteenUser.findFirst({
+  ): Promise<{
+    canteen_token: string;
+    user: CanteenPlatformUser & { role_name: string; permissions: any };
+  }> {
+    const assignment = await this.prisma.canteenUserDynamicRole.findFirst({
       where: {
-        OR: [{ username: usernameOrEmail }, { email: usernameOrEmail }],
+        OR: [{ username: usernameOrEmail }, { user_email: usernameOrEmail }],
         is_active: true,
       },
+      include: { role: true },
     });
 
-    if (!canteenUser) {
-      throw new UnauthorizedException('Invalid credentials or inactive account');
+    if (!assignment) {
+      throw new UnauthorizedException(
+        'Invalid credentials or inactive account',
+      );
     }
 
-    const isValid = await bcrypt.compare(rawPassword, canteenUser.password_hash);
+    const isValid = await bcrypt.compare(rawPassword, assignment.password_hash);
     if (!isValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const platformUser: CanteenPlatformUser = {
-      id: canteenUser.id,
-      institute_id: canteenUser.institute_id,
-      user_name: canteenUser.name,
-      user_email: canteenUser.email ?? undefined,
-      user_role: 'CANTEEN_USER',
+      eddva_user_id: assignment.eddva_user_id,
+      institute_id: assignment.institute_id,
+      user_name: assignment.user_name,
+      user_email: assignment.user_email ?? undefined,
+      user_role: assignment.role.name,
       is_institute_admin: false,
     };
 
     const expiresIn = 60 * 60 * 24;
-    const canteen_token = jwt.sign({ ...platformUser }, this.canteenJwtSecret, {
-      expiresIn,
-    });
+    const canteen_token = jwt.sign(
+      {
+        ...platformUser,
+        role_id: assignment.role_id,
+        role_name: assignment.role.name,
+        permissions: assignment.role.permissions,
+      },
+      this.canteenJwtSecret,
+      { expiresIn },
+    );
 
-    return { canteen_token, user: platformUser };
+    return {
+      canteen_token,
+      user: {
+        ...platformUser,
+        role_name: assignment.role.name,
+        permissions: assignment.role.permissions,
+      },
+    };
   }
 
   /**
    * Verify a Canteen Platform JWT (used by CanteenJwtGuard).
    *
    * Defensively extracts/validates the payload shape instead of trusting
-   * `jwt.verify`'s return blindly — a token signed with the same secret but
-   * the wrong payload shape (e.g. the core ERP token, since
-   * CANTEEN_JWT_SECRET falls back to JWT_SECRET) must fail cleanly with 401
-   * rather than crash a downstream Prisma call with undefined fields.
+   * `jwt.verify`'s return blindly, so a token with the wrong payload shape
+   * fails cleanly with 401 rather than crashing a downstream Prisma call with
+   * undefined fields.
    */
   verifyCanteenToken(token: string): CanteenPlatformUser {
+    const secret = this.canteenJwtSecret;
     try {
-      const decoded = jwt.verify(token, this.canteenJwtSecret) as jwt.JwtPayload;
-      const id = decoded.id;
+      const decoded = jwt.verify(token, secret) as jwt.JwtPayload;
+      const eddva_user_id = decoded.eddva_user_id || decoded.id || decoded.sub;
       const institute_id =
         decoded.institute_id || decoded.instituteId || decoded.tenantId;
-      const user_role = String(decoded.user_role || decoded.role || '').toUpperCase();
+      const user_role = String(
+        decoded.user_role || decoded.role || '',
+      ).toUpperCase();
 
-      if (typeof id !== 'string' || typeof institute_id !== 'string') {
+      if (
+        typeof eddva_user_id !== 'string' ||
+        typeof institute_id !== 'string'
+      ) {
         throw new UnauthorizedException(
           'Canteen Platform session is missing required user details',
         );
       }
 
       const user_email =
-        typeof decoded.user_email === 'string' ? decoded.user_email : undefined;
+        typeof decoded.user_email === 'string'
+          ? decoded.user_email
+          : typeof decoded.email === 'string'
+            ? decoded.email
+            : undefined;
       const user_name =
         typeof decoded.user_name === 'string'
           ? decoded.user_name
-          : user_email?.split('@')[0] || 'Canteen User';
+          : typeof decoded.name === 'string'
+            ? decoded.name
+            : typeof decoded.fullName === 'string'
+              ? decoded.fullName
+              : user_email?.split('@')[0] || 'Canteen User';
 
       return {
-        id,
+        eddva_user_id,
         institute_id,
         user_name,
         user_email,
@@ -205,10 +246,17 @@ export class CanteenAuthService {
         is_institute_admin:
           decoded.is_institute_admin === true ||
           (INSTITUTE_ADMIN_ROLE_NAMES as readonly string[]).includes(user_role),
+        role_id:
+          typeof decoded.role_id === 'number' ? decoded.role_id : undefined,
+        role_name:
+          typeof decoded.role_name === 'string' ? decoded.role_name : undefined,
+        permissions: decoded.permissions,
       };
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
-      throw new UnauthorizedException('Invalid or expired Canteen Platform session');
+      throw new UnauthorizedException(
+        'Invalid or expired Canteen Platform session',
+      );
     }
   }
 }

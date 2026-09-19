@@ -3,47 +3,46 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CanteenReportsService } from './canteen-reports.service';
 import { CanteenReportQueryDto } from './dto/canteen-report-query.dto';
 import { CanteenJwtGuard } from '../auth/canteen-jwt.guard';
-import { CanteenInstituteAdminViewOnlyGuard } from '../auth/canteen-institute-admin-view-only.guard';
 import { CanteenPermissionsGuard } from '../auth/canteen-permissions.guard';
-import { RequireCanteenPermission } from '../decorators/require-canteen-permission.decorator';
+import { RequirePermission } from '../auth/require-permissions.decorator';
 
 @ApiTags('Canteen Reports & Analytics')
 @ApiBearerAuth()
-@UseGuards(CanteenJwtGuard, CanteenInstituteAdminViewOnlyGuard, CanteenPermissionsGuard)
+@UseGuards(CanteenJwtGuard, CanteenPermissionsGuard)
 @Controller('api/canteen/reports')
 export class CanteenReportsController {
   constructor(private readonly reportsService: CanteenReportsService) {}
 
   @ApiOperation({ summary: 'Overall Canteen Sales Report' })
-  @RequireCanteenPermission('canteen.report.sales')
+  @RequirePermission({ resource: 'reports', action: 'read' })
   @Get('sales')
   async getSalesReport(@Query() query: CanteenReportQueryDto) {
     return this.reportsService.getSalesReport(query);
   }
 
   @ApiOperation({ summary: 'Item-level Sales Performance Report' })
-  @RequireCanteenPermission('canteen.report.item_sales')
+  @RequirePermission({ resource: 'reports', action: 'read' })
   @Get('item-sales')
   async getItemSalesReport(@Query() query: CanteenReportQueryDto) {
     return this.reportsService.getItemSalesReport(query);
   }
 
   @ApiOperation({ summary: 'Category-level Sales Breakdown Report' })
-  @RequireCanteenPermission('canteen.report.category_sales')
+  @RequirePermission({ resource: 'reports', action: 'read' })
   @Get('category-sales')
   async getCategorySalesReport(@Query() query: CanteenReportQueryDto) {
     return this.reportsService.getCategorySalesReport(query);
   }
 
   @ApiOperation({ summary: 'Payment Method Summary Report' })
-  @RequireCanteenPermission('canteen.report.payment_summary')
+  @RequirePermission({ resource: 'reports', action: 'read' })
   @Get('payment-summary')
   async getPaymentSummaryReport(@Query() query: CanteenReportQueryDto) {
     return this.reportsService.getPaymentSummaryReport(query);
   }
 
   @ApiOperation({ summary: 'POS Shift Reconciliation Report' })
-  @RequireCanteenPermission('canteen.report.shift')
+  @RequirePermission({ resource: 'reports', action: 'read' })
   @Get('shifts')
   async getShiftReport(@Query() query: CanteenReportQueryDto) {
     return this.reportsService.getShiftReport(query);

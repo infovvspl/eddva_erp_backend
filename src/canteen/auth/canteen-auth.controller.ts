@@ -27,12 +27,16 @@ export class CanteenAuthController {
 
   @Get('sso')
   @ApiOperation({
-    summary: 'Exchange EDDVA Institute Admin JWT for a Canteen Platform JWT',
+    summary:
+      'Exchange EDDVA Institute Admin JWT for a Canteen Platform JWT',
     description:
       'Frontend calls this upon redirect from EDDVA ERP, passing the EDDVA token in the query param string.',
   })
   @ApiQuery({ name: 'token', description: 'EDDVA JWT from localStorage' })
-  @ApiResponse({ status: 200, description: 'SSO exchange successful. Returns canteen_token.' })
+  @ApiResponse({
+    status: 200,
+    description: 'SSO exchange successful. Returns canteen_token.',
+  })
   @ApiResponse({ status: 401, description: 'Invalid or expired EDDVA token' })
   async ssoExchange(@Query('token') token: string) {
     if (!token) {
@@ -42,8 +46,14 @@ export class CanteenAuthController {
   }
 
   @Post('login')
-  @ApiOperation({ summary: 'Direct login for assigned Canteen users' })
-  @ApiResponse({ status: 200, description: 'Login successful. Returns canteen_token.' })
+  @ApiOperation({
+    summary:
+      'Direct login for assigned Canteen users (Counter Staff, Canteen Manager, etc.)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Login successful. Returns canteen_token.',
+  })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async directLogin(@Body() dto: CanteenDirectLoginDto) {
     return this.authService.directLogin(dto.username, dto.password);
@@ -52,7 +62,9 @@ export class CanteenAuthController {
   @Get('me')
   @ApiBearerAuth()
   @UseGuards(CanteenJwtGuard)
-  @ApiOperation({ summary: 'Get current authenticated Canteen Platform user info' })
+  @ApiOperation({
+    summary: 'Get current authenticated Canteen Platform user info',
+  })
   async getMe(@CanteenUser() user: CanteenPlatformUser) {
     return user;
   }

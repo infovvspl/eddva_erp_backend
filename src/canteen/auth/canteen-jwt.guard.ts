@@ -15,12 +15,16 @@ export class CanteenJwtGuard implements CanActivate {
     const authHeader = req.headers['authorization'];
 
     if (!authHeader) {
-      throw new UnauthorizedException('Missing Authorization header. Please log in.');
+      throw new UnauthorizedException(
+        'Missing Authorization header. Please log in.',
+      );
     }
 
     const [bearer, token] = authHeader.split(' ');
     if (bearer !== 'Bearer' || !token) {
-      throw new UnauthorizedException('Invalid Authorization format. Must be "Bearer <token>".');
+      throw new UnauthorizedException(
+        'Invalid Authorization format. Must be "Bearer <token>".',
+      );
     }
 
     const payload = this.authService.verifyCanteenToken(token);

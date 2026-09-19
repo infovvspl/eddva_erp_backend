@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuditService } from '../../audit/audit.service';
+import { CanteenAuditService } from '../common/canteen-audit.service';
 import { CreatePosTerminalDto } from './dto/create-pos-terminal.dto';
 import { UpdatePosTerminalDto } from './dto/update-pos-terminal.dto';
 import { OpenPosShiftDto } from './dto/open-pos-shift.dto';
@@ -15,7 +15,7 @@ import { ClosePosShiftDto } from './dto/close-pos-shift.dto';
 export class CanteenPosService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService,
+    private readonly auditService: CanteenAuditService,
   ) {}
 
   // --- Terminals ---

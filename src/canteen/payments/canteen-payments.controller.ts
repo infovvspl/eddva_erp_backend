@@ -14,49 +14,54 @@ import { RefundCanteenPaymentDto } from './dto/refund-canteen-payment.dto';
 import { CanteenJwtGuard } from '../auth/canteen-jwt.guard';
 import { CanteenInstituteAdminViewOnlyGuard } from '../auth/canteen-institute-admin-view-only.guard';
 import { CanteenPermissionsGuard } from '../auth/canteen-permissions.guard';
-import { RequireCanteenPermission } from '../decorators/require-canteen-permission.decorator';
+import { RequirePermission } from '../auth/require-permissions.decorator';
 import { CanteenUser } from '../auth/canteen-user.decorator';
+import type { CanteenPlatformUser } from '../auth/canteen-auth.service';
 
 @ApiTags('Canteen Payments Management')
 @ApiBearerAuth()
-@UseGuards(CanteenJwtGuard, CanteenInstituteAdminViewOnlyGuard, CanteenPermissionsGuard)
+@UseGuards(
+  CanteenJwtGuard,
+  CanteenInstituteAdminViewOnlyGuard,
+  CanteenPermissionsGuard,
+)
 @Controller('api/canteen')
 export class CanteenPaymentsController {
   constructor(private readonly paymentsService: CanteenPaymentsService) {}
 
   @ApiOperation({ summary: 'Process payment for Canteen order' })
-  @RequireCanteenPermission('canteen.payment.create')
+  @RequirePermission({ resource: 'payments', action: 'create' })
   @Post('orders/:orderId/payments')
   async processPayment(
     @Param('orderId') orderId: string,
     @Body() dto: CreateCanteenPaymentDto,
-    @CanteenUser() user: any,
+    @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.paymentsService.processPayment(orderId, dto, user?.id);
+    return this.paymentsService.processPayment(orderId, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Get payment records for order' })
-  @RequireCanteenPermission('canteen.payment.view')
+  @RequirePermission({ resource: 'payments', action: 'read' })
   @Get('orders/:orderId/payments')
   async getPaymentsByOrder(@Param('orderId') orderId: string) {
     return this.paymentsService.getPaymentsByOrder(orderId);
   }
 
   @ApiOperation({ summary: 'Get payment record details' })
-  @RequireCanteenPermission('canteen.payment.view')
+  @RequirePermission({ resource: 'payments', action: 'read' })
   @Get('payments/:id')
   async getPaymentById(@Param('id') id: string) {
     return this.paymentsService.getPaymentById(id);
   }
 
   @ApiOperation({ summary: 'Refund/Reverse payment transaction' })
-  @RequireCanteenPermission('canteen.payment.refund')
+  @RequirePermission({ resource: 'payments', action: 'refund' })
   @Delete('payments/:id')
   async refundPayment(
     @Param('id') id: string,
     @Body() dto: RefundCanteenPaymentDto,
-    @CanteenUser() user: any,
+    @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.paymentsService.refundPayment(id, dto, user?.id);
+    return this.paymentsService.refundPayment(id, dto, user.eddva_user_id);
   }
 }

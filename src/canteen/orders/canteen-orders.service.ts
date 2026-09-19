@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuditService } from '../../audit/audit.service';
+import { CanteenAuditService } from '../common/canteen-audit.service';
 import { NumberingService } from '../../numbering/numbering.service';
 import { CreateCanteenOrderDto } from './dto/create-canteen-order.dto';
 import { UpdateCanteenOrderDto } from './dto/update-canteen-order.dto';
@@ -17,7 +17,7 @@ import { CanteenOrderStatus, CanteenPaymentStatus, DocumentType } from '@prisma/
 export class CanteenOrdersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService,
+    private readonly auditService: CanteenAuditService,
     private readonly numberingService: NumberingService,
   ) {}
 

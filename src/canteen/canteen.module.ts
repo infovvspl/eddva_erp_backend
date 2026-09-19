@@ -1,6 +1,4 @@
 import { Module } from '@nestjs/common';
-import { CanteenRbacController } from './rbac/canteen-rbac.controller';
-import { CanteenRbacService } from './rbac/canteen-rbac.service';
 import { CanteenMenuController } from './menu/canteen-menu.controller';
 import { CanteenMenuService } from './menu/canteen-menu.service';
 import { CanteenMembersController } from './members/canteen-members.controller';
@@ -16,11 +14,12 @@ import { CanteenWalletService } from './wallet/canteen-wallet.service';
 import { CanteenReportsController } from './reports/canteen-reports.controller';
 import { CanteenReportsService } from './reports/canteen-reports.service';
 import { CanteenAuthModule } from './auth/canteen-auth.module';
+import { CanteenAuditService } from './common/canteen-audit.service';
+import { CanteenRolesPermissionsModule } from './roles-permissions/canteen-roles-permissions.module';
 
 @Module({
-  imports: [CanteenAuthModule],
+  imports: [CanteenAuthModule, CanteenRolesPermissionsModule],
   controllers: [
-    CanteenRbacController,
     CanteenMenuController,
     CanteenMembersController,
     CanteenPosController,
@@ -30,7 +29,7 @@ import { CanteenAuthModule } from './auth/canteen-auth.module';
     CanteenReportsController,
   ],
   providers: [
-    CanteenRbacService,
+    CanteenAuditService,
     CanteenMenuService,
     CanteenMembersService,
     CanteenPosService,
@@ -40,7 +39,6 @@ import { CanteenAuthModule } from './auth/canteen-auth.module';
     CanteenReportsService,
   ],
   exports: [
-    CanteenRbacService,
     CanteenMenuService,
     CanteenMembersService,
     CanteenPosService,

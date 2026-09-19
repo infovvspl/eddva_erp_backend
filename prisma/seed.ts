@@ -188,7 +188,7 @@ async function main() {
     });
   }
 
-  // Accounts dynamic RBAC (same architecture as Library/Sports/Canteen/Front Office/Inventory/Transport)
+  // Accounts dynamic RBAC (same architecture as Library/Sports/Front Office/Inventory/Transport)
   const accountsFinanceAdminPermissions = [
     { resource: 'coa', actions: ['read', 'create', 'update'] },
     { resource: 'cost_centers', actions: ['read', 'create', 'update'] },
@@ -230,135 +230,7 @@ async function main() {
   // ==========================================
   // CANTEEN SEEDING
   // ==========================================
-  console.log('--- Seeding Canteen Permissions & Roles ---');
-
-  const canteenPermsData = [
-    // Role & Permission Management
-    { key: 'canteen.role.view', name: 'View Canteen Roles', desc: 'View Canteen dynamic roles' },
-    { key: 'canteen.role.create', name: 'Create Canteen Role', desc: 'Create new Canteen role' },
-    { key: 'canteen.role.update', name: 'Update Canteen Role', desc: 'Update Canteen role details' },
-    { key: 'canteen.role.delete', name: 'Delete Canteen Role', desc: 'Delete Canteen role' },
-    { key: 'canteen.role.assign', name: 'Assign Canteen Role', desc: 'Assign Canteen role to users' },
-    { key: 'canteen.role.remove', name: 'Remove Canteen Role', desc: 'Remove Canteen role from users' },
-
-    { key: 'canteen.permission.view', name: 'View Canteen Permissions', desc: 'View Canteen permission catalog' },
-    { key: 'canteen.permission.create', name: 'Create Canteen Permission', desc: 'Create custom Canteen permission' },
-    { key: 'canteen.permission.update', name: 'Update Canteen Permission', desc: 'Update custom Canteen permission' },
-    { key: 'canteen.permission.delete', name: 'Delete Canteen Permission', desc: 'Delete custom Canteen permission' },
-
-    // Menu Categories & Items & Schedules
-    { key: 'canteen.category.view', name: 'View Categories', desc: 'View Canteen menu categories' },
-    { key: 'canteen.category.create', name: 'Create Category', desc: 'Create menu category' },
-    { key: 'canteen.category.update', name: 'Update Category', desc: 'Update menu category' },
-    { key: 'canteen.category.delete', name: 'Delete Category', desc: 'Delete menu category' },
-
-    { key: 'canteen.item.view', name: 'View Menu Items', desc: 'View Canteen menu items' },
-    { key: 'canteen.item.create', name: 'Create Menu Item', desc: 'Create menu item' },
-    { key: 'canteen.item.update', name: 'Update Menu Item', desc: 'Update menu item' },
-    { key: 'canteen.item.delete', name: 'Delete Menu Item', desc: 'Delete menu item' },
-    { key: 'canteen.item.availability', name: 'Toggle Item Availability', desc: 'Toggle availability of menu items' },
-
-    { key: 'canteen.schedule.view', name: 'View Item Schedules', desc: 'View menu item schedules' },
-    { key: 'canteen.schedule.create', name: 'Create Item Schedule', desc: 'Create menu item schedule' },
-    { key: 'canteen.schedule.update', name: 'Update Item Schedule', desc: 'Update menu item schedule' },
-    { key: 'canteen.schedule.delete', name: 'Delete Item Schedule', desc: 'Delete menu item schedule' },
-
-    // Members
-    { key: 'canteen.member.view', name: 'View Members', desc: 'View Canteen members directory' },
-    { key: 'canteen.member.create', name: 'Create Member', desc: 'Register new Canteen member' },
-    { key: 'canteen.member.update', name: 'Update Member', desc: 'Update Canteen member profile' },
-    { key: 'canteen.member.delete', name: 'Delete Member', desc: 'Delete Canteen member profile' },
-    { key: 'canteen.member.barcode_lookup', name: 'Barcode Lookup', desc: 'Lookup member profile by barcode' },
-
-    // POS Terminals & Shifts
-    { key: 'canteen.terminal.view', name: 'View POS Terminals', desc: 'View POS terminals' },
-    { key: 'canteen.terminal.create', name: 'Create POS Terminal', desc: 'Register POS terminal' },
-    { key: 'canteen.terminal.update', name: 'Update POS Terminal', desc: 'Update POS terminal' },
-    { key: 'canteen.terminal.delete', name: 'Delete POS Terminal', desc: 'Delete POS terminal' },
-
-    { key: 'canteen.shift.view', name: 'View POS Shifts', desc: 'View POS shifts and cash variance' },
-    { key: 'canteen.shift.open', name: 'Open POS Shift', desc: 'Open POS terminal shift' },
-    { key: 'canteen.shift.update', name: 'Update POS Shift', desc: 'Update POS shift details' },
-    { key: 'canteen.shift.close', name: 'Close POS Shift', desc: 'Close POS shift and reconcile cash' },
-
-    // Orders & Order Items
-    { key: 'canteen.order.view', name: 'View Orders', desc: 'View Canteen orders' },
-    { key: 'canteen.order.create', name: 'Create Order', desc: 'Create Canteen order' },
-    { key: 'canteen.order.update', name: 'Update Order Status', desc: 'Update Canteen order status' },
-    { key: 'canteen.order.cancel', name: 'Cancel Order', desc: 'Cancel Canteen order' },
-
-    { key: 'canteen.order_item.view', name: 'View Order Items', desc: 'View Canteen order line items' },
-    { key: 'canteen.order_item.create', name: 'Add Order Items', desc: 'Add items to order' },
-    { key: 'canteen.order_item.update', name: 'Update Order Items', desc: 'Modify line items' },
-    { key: 'canteen.order_item.delete', name: 'Delete Order Items', desc: 'Remove line items' },
-
-    // Payments
-    { key: 'canteen.payment.view', name: 'View Payments', desc: 'View payment transactions' },
-    { key: 'canteen.payment.create', name: 'Record Payment', desc: 'Process payment for order' },
-    { key: 'canteen.payment.update', name: 'Update Payment', desc: 'Update payment record' },
-    { key: 'canteen.payment.refund', name: 'Refund Payment', desc: 'Process payment refund/reversal' },
-
-    // Wallet & Top-ups & Ledger
-    { key: 'canteen.wallet.view', name: 'View Wallets', desc: 'View student wallets & balance' },
-    { key: 'canteen.wallet.create', name: 'Create Wallet', desc: 'Create student wallet' },
-    { key: 'canteen.wallet.update', name: 'Update Wallet', desc: 'Update wallet parameters' },
-    { key: 'canteen.wallet.delete', name: 'Delete Wallet', desc: 'Delete wallet' },
-    { key: 'canteen.wallet.topup', name: 'Topup Wallet', desc: 'Add money to student wallet' },
-    { key: 'canteen.wallet.block', name: 'Block Wallet', desc: 'Block student wallet' },
-    { key: 'canteen.wallet.unblock', name: 'Unblock Wallet', desc: 'Unblock student wallet' },
-    { key: 'canteen.wallet.transaction_view', name: 'View Wallet Ledger', desc: 'View wallet transaction history' },
-
-    // Reports & Audit
-    { key: 'canteen.report.sales', name: 'Sales Report', desc: 'View Canteen sales reports' },
-    { key: 'canteen.report.item_sales', name: 'Item Sales Report', desc: 'View item-level sales report' },
-    { key: 'canteen.report.category_sales', name: 'Category Sales Report', desc: 'View category sales report' },
-    { key: 'canteen.report.payment_summary', name: 'Payment Summary', desc: 'View payment mode summary' },
-    { key: 'canteen.report.shift', name: 'Shift Reports', desc: 'View POS shift reports' },
-    { key: 'canteen.audit.view', name: 'View Audit Logs', desc: 'View Canteen audit log history' },
-  ];
-
-  for (const p of canteenPermsData) {
-    await prisma.canteenPermission.upsert({
-      where: { key: p.key },
-      update: { name: p.name, description: p.desc, isSystem: true },
-      create: { key: p.key, name: p.name, description: p.desc, isSystem: true },
-    });
-  }
-
-  const allCanteenPerms = await prisma.canteenPermission.findMany();
-  const canteenPermMap = new Map(allCanteenPerms.map((p) => [p.key, p.id]));
-
-  // Create default roles
-  const canteenAdminRole = await prisma.canteenRole.upsert({
-    where: { name: 'CANTEEN_ADMIN' },
-    update: { description: 'Full Canteen business operations (No RBAC management permissions)', isSystem: true },
-    create: { name: 'CANTEEN_ADMIN', description: 'Full Canteen business operations (No RBAC management permissions)', isSystem: true },
-  });
-
-  await prisma.canteenRole.upsert({
-    where: { name: 'CANTEEN_MANAGER' },
-    update: { description: 'Manages menu, items, members, orders, shifts, payments, reports, and wallets', isSystem: true },
-    create: { name: 'CANTEEN_MANAGER', description: 'Manages menu, items, members, orders, shifts, payments, reports, and wallets', isSystem: true },
-  });
-
-  await prisma.canteenRole.upsert({
-    where: { name: 'CANTEEN_COUNTER_STAFF' },
-    update: { description: 'Counter operations for terminal shifts, barcode lookup, order creation, payments, and wallet top-ups', isSystem: true },
-    create: { name: 'CANTEEN_COUNTER_STAFF', description: 'Counter operations for terminal shifts, barcode lookup, order creation, payments, and wallet top-ups', isSystem: true },
-  });
-
-  // Assign business permissions to CANTEEN_ADMIN (excluding role.* and permission.*)
-  const businessPermKeys = allCanteenPerms
-    .filter((p) => !p.key.startsWith('canteen.role.') && !p.key.startsWith('canteen.permission.'))
-    .map((p) => p.key);
-
-  await prisma.canteenRolePermission.deleteMany({ where: { roleId: canteenAdminRole.id } });
-  for (const k of businessPermKeys) {
-    const pId = canteenPermMap.get(k);
-    if (pId) {
-      await prisma.canteenRolePermission.create({ data: { roleId: canteenAdminRole.id, permissionId: pId } });
-    }
-  }
+  console.log('--- Seeding Canteen Demo Data ---');
 
   // Sample Category & Item
   const canteenCategory = await prisma.canteenMenuCategory.upsert({
@@ -413,7 +285,70 @@ async function main() {
     create: { name: 'Counter 1 POS', location: 'Main Canteen Ground Floor' },
   });
 
-  console.log('✅ Canteen Permissions, Roles & Demo Data seeded successfully!');
+  // Canteen dynamic RBAC (same architecture as Sales & Purchase)
+  const canteenManagerPermissions = [
+    { resource: 'menu_categories', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'menu_items', actions: ['read', 'create', 'update', 'delete', 'availability'] },
+    { resource: 'menu_schedules', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'members', actions: ['read', 'create', 'update', 'delete', 'barcode_lookup'] },
+    { resource: 'pos_terminals', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'pos_shifts', actions: ['read', 'open', 'close'] },
+    { resource: 'orders', actions: ['read', 'create', 'update', 'cancel'] },
+    { resource: 'order_items', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'payments', actions: ['read', 'create', 'refund'] },
+    { resource: 'wallets', actions: ['read', 'create', 'update', 'delete', 'topup', 'block', 'unblock'] },
+    { resource: 'wallet_transactions', actions: ['read'] },
+    { resource: 'reports', actions: ['read'] },
+  ];
+  const canteenCounterStaffPermissions = [
+    { resource: 'menu_categories', actions: ['read'] },
+    { resource: 'menu_items', actions: ['read'] },
+    { resource: 'members', actions: ['read', 'barcode_lookup'] },
+    { resource: 'pos_terminals', actions: ['read'] },
+    { resource: 'pos_shifts', actions: ['read', 'open', 'close'] },
+    { resource: 'orders', actions: ['read', 'create', 'update'] },
+    { resource: 'order_items', actions: ['read', 'create', 'update', 'delete'] },
+    { resource: 'payments', actions: ['read', 'create'] },
+    { resource: 'wallets', actions: ['read', 'topup'] },
+    { resource: 'wallet_transactions', actions: ['read'] },
+  ];
+  const canteenManagerRole = await prisma.canteenDynamicRole.upsert({
+    where: { institute_id_name: { institute_id: instId, name: 'Canteen Manager' } },
+    update: { permissions: canteenManagerPermissions },
+    create: {
+      institute_id: instId,
+      name: 'Canteen Manager',
+      description: 'Full access to menu, members, POS, orders, payments, wallets, and reports',
+      permissions: canteenManagerPermissions,
+    },
+  });
+  await prisma.canteenDynamicRole.upsert({
+    where: { institute_id_name: { institute_id: instId, name: 'Counter Staff' } },
+    update: { permissions: canteenCounterStaffPermissions },
+    create: {
+      institute_id: instId,
+      name: 'Counter Staff',
+      description: 'Runs a POS terminal: opens shifts, looks up members, takes orders and payments, tops up wallets',
+      permissions: canteenCounterStaffPermissions,
+    },
+  });
+
+  const canteenDemoPasswordHash = await bcrypt.hash('Canteen#2026', 10);
+  await prisma.canteenUserDynamicRole.upsert({
+    where: { institute_id_eddva_user_id: { institute_id: instId, eddva_user_id: 'usr_canteen_manager_demo' } },
+    update: { role_id: canteenManagerRole.role_id, password_hash: canteenDemoPasswordHash },
+    create: {
+      institute_id: instId,
+      eddva_user_id: 'usr_canteen_manager_demo',
+      user_name: 'Demo Canteen Manager',
+      user_email: 'canteen.manager.demo@eddva.com',
+      username: 'canteen_manager_demo',
+      password_hash: canteenDemoPasswordHash,
+      role_id: canteenManagerRole.role_id,
+    },
+  });
+
+  console.log('✅ Canteen Demo Data & Dynamic RBAC seeded successfully!');
 
   // ==========================================
   // SALES & PURCHASE MODULE SEEDING

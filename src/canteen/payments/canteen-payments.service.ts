@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuditService } from '../../audit/audit.service';
+import { CanteenAuditService } from '../common/canteen-audit.service';
 import { CreateCanteenPaymentDto } from './dto/create-canteen-payment.dto';
 import { RefundCanteenPaymentDto } from './dto/refund-canteen-payment.dto';
 import {
@@ -20,7 +20,7 @@ import {
 export class CanteenPaymentsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService,
+    private readonly auditService: CanteenAuditService,
   ) {}
 
   async processPayment(orderId: string, dto: CreateCanteenPaymentDto, staffUserId: string) {

@@ -221,77 +221,39 @@ enum CanteenWalletRefType {
   ADJUSTMENT
 }
 
-// --- Canteen RBAC Models ---
-model CanteenRole {
-  id              String                  @id @default(uuid())
-  name            String                  @unique
-  description     String?
-  isSystem        Boolean                 @default(false)
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  rolePermissions CanteenRolePermission[]
-  userRoles       CanteenUserRole[]
+// ─── Canteen RBAC — parallel dynamic-role system, same architecture as Sales-Purchase/Front Office/Inventory/Transport ───
 
-  @@map("canteen_roles")
+model CanteenDynamicRole {
+  role_id      Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json     @default("[]")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_roles CanteenUserDynamicRole[]
+
+  @@unique([institute_id, name])
+  @@map("canteen_dynamic_roles")
 }
 
-model CanteenPermission {
-  id              String                  @id @default(uuid())
-  key             String                  @unique
-  name            String
-  description     String?
-  module          String                  @default("canteen")
-  resource        String?
-  action          String?
-  isSystem        Boolean                 @default(true)
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  rolePermissions CanteenRolePermission[]
-
-  @@map("canteen_permissions")
-}
-
-model CanteenRolePermission {
-  id           String            @id @default(uuid())
-  roleId       String
-  permissionId String
-  createdAt    DateTime          @default(now())
-  role         CanteenRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission   CanteenPermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@unique([roleId, permissionId])
-  @@map("canteen_role_permissions")
-}
-
-model CanteenUserRole {
-  id         String      @id @default(uuid())
-  userId     String
-  roleId     String
-  assignedBy String?
-  createdAt  DateTime    @default(now())
-  user       CanteenUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role       CanteenRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, roleId])
-  @@map("canteen_user_roles")
-}
-
-// ─── Canteen RBAC auth island — parallel dynamic-identity system, same architecture as Sales-Purchase/Transport/Inventory ───
-
-model CanteenUser {
-  id            String            @id @default(uuid())
+model CanteenUserDynamicRole {
+  id            Int                @id @default(autoincrement())
   institute_id  String
-  name          String
-  email         String?
+  eddva_user_id String
+  user_name     String
+  user_email    String?
   username      String
   password_hash String
-  is_active     Boolean           @default(true)
-  created_at    DateTime          @default(now())
-  updated_at    DateTime          @updatedAt
-  user_roles    CanteenUserRole[]
+  is_active     Boolean            @default(true)
+  role_id       Int
+  assigned_at   DateTime           @default(now())
+  role          CanteenDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
 
+  @@unique([institute_id, eddva_user_id])
   @@unique([institute_id, username])
-  @@map("canteen_users")
+  @@map("canteen_user_dynamic_roles")
 }
 
 model CanteenSsoSession {
@@ -306,6 +268,22 @@ model CanteenSsoSession {
   created_at    DateTime @default(now())
 
   @@map("canteen_sso_sessions")
+}
+
+model CanteenPermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("canteen_permissions_catalog")
 }
 
 // --- Canteen Menu Models ---

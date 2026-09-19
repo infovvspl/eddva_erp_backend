@@ -21,67 +21,71 @@ import { UpdateMenuScheduleDto } from './dto/update-menu-schedule.dto';
 import { CanteenJwtGuard } from '../auth/canteen-jwt.guard';
 import { CanteenInstituteAdminViewOnlyGuard } from '../auth/canteen-institute-admin-view-only.guard';
 import { CanteenPermissionsGuard } from '../auth/canteen-permissions.guard';
-import { RequireCanteenPermission } from '../decorators/require-canteen-permission.decorator';
+import { RequirePermission } from '../auth/require-permissions.decorator';
 import { CanteenUser } from '../auth/canteen-user.decorator';
+import type { CanteenPlatformUser } from '../auth/canteen-auth.service';
 import { CanteenFoodType } from '@prisma/client';
 
 @ApiTags('Canteen Menu Management')
 @ApiBearerAuth()
-@UseGuards(CanteenJwtGuard, CanteenInstituteAdminViewOnlyGuard, CanteenPermissionsGuard)
+@UseGuards(
+  CanteenJwtGuard,
+  CanteenInstituteAdminViewOnlyGuard,
+  CanteenPermissionsGuard,
+)
 @Controller('api/canteen/menu')
 export class CanteenMenuController {
   constructor(private readonly menuService: CanteenMenuService) {}
 
   // --- Categories ---
   @ApiOperation({ summary: 'Create menu category' })
-  @RequireCanteenPermission('canteen.category.create')
+  @RequirePermission({ resource: 'menu_categories', action: 'create' })
   @Post('categories')
-  async createCategory(@Body() dto: CreateMenuCategoryDto, @CanteenUser() user: any) {
-    return this.menuService.createCategory(dto, user?.id);
+  async createCategory(@Body() dto: CreateMenuCategoryDto, @CanteenUser() user: CanteenPlatformUser) {
+    return this.menuService.createCategory(dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'List menu categories' })
-  @RequireCanteenPermission('canteen.category.view')
+  @RequirePermission({ resource: 'menu_categories', action: 'read' })
   @Get('categories')
   async getCategories() {
     return this.menuService.getCategories();
   }
 
   @ApiOperation({ summary: 'Get menu category by ID' })
-  @RequireCanteenPermission('canteen.category.view')
+  @RequirePermission({ resource: 'menu_categories', action: 'read' })
   @Get('categories/:id')
   async getCategoryById(@Param('id') id: string) {
     return this.menuService.getCategoryById(id);
   }
 
   @ApiOperation({ summary: 'Update menu category' })
-  @RequireCanteenPermission('canteen.category.update')
+  @RequirePermission({ resource: 'menu_categories', action: 'update' })
   @Patch('categories/:id')
   async updateCategory(
     @Param('id') id: string,
     @Body() dto: UpdateMenuCategoryDto,
-    @CanteenUser() user: any,
+    @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.menuService.updateCategory(id, dto, user?.id);
+    return this.menuService.updateCategory(id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Delete menu category' })
-  @RequireCanteenPermission('canteen.category.delete')
+  @RequirePermission({ resource: 'menu_categories', action: 'delete' })
   @Delete('categories/:id')
-  async deleteCategory(@Param('id') id: string, @CanteenUser() user: any) {
-    return this.menuService.deleteCategory(id, user?.id);
+  async deleteCategory(@Param('id') id: string, @CanteenUser() user: CanteenPlatformUser) {
+    return this.menuService.deleteCategory(id, user.eddva_user_id);
   }
 
   // --- Items ---
   @ApiOperation({ summary: 'Create menu item' })
-  @RequireCanteenPermission('canteen.item.create')
+  @RequirePermission({ resource: 'menu_items', action: 'create' })
   @Post('items')
-  async createItem(@Body() dto: CreateMenuItemDto, @CanteenUser() user: any) {
-    return this.menuService.createItem(dto, user?.id);
+  async createItem(@Body() dto: CreateMenuItemDto, @CanteenUser() user: CanteenPlatformUser) {
+    return this.menuService.createItem(dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'List menu items (with search, filtering, pagination)' })
-  @RequireCanteenPermission('canteen.item.view')
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'search', required: false })
@@ -91,6 +95,7 @@ export class CanteenMenuController {
   @ApiQuery({ name: 'minPrice', required: false })
   @ApiQuery({ name: 'maxPrice', required: false })
   @ApiQuery({ name: 'sort', required: false })
+  @RequirePermission({ resource: 'menu_items', action: 'read' })
   @Get('items')
   async getItems(
     @Query('page') page?: number,
@@ -117,82 +122,82 @@ export class CanteenMenuController {
   }
 
   @ApiOperation({ summary: 'Get menu item by ID' })
-  @RequireCanteenPermission('canteen.item.view')
+  @RequirePermission({ resource: 'menu_items', action: 'read' })
   @Get('items/:id')
   async getItemById(@Param('id') id: string) {
     return this.menuService.getItemById(id);
   }
 
   @ApiOperation({ summary: 'Update menu item' })
-  @RequireCanteenPermission('canteen.item.update')
+  @RequirePermission({ resource: 'menu_items', action: 'update' })
   @Patch('items/:id')
   async updateItem(
     @Param('id') id: string,
     @Body() dto: UpdateMenuItemDto,
-    @CanteenUser() user: any,
+    @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.menuService.updateItem(id, dto, user?.id);
+    return this.menuService.updateItem(id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Toggle item availability' })
-  @RequireCanteenPermission('canteen.item.availability')
+  @RequirePermission({ resource: 'menu_items', action: 'availability' })
   @Patch('items/:id/availability')
   async toggleAvailability(
     @Param('id') id: string,
     @Body() dto: UpdateItemAvailabilityDto,
-    @CanteenUser() user: any,
+    @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.menuService.toggleAvailability(id, dto, user?.id);
+    return this.menuService.toggleAvailability(id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Delete menu item' })
-  @RequireCanteenPermission('canteen.item.delete')
+  @RequirePermission({ resource: 'menu_items', action: 'delete' })
   @Delete('items/:id')
-  async deleteItem(@Param('id') id: string, @CanteenUser() user: any) {
-    return this.menuService.deleteItem(id, user?.id);
+  async deleteItem(@Param('id') id: string, @CanteenUser() user: CanteenPlatformUser) {
+    return this.menuService.deleteItem(id, user.eddva_user_id);
   }
 
   // --- Schedules ---
   @ApiOperation({ summary: 'Create menu schedule for item' })
-  @RequireCanteenPermission('canteen.schedule.create')
+  @RequirePermission({ resource: 'menu_schedules', action: 'create' })
   @Post('items/:itemId/schedules')
   async createSchedule(
     @Param('itemId') itemId: string,
     @Body() dto: CreateMenuScheduleDto,
-    @CanteenUser() user: any,
+    @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.menuService.createSchedule(itemId, dto, user?.id);
+    return this.menuService.createSchedule(itemId, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'List schedules for menu item' })
-  @RequireCanteenPermission('canteen.schedule.view')
+  @RequirePermission({ resource: 'menu_schedules', action: 'read' })
   @Get('items/:itemId/schedules')
   async getSchedulesByItem(@Param('itemId') itemId: string) {
     return this.menuService.getSchedulesByItem(itemId);
   }
 
   @ApiOperation({ summary: 'Get menu schedule by ID' })
-  @RequireCanteenPermission('canteen.schedule.view')
+  @RequirePermission({ resource: 'menu_schedules', action: 'read' })
   @Get('schedules/:id')
   async getScheduleById(@Param('id') id: string) {
     return this.menuService.getScheduleById(id);
   }
 
   @ApiOperation({ summary: 'Update menu schedule' })
-  @RequireCanteenPermission('canteen.schedule.update')
+  @RequirePermission({ resource: 'menu_schedules', action: 'update' })
   @Patch('schedules/:id')
   async updateSchedule(
     @Param('id') id: string,
     @Body() dto: UpdateMenuScheduleDto,
-    @CanteenUser() user: any,
+    @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.menuService.updateSchedule(id, dto, user?.id);
+    return this.menuService.updateSchedule(id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Delete menu schedule' })
-  @RequireCanteenPermission('canteen.schedule.delete')
+  @RequirePermission({ resource: 'menu_schedules', action: 'delete' })
   @Delete('schedules/:id')
-  async deleteSchedule(@Param('id') id: string, @CanteenUser() user: any) {
-    return this.menuService.deleteSchedule(id, user?.id);
+  async deleteSchedule(@Param('id') id: string, @CanteenUser() user: CanteenPlatformUser) {
+    return this.menuService.deleteSchedule(id, user.eddva_user_id);
   }
 }

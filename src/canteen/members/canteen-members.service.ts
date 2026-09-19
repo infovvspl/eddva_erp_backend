@@ -4,7 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuditService } from '../../audit/audit.service';
+import { CanteenAuditService } from '../common/canteen-audit.service';
 import { CreateCanteenMemberDto } from './dto/create-canteen-member.dto';
 import { UpdateCanteenMemberDto } from './dto/update-canteen-member.dto';
 import { CanteenMemberType } from '@prisma/client';
@@ -13,7 +13,7 @@ import { CanteenMemberType } from '@prisma/client';
 export class CanteenMembersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService,
+    private readonly auditService: CanteenAuditService,
   ) {}
 
   async getMembers(params: {
