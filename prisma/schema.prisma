@@ -4172,3 +4172,1395 @@ model AdmissionNumberSequence {
   @@unique([sequence_type, financial_year])
   @@map("admission_number_sequences")
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HOSTEL MANAGEMENT — self-contained island (own auth/RBAC, own numbering).
+// No Student/Employee master exists in this ERP, so residents carry an external
+// `student_ref` plus the minimum identity snapshot (same approach as
+// TransportPassenger.external_ref_id / LibMember). Staff (wardens, gate
+// security) are identified by `eddva_user_id` strings — not FKs.
+// Partial unique indexes (one active allotment per resident/bed, live names)
+// live only in the migration SQL — Prisma cannot express them.
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum HostelGenderType {
+  boys
+  girls
+  mixed
+}
+
+enum HostelResidentGender {
+  male
+  female
+  other
+}
+
+enum HostelRoomType {
+  single
+  double
+  triple
+  dormitory
+}
+
+enum HostelRoomStatus {
+  available
+  full
+  under_maintenance
+}
+
+enum HostelBedStatus {
+  vacant
+  occupied
+}
+
+enum HostelResidentStatus {
+  active
+  vacated
+  suspended
+}
+
+enum HostelAllotmentStatus {
+  active
+  vacated
+  transferred
+}
+
+enum HostelTransferStatus {
+  pending
+  approved
+  rejected
+  cancelled
+}
+
+enum HostelGatePassType {
+  day_outing
+  weekend_leave
+  home_leave
+  medical
+}
+
+enum HostelGatePassStatus {
+  pending
+  approved
+  rejected
+  out
+  returned
+  overdue
+  expired
+  cancelled
+}
+
+enum HostelAttendanceSession {
+  morning
+  night
+}
+
+enum HostelAttendanceStatus {
+  present
+  absent
+  on_leave
+}
+
+enum HostelMealType {
+  breakfast
+  lunch
+  snacks
+  dinner
+}
+
+enum HostelDayOfWeek {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+}
+
+enum HostelMealAttendanceStatus {
+  opted_in
+  opted_out
+  consumed
+  missed
+}
+
+enum HostelComplaintCategory {
+  electrical
+  plumbing
+  furniture
+  cleanliness
+  internet
+  other
+}
+
+enum HostelComplaintPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum HostelComplaintStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum HostelBillingCycle {
+  monthly
+  quarterly
+  annual
+}
+
+enum HostelInvoicePaymentStatus {
+  unpaid
+  partially_paid
+  paid
+}
+
+enum HostelPaymentMode {
+  cash
+  card
+  upi
+  bank_transfer
+}
+
+enum HostelDisciplineCategory {
+  curfew_violation
+  misconduct
+  property_damage
+  other
+}
+
+enum HostelDisciplineAction {
+  warning
+  fine
+  parent_notified
+  suspension
+}
+
+enum HostelNotificationChannel {
+  email
+  sms
+  in_app
+}
+
+enum HostelNotificationAudience {
+  guardian
+  staff
+}
+
+enum HostelNotificationStatus {
+  queued
+  sent
+  failed
+}
+
+model HostelBlock {
+  block_id       Int              @id @default(autoincrement())
+  institute_id   String
+  name           String
+  gender_type    HostelGenderType
+  total_floors   Int              @default(1)
+  warden_user_id String? // eddva_user_id of an active hostel staff assignment — not an FK
+  warden_name    String?
+  description    String?
+  is_active      Boolean          @default(true)
+  created_by     String?
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+  deleted_at     DateTime?
+
+  rooms HostelRoom[]
+
+  @@index([institute_id, is_active])
+  @@index([institute_id, gender_type])
+  @@map("hostel_blocks")
+}
+
+model HostelRoom {
+  room_id      Int              @id @default(autoincrement())
+  institute_id String
+  block_id     Int
+  block        HostelBlock      @relation(fields: [block_id], references: [block_id], onDelete: Restrict)
+  room_number  String
+  floor        Int
+  room_type    HostelRoomType
+  capacity     Int
+  status       HostelRoomStatus @default(available)
+  description  String?
+  created_by   String?
+  created_at   DateTime         @default(now())
+  updated_at   DateTime         @updatedAt
+  deleted_at   DateTime?
+
+  beds           HostelBed[]
+  allotments     HostelRoomAllotment[]
+  complaints     HostelComplaint[]
+  transfers_from HostelTransferRequest[] @relation("HostelTransferCurrentRoom")
+  transfers_to   HostelTransferRequest[] @relation("HostelTransferRequestedRoom")
+
+  @@index([block_id, floor])
+  @@index([institute_id, status])
+  @@index([institute_id, room_type])
+  @@map("hostel_rooms")
+}
+
+model HostelBed {
+  bed_id       Int             @id @default(autoincrement())
+  institute_id String
+  room_id      Int
+  room         HostelRoom      @relation(fields: [room_id], references: [room_id], onDelete: Restrict)
+  bed_number   String
+  status       HostelBedStatus @default(vacant)
+  created_by   String?
+  created_at   DateTime        @default(now())
+  updated_at   DateTime        @updatedAt
+  deleted_at   DateTime?
+
+  allotments HostelRoomAllotment[]
+
+  @@index([room_id, status])
+  @@index([institute_id, status])
+  @@map("hostel_beds")
+}
+
+/// A student living in the hostel. `student_ref` points at the school's student
+/// record (no Student master exists in this backend); identity fields are a snapshot.
+model HostelResident {
+  resident_id    Int                  @id @default(autoincrement())
+  institute_id   String
+  student_ref    String
+  admission_no   String?
+  student_name   String
+  gender         HostelResidentGender
+  grade          String?
+  guardian_name  String
+  guardian_phone String
+  guardian_email String?
+  status         HostelResidentStatus @default(active)
+  admitted_on    DateTime             @db.Date
+  vacated_on     DateTime?            @db.Date
+  status_reason  String?
+  created_by     String?
+  created_at     DateTime             @default(now())
+  updated_at     DateTime             @updatedAt
+
+  allotments         HostelRoomAllotment[]
+  transfer_requests  HostelTransferRequest[]
+  gate_passes        HostelGatePass[]
+  attendance         HostelAttendance[]
+  visitor_logs       HostelVisitorLog[]
+  meal_attendance    HostelMessAttendance[]
+  complaints         HostelComplaint[]
+  invoices           HostelFeeInvoice[]
+  payments           HostelFeePayment[]
+  discipline_records HostelDisciplineRecord[]
+
+  @@unique([institute_id, student_ref])
+  @@index([institute_id, status])
+  @@index([institute_id, student_name])
+  @@index([institute_id, admission_no])
+  @@map("hostel_residents")
+}
+
+/// One row per stay. Never overwritten: vacating/transferring closes the row and
+/// (for transfers) a new row is created, so previous occupancy is always recoverable.
+model HostelRoomAllotment {
+  allotment_id   Int                   @id @default(autoincrement())
+  institute_id   String
+  resident_id    Int
+  resident       HostelResident        @relation(fields: [resident_id], references: [resident_id], onDelete: Restrict)
+  room_id        Int
+  room           HostelRoom            @relation(fields: [room_id], references: [room_id], onDelete: Restrict)
+  bed_id         Int?
+  bed            HostelBed?            @relation(fields: [bed_id], references: [bed_id], onDelete: Restrict)
+  academic_year  String
+  allotment_date DateTime              @db.Date
+  vacate_date    DateTime?             @db.Date
+  status         HostelAllotmentStatus @default(active)
+  allotted_by    String
+  closed_by      String?
+  close_reason   String?
+  created_at     DateTime              @default(now())
+  updated_at     DateTime              @updatedAt
+
+  transfers_closed  HostelTransferRequest[] @relation("HostelTransferCurrentAllotment")
+  transfers_created HostelTransferRequest[] @relation("HostelTransferNewAllotment")
+
+  @@index([resident_id, status])
+  @@index([room_id, status])
+  @@index([bed_id, status])
+  @@index([institute_id, academic_year])
+  @@map("hostel_room_allotments")
+}
+
+model HostelTransferRequest {
+  transfer_id          Int                  @id @default(autoincrement())
+  institute_id         String
+  resident_id          Int
+  resident             HostelResident       @relation(fields: [resident_id], references: [resident_id], onDelete: Restrict)
+  current_allotment_id Int
+  current_allotment    HostelRoomAllotment  @relation("HostelTransferCurrentAllotment", fields: [current_allotment_id], references: [allotment_id], onDelete: Restrict)
+  current_room_id      Int
+  current_room         HostelRoom           @relation("HostelTransferCurrentRoom", fields: [current_room_id], references: [room_id], onDelete: Restrict)
+  requested_room_id    Int
+  requested_room       HostelRoom           @relation("HostelTransferRequestedRoom", fields: [requested_room_id], references: [room_id], onDelete: Restrict)
+  requested_bed_id     Int?
+  reason               String
+  status               HostelTransferStatus @default(pending)
+  requested_by         String
+  requested_at         DateTime             @default(now())
+  decided_by           String?
+  decided_at           DateTime?
+  decision_remarks     String?
+  new_allotment_id     Int?
+  new_allotment        HostelRoomAllotment? @relation("HostelTransferNewAllotment", fields: [new_allotment_id], references: [allotment_id], onDelete: Restrict)
+  updated_at           DateTime             @updatedAt
+
+  @@index([resident_id, status])
+  @@index([institute_id, status, requested_at])
+  @@map("hostel_transfer_requests")
+}
+
+model HostelGatePass {
+  gate_pass_id        Int                  @id @default(autoincrement())
+  institute_id        String
+  pass_no             String
+  resident_id         Int
+  resident            HostelResident       @relation(fields: [resident_id], references: [resident_id], onDelete: Restrict)
+  pass_type           HostelGatePassType
+  reason              String
+  destination         String
+  requested_out_at    DateTime
+  expected_return_at  DateTime
+  actual_out_at       DateTime?
+  actual_return_at    DateTime?
+  status              HostelGatePassStatus @default(pending)
+  requested_by        String
+  approved_by         String?
+  rejected_by         String?
+  decided_at          DateTime?
+  decision_remarks    String?
+  scanned_out_by      String?
+  scanned_in_by       String?
+  overdue_at          DateTime?
+  overdue_notified_at DateTime?
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
+
+  discipline_records HostelDisciplineRecord[]
+
+  @@unique([institute_id, pass_no])
+  @@index([resident_id, status])
+  @@index([status, expected_return_at])
+  @@index([actual_return_at])
+  @@index([institute_id, status, requested_out_at])
+  @@map("hostel_gate_passes")
+}
+
+model HostelAttendance {
+  attendance_id           Int                     @id @default(autoincrement())
+  institute_id            String
+  resident_id             Int
+  resident                HostelResident          @relation(fields: [resident_id], references: [resident_id], onDelete: Restrict)
+  attendance_date         DateTime                @db.Date
+  session                 HostelAttendanceSession
+  status                  HostelAttendanceStatus
+  remarks                 String?
+  marked_by               String
+  marked_at               DateTime                @default(now())
+  updated_by              String?
+  updated_at              DateTime                @updatedAt
+  unaccounted_notified_at DateTime?
+
+  @@unique([resident_id, attendance_date, session])
+  @@index([institute_id, attendance_date, status])
+  @@index([institute_id, attendance_date, session])
+  @@map("hostel_attendance")
+}
+
+model HostelVisitorLog {
+  visitor_log_id     Int            @id @default(autoincrement())
+  institute_id       String
+  resident_id        Int
+  resident           HostelResident @relation(fields: [resident_id], references: [resident_id], onDelete: Restrict)
+  visitor_name       String
+  relation           String
+  purpose            String?
+  id_proof_type      String?
+  id_proof_masked    String? // last-4 view shown to everyone
+  id_proof_encrypted String? // AES-256-GCM; only decrypted for holders of visitors:view_id
+  in_time            DateTime       @default(now())
+  out_time           DateTime?
+  recorded_by        String
+  checked_out_by     String?
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+
+  @@index([resident_id, in_time])
+  @@index([institute_id, in_time])
+  @@index([institute_id, out_time])
+  @@map("hostel_visitor_logs")
+}
+
+model HostelMessMenu {
+  menu_id        Int             @id @default(autoincrement())
+  institute_id   String
+  day_of_week    HostelDayOfWeek
+  meal_type      HostelMealType
+  items          String[]
+  effective_from DateTime        @db.Date
+  is_active      Boolean         @default(true)
+  created_by     String?
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+
+  @@unique([institute_id, day_of_week, meal_type, effective_from])
+  @@index([institute_id, is_active, effective_from])
+  @@map("hostel_mess_menus")
+}
+
+model HostelMessAttendance {
+  mess_attendance_id Int                        @id @default(autoincrement())
+  institute_id       String
+  resident_id        Int
+  resident           HostelResident             @relation(fields: [resident_id], references: [resident_id], onDelete: Restrict)
+  meal_date          DateTime                   @db.Date
+  meal_type          HostelMealType
+  status             HostelMealAttendanceStatus
+  marked_by          String
+  marked_at          DateTime                   @default(now())
+  updated_by         String?
+  updated_at         DateTime                   @updatedAt
+
+  @@unique([resident_id, meal_date, meal_type])
+  @@index([institute_id, meal_date, meal_type, status])
+  @@map("hostel_mess_attendance")
+}
+
+model HostelComplaint {
+  complaint_id     Int                     @id @default(autoincrement())
+  institute_id     String
+  resident_id      Int?
+  resident         HostelResident?         @relation(fields: [resident_id], references: [resident_id], onDelete: Restrict)
+  room_id          Int?
+  room             HostelRoom?             @relation(fields: [room_id], references: [room_id], onDelete: Restrict)
+  category         HostelComplaintCategory
+  description      String
+  priority         HostelComplaintPriority @default(medium)
+  status           HostelComplaintStatus   @default(open)
+  assigned_to      String? // eddva_user_id of active hostel staff — not an FK
+  assigned_to_name String?
+  resolution_notes String?
+  created_by       String?
+  created_at       DateTime                @default(now())
+  resolved_at      DateTime?
+  closed_at        DateTime?
+  updated_at       DateTime                @updatedAt
+
+  updates HostelComplaintUpdate[]
+
+  @@index([resident_id, status])
+  @@index([institute_id, status, priority])
+  @@index([assigned_to, status])
+  @@index([room_id])
+  @@map("hostel_complaints")
+}
+
+model HostelComplaintUpdate {
+  update_id     Int             @id @default(autoincrement())
+  complaint_id  Int
+  complaint     HostelComplaint @relation(fields: [complaint_id], references: [complaint_id], onDelete: Cascade)
+  notes         String
+  status_change String?
+  updated_by    String?
+  updated_at    DateTime        @default(now())
+
+  @@index([complaint_id])
+  @@map("hostel_complaint_updates")
+}
+
+model HostelFeePlan {
+  fee_plan_id   Int                @id @default(autoincrement())
+  institute_id  String
+  name          String
+  room_type     HostelRoomType
+  includes_mess Boolean            @default(false)
+  amount        Decimal            @db.Decimal(12, 2)
+  billing_cycle HostelBillingCycle
+  description   String?
+  is_active     Boolean            @default(true)
+  created_by    String?
+  created_at    DateTime           @default(now())
+  updated_at    DateTime           @updatedAt
+  deleted_at    DateTime?
+
+  invoices HostelFeeInvoice[]
+
+  @@index([institute_id, room_type, is_active])
+  @@map("hostel_fee_plans")
+}
+
+/// The plan's terms (name, room type, cycle, amount) are copied onto the invoice,
+/// so a later plan change never alters an invoice that has already been issued.
+model HostelFeeInvoice {
+  invoice_id          Int                        @id @default(autoincrement())
+  institute_id        String
+  invoice_no          String
+  resident_id         Int
+  resident            HostelResident             @relation(fields: [resident_id], references: [resident_id], onDelete: Restrict)
+  fee_plan_id         Int
+  fee_plan            HostelFeePlan              @relation(fields: [fee_plan_id], references: [fee_plan_id], onDelete: Restrict)
+  plan_name           String
+  room_type           HostelRoomType
+  includes_mess       Boolean
+  billing_cycle       HostelBillingCycle
+  billing_period      String
+  period_start        DateTime                   @db.Date
+  period_end          DateTime                   @db.Date
+  amount_due          Decimal                    @db.Decimal(12, 2)
+  amount_paid         Decimal                    @default(0) @db.Decimal(12, 2)
+  payment_status      HostelInvoicePaymentStatus @default(unpaid)
+  issued_on           DateTime                   @db.Date
+  due_date            DateTime                   @db.Date
+  remarks             String?
+  overdue_notified_at DateTime?
+  cancelled_at        DateTime?
+  cancelled_by        String?
+  cancel_reason       String?
+  created_by          String?
+  created_at          DateTime                   @default(now())
+  updated_at          DateTime                   @updatedAt
+
+  payments HostelFeePayment[]
+
+  @@unique([institute_id, invoice_no])
+  @@index([resident_id, period_start])
+  @@index([institute_id, payment_status])
+  @@index([institute_id, due_date])
+  @@map("hostel_fee_invoices")
+}
+
+model HostelFeePayment {
+  payment_id      Int               @id @default(autoincrement())
+  institute_id    String
+  receipt_no      String
+  invoice_id      Int
+  invoice         HostelFeeInvoice  @relation(fields: [invoice_id], references: [invoice_id], onDelete: Restrict)
+  resident_id     Int
+  resident        HostelResident    @relation(fields: [resident_id], references: [resident_id], onDelete: Restrict)
+  amount_paid     Decimal           @db.Decimal(12, 2)
+  payment_date    DateTime          @db.Date
+  payment_mode    HostelPaymentMode
+  transaction_ref String?
+  received_by     String
+  remarks         String?
+  created_at      DateTime          @default(now())
+
+  @@unique([institute_id, receipt_no])
+  @@index([invoice_id])
+  @@index([institute_id, payment_date])
+  @@index([resident_id])
+  @@map("hostel_fee_payments")
+}
+
+model HostelDisciplineRecord {
+  record_id     Int                      @id @default(autoincrement())
+  institute_id  String
+  resident_id   Int
+  resident      HostelResident           @relation(fields: [resident_id], references: [resident_id], onDelete: Restrict)
+  incident_date DateTime                 @db.Date
+  category      HostelDisciplineCategory
+  description   String
+  action_taken  HostelDisciplineAction
+  fine_amount   Decimal?                 @db.Decimal(12, 2)
+  gate_pass_id  Int?
+  gate_pass     HostelGatePass?          @relation(fields: [gate_pass_id], references: [gate_pass_id], onDelete: Restrict)
+  recorded_by   String
+  created_at    DateTime                 @default(now())
+  updated_at    DateTime                 @updatedAt
+
+  @@index([resident_id, incident_date])
+  @@index([institute_id, category, incident_date])
+  @@index([gate_pass_id])
+  @@map("hostel_discipline_records")
+}
+
+/// DB-logged outbox — no SMS/email provider exists in this ERP, so rows stay `queued`.
+model HostelNotification {
+  notification_id Int                        @id @default(autoincrement())
+  institute_id    String
+  entity_type     String
+  entity_id       Int
+  event_type      String
+  audience        HostelNotificationAudience
+  channel         HostelNotificationChannel  @default(sms)
+  recipient       String?
+  message         String?
+  status          HostelNotificationStatus   @default(queued)
+  sent_at         DateTime?
+  created_at      DateTime                   @default(now())
+
+  @@index([institute_id, event_type])
+  @@index([entity_type, entity_id])
+  @@map("hostel_notifications")
+}
+
+// ─── Hostel RBAC — parallel dynamic-role system, same architecture as Admission/Front Office/Canteen ───
+
+model HostelDynamicRole {
+  role_id      Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json     @default("[]")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_roles HostelUserDynamicRole[]
+
+  @@unique([institute_id, name])
+  @@map("hostel_dynamic_roles")
+}
+
+model HostelUserDynamicRole {
+  id            Int               @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  username      String
+  password_hash String
+  is_active     Boolean           @default(true)
+  role_id       Int
+  assigned_at   DateTime          @default(now())
+  role          HostelDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+
+  @@unique([institute_id, eddva_user_id])
+  @@unique([institute_id, username])
+  @@map("hostel_user_dynamic_roles")
+}
+
+model HostelSsoSession {
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  token_hash    String   @unique // sha256 of the issued token — the token itself is never stored
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@map("hostel_sso_sessions")
+}
+
+model HostelPermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("hostel_permissions_catalog")
+}
+
+/// Module-local document-number sequences (gate pass / invoice / receipt).
+model HostelNumberSequence {
+  id             Int    @id @default(autoincrement())
+  sequence_type  String
+  financial_year String
+  prefix         String
+  current_number Int    @default(0)
+
+  @@unique([sequence_type, financial_year])
+  @@map("hostel_number_sequences")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ALUMNI MANAGEMENT — self-contained module (own auth island, own tables).
+// The alumni profile is the anchor entity; events, jobs, mentorship, donations
+// and communication all reference it. There is no Student master in this
+// backend, so `student_ref` is the external reference to the school record.
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum AlumniVerificationStatus {
+  pending
+  verified
+  rejected
+}
+
+enum AlumniVisibility {
+  public
+  alumni_only
+  private
+}
+
+enum AlumniSource {
+  staff_created
+  self_registered
+}
+
+enum AlumniGroupType {
+  batch
+  program
+  location
+  interest
+}
+
+enum AlumniEventType {
+  reunion
+  webinar
+  networking
+  fundraiser
+}
+
+enum AlumniEventMode {
+  online
+  offline
+  hybrid
+}
+
+enum AlumniEventStatus {
+  upcoming
+  ongoing
+  completed
+  cancelled
+}
+
+enum AlumniAttendanceStatus {
+  registered
+  attended
+  no_show
+  cancelled
+}
+
+enum AlumniEventPaymentStatus {
+  not_applicable
+  pending
+  paid
+}
+
+enum AlumniEventPaymentMode {
+  card
+  upi
+  bank_transfer
+}
+
+enum AlumniJobType {
+  full_time
+  part_time
+  internship
+  contract
+}
+
+enum AlumniJobStatus {
+  open
+  closed
+  expired
+}
+
+enum AlumniApplicationStatus {
+  applied
+  shortlisted
+  rejected
+  hired
+  withdrawn
+}
+
+enum AlumniProgramStatus {
+  open_for_signup
+  active
+  completed
+}
+
+enum AlumniMentorStatus {
+  available
+  fully_booked
+  inactive
+}
+
+enum AlumniMatchStatus {
+  active
+  completed
+  discontinued
+}
+
+enum AlumniCampaignStatus {
+  active
+  completed
+  closed
+}
+
+enum AlumniDonationStatus {
+  pending
+  received
+  failed
+  cancelled
+  reversed
+}
+
+enum AlumniDonationPaymentMode {
+  card
+  upi
+  bank_transfer
+  cheque
+}
+
+enum AlumniNewsletterStatus {
+  draft
+  sent
+}
+
+enum AlumniCommChannel {
+  email
+  sms
+}
+
+enum AlumniCommStatus {
+  queued
+  sent
+  opened
+  clicked
+  failed
+}
+
+enum AlumniNotificationChannel {
+  email
+  sms
+  in_app
+}
+
+enum AlumniNotificationAudience {
+  alumni
+  staff
+}
+
+enum AlumniNotificationStatus {
+  queued
+  sent
+  failed
+}
+
+/// The alumni directory — one row per alumnus/alumna per institute.
+model AlumniProfile {
+  alumni_id                 Int                      @id @default(autoincrement())
+  institute_id              String
+  /// External reference to the historical student record (no Student master exists here).
+  student_ref               String?
+  admission_no              String?
+  full_name                 String
+  batch_year                Int
+  graduation_year           Int?
+  program                   String?
+  /// Always stored lower-case; unique per institute.
+  email                     String
+  phone                     String?
+  current_company           String?
+  current_designation       String?
+  industry                  String?
+  city                      String?
+  country                   String?
+  linkedin_url              String?
+  photo_path                String?
+  photo_mime                String?
+  verification_status       AlumniVerificationStatus @default(pending)
+  /// Evidence/notes the alumnus submitted with their verification request.
+  verification_note         String?
+  verification_requested_at DateTime?
+  verified_at               DateTime?
+  verified_by               String?
+  rejection_reason          String?
+  visibility                AlumniVisibility         @default(alumni_only)
+  /// When false, other alumni never see this person's email/phone.
+  contact_visible           Boolean                  @default(false)
+  email_opt_in              Boolean                  @default(true)
+  sms_opt_in                Boolean                  @default(true)
+  source                    AlumniSource
+  is_active                 Boolean                  @default(true)
+  registered_at             DateTime                 @default(now())
+  created_by                String?
+  created_at                DateTime                 @default(now())
+  updated_at                DateTime                 @updatedAt
+
+  employments         AlumniEmployment[]
+  group_memberships   AlumniGroupMember[]
+  event_registrations AlumniEventRegistration[]
+  posted_jobs         AlumniJob[]
+  job_applications    AlumniJobApplication[]
+  mentor_profile      AlumniMentorProfile?
+  mentee_matches      AlumniMentorshipMatch[]
+  donations           AlumniDonation[]
+  communication_logs  AlumniCommunicationLog[]
+  account             AlumniUserDynamicRole?
+
+  @@unique([institute_id, email])
+  @@unique([institute_id, student_ref])
+  @@index([institute_id, batch_year])
+  @@index([institute_id, program])
+  @@index([institute_id, current_company])
+  @@index([institute_id, industry])
+  @@index([institute_id, city])
+  @@index([institute_id, country])
+  @@index([institute_id, verification_status])
+  @@index([institute_id, full_name])
+  @@map("alumni_profiles")
+}
+
+model AlumniEmployment {
+  employment_id Int           @id @default(autoincrement())
+  institute_id  String
+  alumni_id     Int
+  company       String
+  designation   String
+  industry      String?
+  location      String?
+  start_date    DateTime      @db.Date
+  end_date      DateTime?     @db.Date
+  is_current    Boolean       @default(false)
+  /// Soft delete: a removed entry stays for audit but leaves the timeline.
+  is_active     Boolean       @default(true)
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+  alumni        AlumniProfile @relation(fields: [alumni_id], references: [alumni_id], onDelete: Restrict)
+
+  @@index([alumni_id, is_active])
+  @@index([institute_id, company])
+  @@map("alumni_employments")
+}
+
+model AlumniGroup {
+  group_id     Int                 @id @default(autoincrement())
+  institute_id String
+  name         String
+  group_type   AlumniGroupType
+  description  String?
+  is_active    Boolean             @default(true)
+  created_by   String?
+  created_at   DateTime            @default(now())
+  updated_at   DateTime            @updatedAt
+  members      AlumniGroupMember[]
+
+  @@unique([institute_id, group_type, name])
+  @@index([institute_id, group_type])
+  @@map("alumni_groups")
+}
+
+model AlumniGroupMember {
+  member_id    Int           @id @default(autoincrement())
+  institute_id String
+  group_id     Int
+  alumni_id    Int
+  joined_at    DateTime      @default(now())
+  added_by     String?
+  group        AlumniGroup   @relation(fields: [group_id], references: [group_id], onDelete: Cascade)
+  alumni       AlumniProfile @relation(fields: [alumni_id], references: [alumni_id], onDelete: Restrict)
+
+  @@unique([group_id, alumni_id])
+  @@index([alumni_id])
+  @@map("alumni_group_members")
+}
+
+model AlumniEvent {
+  event_id              Int                       @id @default(autoincrement())
+  institute_id          String
+  title                 String
+  description           String?
+  event_type            AlumniEventType
+  mode                  AlumniEventMode
+  venue                 String?
+  online_link           String?
+  event_date            DateTime
+  ends_at               DateTime?
+  registration_deadline DateTime?
+  max_capacity          Int?
+  is_paid               Boolean                   @default(false)
+  ticket_price          Decimal?                  @db.Decimal(10, 2)
+  status                AlumniEventStatus         @default(upcoming)
+  banner_path           String?
+  banner_mime           String?
+  cancel_reason         String?
+  cancelled_at          DateTime?
+  created_by            String
+  created_at            DateTime                  @default(now())
+  updated_at            DateTime                  @updatedAt
+  registrations         AlumniEventRegistration[]
+
+  @@index([institute_id, status, event_date])
+  @@index([institute_id, event_date])
+  @@index([registration_deadline])
+  @@map("alumni_events")
+}
+
+model AlumniEventRegistration {
+  registration_id      Int                      @id @default(autoincrement())
+  institute_id         String
+  event_id             Int
+  alumni_id            Int
+  registered_at        DateTime                 @default(now())
+  attendance_status    AlumniAttendanceStatus   @default(registered)
+  payment_status       AlumniEventPaymentStatus @default(not_applicable)
+  /// Ticket price captured at registration time.
+  amount_due           Decimal?                 @db.Decimal(10, 2)
+  cancelled_at         DateTime?
+  attendance_marked_at DateTime?
+  attendance_marked_by String?
+  reminder_queued_at   DateTime?
+  registered_by        String
+  created_at           DateTime                 @default(now())
+  updated_at           DateTime                 @updatedAt
+  event                AlumniEvent              @relation(fields: [event_id], references: [event_id], onDelete: Restrict)
+  alumni               AlumniProfile            @relation(fields: [alumni_id], references: [alumni_id], onDelete: Restrict)
+  payment              AlumniEventPayment?
+
+  @@unique([event_id, alumni_id])
+  @@index([event_id, attendance_status])
+  @@index([alumni_id])
+  @@map("alumni_event_registrations")
+}
+
+model AlumniEventPayment {
+  payment_id      Int                     @id @default(autoincrement())
+  institute_id    String
+  registration_id Int                     @unique
+  amount          Decimal                 @db.Decimal(10, 2)
+  payment_mode    AlumniEventPaymentMode
+  transaction_ref String
+  paid_at         DateTime
+  recorded_by     String
+  created_at      DateTime                @default(now())
+  registration    AlumniEventRegistration @relation(fields: [registration_id], references: [registration_id], onDelete: Restrict)
+
+  @@unique([institute_id, transaction_ref])
+  @@map("alumni_event_payments")
+}
+
+model AlumniJob {
+  job_id              Int                    @id @default(autoincrement())
+  institute_id        String
+  /// Null when staff post on behalf of a partner company.
+  posted_by_alumni_id Int?
+  posted_by_user_id   String?
+  title               String
+  company             String
+  description         String
+  location            String?
+  job_type            AlumniJobType
+  industry            String?
+  posted_date         DateTime               @default(now())
+  expiry_date         DateTime?
+  status              AlumniJobStatus        @default(open)
+  closed_at           DateTime?
+  created_at          DateTime               @default(now())
+  updated_at          DateTime               @updatedAt
+  posted_by           AlumniProfile?         @relation(fields: [posted_by_alumni_id], references: [alumni_id], onDelete: Restrict)
+  applications        AlumniJobApplication[]
+
+  @@index([institute_id, status, expiry_date])
+  @@index([posted_by_alumni_id])
+  @@index([institute_id, job_type])
+  @@index([institute_id, company])
+  @@map("alumni_jobs")
+}
+
+model AlumniJobApplication {
+  application_id      Int                     @id @default(autoincrement())
+  institute_id        String
+  job_id              Int
+  applicant_alumni_id Int
+  applied_at          DateTime                @default(now())
+  status              AlumniApplicationStatus @default(applied)
+  resume_url          String?
+  resume_path         String?
+  resume_mime         String?
+  cover_note          String?
+  status_note         String?
+  status_updated_at   DateTime?
+  status_updated_by   String?
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+  job                 AlumniJob               @relation(fields: [job_id], references: [job_id], onDelete: Restrict)
+  applicant           AlumniProfile           @relation(fields: [applicant_alumni_id], references: [alumni_id], onDelete: Restrict)
+
+  @@unique([job_id, applicant_alumni_id])
+  @@index([job_id, status])
+  @@index([applicant_alumni_id])
+  @@index([institute_id, status])
+  @@map("alumni_job_applications")
+}
+
+model AlumniMentorshipProgram {
+  program_id   Int                     @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  start_date   DateTime                @db.Date
+  end_date     DateTime                @db.Date
+  status       AlumniProgramStatus     @default(open_for_signup)
+  created_by   String?
+  created_at   DateTime                @default(now())
+  updated_at   DateTime                @updatedAt
+  matches      AlumniMentorshipMatch[]
+
+  @@unique([institute_id, name])
+  @@index([institute_id, status])
+  @@map("alumni_mentorship_programs")
+}
+
+model AlumniMentorProfile {
+  mentor_id         Int                     @id @default(autoincrement())
+  institute_id      String
+  alumni_id         Int                     @unique
+  /// Normalised (trimmed, lower-case, de-duplicated) tags; GIN-indexed in SQL.
+  expertise_areas   String[]
+  max_mentees       Int                     @default(3)
+  status            AlumniMentorStatus      @default(available)
+  bio               String?
+  availability_note String?
+  created_at        DateTime                @default(now())
+  updated_at        DateTime                @updatedAt
+  alumni            AlumniProfile           @relation(fields: [alumni_id], references: [alumni_id], onDelete: Restrict)
+  matches           AlumniMentorshipMatch[]
+
+  @@index([institute_id, status])
+  @@index([expertise_areas(ops: ArrayOps)], type: Gin, map: "alumni_mentor_profiles_expertise_gin_idx")
+  @@map("alumni_mentor_profiles")
+}
+
+model AlumniMentorshipMatch {
+  match_id           Int                     @id @default(autoincrement())
+  institute_id       String
+  program_id         Int
+  mentor_id          Int
+  /// Exactly one of mentee_alumni_id / mentee_student_ref is set (CHECK in SQL).
+  mentee_alumni_id   Int?
+  mentee_student_ref String?
+  mentee_name        String?
+  matched_date       DateTime                @db.Date
+  status             AlumniMatchStatus       @default(active)
+  ended_at           DateTime?
+  end_reason         String?
+  created_by         String?
+  created_at         DateTime                @default(now())
+  updated_at         DateTime                @updatedAt
+  program            AlumniMentorshipProgram @relation(fields: [program_id], references: [program_id], onDelete: Restrict)
+  mentor             AlumniMentorProfile     @relation(fields: [mentor_id], references: [mentor_id], onDelete: Restrict)
+  mentee_alumni      AlumniProfile?          @relation(fields: [mentee_alumni_id], references: [alumni_id], onDelete: Restrict)
+
+  @@index([mentor_id, status])
+  @@index([institute_id, program_id, status])
+  @@index([mentee_alumni_id])
+  @@map("alumni_mentorship_matches")
+}
+
+model AlumniCampaign {
+  campaign_id   Int                  @id @default(autoincrement())
+  institute_id  String
+  title         String
+  description   String?
+  goal_amount   Decimal              @db.Decimal(14, 2)
+  /// CACHE of SUM(received donations) — the donation ledger is the source of truth.
+  raised_amount Decimal              @default(0) @db.Decimal(14, 2)
+  start_date    DateTime             @db.Date
+  end_date      DateTime             @db.Date
+  status        AlumniCampaignStatus @default(active)
+  closed_at     DateTime?
+  created_by    String?
+  created_at    DateTime             @default(now())
+  updated_at    DateTime             @updatedAt
+  donations     AlumniDonation[]
+
+  @@index([institute_id, status])
+  @@index([institute_id, start_date, end_date])
+  @@map("alumni_campaigns")
+}
+
+model AlumniDonation {
+  donation_id       Int                       @id @default(autoincrement())
+  institute_id      String
+  alumni_id         Int
+  /// Null for a general / unrestricted donation.
+  campaign_id       Int?
+  amount            Decimal                   @db.Decimal(12, 2)
+  donation_date     DateTime                  @default(now())
+  payment_mode      AlumniDonationPaymentMode
+  transaction_ref   String?
+  is_anonymous      Boolean                   @default(false)
+  status            AlumniDonationStatus      @default(pending)
+  receipt_number    String?
+  receipt_issued_at DateTime?
+  received_at       DateTime?
+  received_by       String?
+  notes             String?
+  status_reason     String?
+  reversed_at       DateTime?
+  reversed_by       String?
+  recorded_by       String
+  created_at        DateTime                  @default(now())
+  updated_at        DateTime                  @updatedAt
+  alumni            AlumniProfile             @relation(fields: [alumni_id], references: [alumni_id], onDelete: Restrict)
+  campaign          AlumniCampaign?           @relation(fields: [campaign_id], references: [campaign_id], onDelete: Restrict)
+
+  @@unique([institute_id, receipt_number])
+  @@index([institute_id, campaign_id, status])
+  @@index([alumni_id, status])
+  @@index([institute_id, donation_date])
+  @@map("alumni_donations")
+}
+
+model AlumniNewsletter {
+  newsletter_id   Int                      @id @default(autoincrement())
+  institute_id    String
+  title           String
+  content         String
+  /// Structured, validated filter evaluated against current alumni data at send time.
+  target_segment  Json
+  status          AlumniNewsletterStatus   @default(draft)
+  sent_at         DateTime?
+  sent_by         String?
+  recipient_count Int?
+  created_by      String
+  created_at      DateTime                 @default(now())
+  updated_at      DateTime                 @updatedAt
+  logs            AlumniCommunicationLog[]
+
+  @@index([institute_id, status])
+  @@map("alumni_newsletters")
+}
+
+model AlumniCommunicationLog {
+  log_id         Int               @id @default(autoincrement())
+  institute_id   String
+  newsletter_id  Int
+  alumni_id      Int
+  channel        AlumniCommChannel
+  /// Address the message was queued for (email / phone at send time).
+  recipient      String
+  status         AlumniCommStatus  @default(queued)
+  sent_at        DateTime?
+  opened_at      DateTime?
+  clicked_at     DateTime?
+  failure_reason String?
+  created_at     DateTime          @default(now())
+  updated_at     DateTime          @updatedAt
+  newsletter     AlumniNewsletter  @relation(fields: [newsletter_id], references: [newsletter_id], onDelete: Cascade)
+  alumni         AlumniProfile     @relation(fields: [alumni_id], references: [alumni_id], onDelete: Restrict)
+
+  @@unique([newsletter_id, alumni_id, channel])
+  @@index([newsletter_id, status])
+  @@index([alumni_id])
+  @@map("alumni_communication_logs")
+}
+
+model AlumniNotification {
+  notification_id Int                        @id @default(autoincrement())
+  institute_id    String
+  /// Set for alumni-audience rows: lets the alumnus read their own in-app notices.
+  alumni_id       Int?
+  entity_type     String
+  entity_id       Int
+  event_type      String
+  audience        AlumniNotificationAudience
+  channel         AlumniNotificationChannel  @default(in_app)
+  recipient       String?
+  message         String?
+  status          AlumniNotificationStatus   @default(queued)
+  sent_at         DateTime?
+  created_at      DateTime                   @default(now())
+
+  @@index([institute_id, event_type])
+  @@index([entity_type, entity_id])
+  @@index([alumni_id, created_at])
+  @@map("alumni_notifications")
+}
+
+// ─── Alumni RBAC — parallel dynamic-role system, same architecture as Admission/Hostel/Front Office ───
+
+model AlumniDynamicRole {
+  role_id      Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json     @default("[]")
+  /// The self-service "Alumni" role auto-created on first registration; cannot be deleted.
+  is_system    Boolean  @default(false)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_roles AlumniUserDynamicRole[]
+
+  @@unique([institute_id, name])
+  @@map("alumni_dynamic_roles")
+}
+
+model AlumniUserDynamicRole {
+  id            Int               @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  username      String
+  password_hash String
+  is_active     Boolean           @default(true)
+  role_id       Int
+  /// Set for alumni-portal accounts (exactly one account per alumni record); null for staff.
+  alumni_id     Int?              @unique
+  assigned_at   DateTime          @default(now())
+  role          AlumniDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+  alumni        AlumniProfile?    @relation(fields: [alumni_id], references: [alumni_id], onDelete: Restrict)
+
+  @@unique([institute_id, eddva_user_id])
+  @@unique([institute_id, username])
+  @@map("alumni_user_dynamic_roles")
+}
+
+model AlumniSsoSession {
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  token_hash    String   @unique
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@map("alumni_sso_sessions")
+}
+
+model AlumniPermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("alumni_permissions_catalog")
+}
+
+/// Module-local document-number sequences (donation receipts).
+model AlumniNumberSequence {
+  id             Int    @id @default(autoincrement())
+  sequence_type  String
+  financial_year String
+  prefix         String
+  current_number Int    @default(0)
+
+  @@unique([sequence_type, financial_year])
+  @@map("alumni_number_sequences")
+}

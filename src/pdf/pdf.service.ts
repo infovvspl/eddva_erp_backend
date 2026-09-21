@@ -452,6 +452,11 @@ export class PdfService implements OnModuleDestroy {
     return this.renderPdf(this.reportHtmlShell('Balance Sheet', `As of ${new Date(report.asOf).toLocaleDateString()}`, body));
   }
 
+  /** Renders a caller-built (and caller-escaped) HTML document to an A4 PDF. */
+  async generateHtmlPdf(html: string): Promise<Buffer> {
+    return this.renderPdf(html);
+  }
+
   private async renderPdf(html: string): Promise<Buffer> {
     const browser = await this.getBrowser();
     const page = await browser.newPage();
