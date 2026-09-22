@@ -94,7 +94,9 @@ export class AlumniProfilesController {
   @RequirePermission({ resource: 'alumni', action: 'create' })
   @ApiOperation({
     summary:
-      'Create an alumni profile (staff). Duplicate e-mail / student_ref → 409',
+      'Create an alumni profile (staff; there is no public self-registration). ' +
+      'Pass "password" to also issue the portal login in the same call (needs alumni:issue_account too); omit it to create the profile only. ' +
+      'Duplicate e-mail / student_ref → 409',
   })
   create(@AlumniUser() user: AlumniPlatformUser, @Body() dto: CreateAlumniDto) {
     return this.svc.create(user, dto);

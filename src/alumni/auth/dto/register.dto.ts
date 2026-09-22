@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -9,22 +10,19 @@ import {
 import { AlumniProfileFieldsDto } from '../../directory/dto/alumni.dto';
 import { Trim } from '../../common/transforms';
 
-/** Alumni self-registration (public endpoint). */
+/**
+ * Staff-only: create an alumni profile and its portal login together in one
+ * call. Alumni never self-register (no e-mail provider exists to prove
+ * ownership of an address, so there is no way to safely let an anonymous
+ * caller claim an identity) — an Institute Admin or a role holding
+ * `alumni:create` + `alumni:issue_account` creates the record on the
+ * alumnus's behalf, exactly like every other staff-entered profile.
+ */
 export class RegisterAlumniDto extends AlumniProfileFieldsDto {
-  @ApiProperty({
-    example: 'inst-001',
-    description: 'The institute whose alumni directory you are joining',
-  })
-  @Trim()
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  institute_id: string;
-
   @ApiProperty({
     example: 'MyPassw0rd!',
     description:
-      'Portal password (min 8 characters). The e-mail is your login name.',
+      'Initial portal password (min 8 characters). The e-mail is the login name.',
   })
   @IsString()
   @MinLength(8)
@@ -32,8 +30,18 @@ export class RegisterAlumniDto extends AlumniProfileFieldsDto {
   password: string;
 
   @ApiPropertyOptional({
+    enum: ['pending', 'verified'],
+    default: 'verified',
     description:
-      'Anything that helps staff confirm who you are (section, house, teacher…)',
+      'Staff-created profiles are verified by default (staff vouch for them); pass "pending" to route through the verification queue instead',
+  })
+  @IsOptional()
+  @IsIn(['pending', 'verified'])
+  verification_status?: 'pending' | 'verified';
+
+  @ApiPropertyOptional({
+    description:
+      'Optional staff note — evidence/context for why this profile is pending verification',
   })
   @IsOptional()
   @Trim()

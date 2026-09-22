@@ -170,16 +170,16 @@ describe('Alumni RBAC wiring (own auth island, same shape as Admission / Hostel)
     }
   });
 
-  it('SSO, login and register are the only unauthenticated auth routes; the public directory is separate and read-only', () => {
+  it('SSO and login are the only unauthenticated auth routes; the public directory is separate and read-only', () => {
     const proto = AlumniAuthController.prototype as unknown as Record<
       string,
       object
     >;
-    const guarded = ['getMe', 'changePassword'].map(
+    const guarded = ['getMe', 'changePassword', 'register'].map(
       (h) => Reflect.getMetadata('__guards__', proto[h]) as unknown,
     );
     expect(guarded.every((g) => Array.isArray(g) && g.length > 0)).toBe(true);
-    const open = ['ssoExchange', 'directLogin', 'register'].map(
+    const open = ['ssoExchange', 'directLogin'].map(
       (h) => Reflect.getMetadata('__guards__', proto[h]) as unknown,
     );
     expect(open.every((g) => g === undefined)).toBe(true);
@@ -187,6 +187,32 @@ describe('Alumni RBAC wiring (own auth island, same shape as Admission / Hostel)
     expect(publicRoutes).toHaveLength(1);
     // GET only (RequestMethod.GET === 0)
     expect(publicRoutes[0].method).toBe(0);
+  });
+
+  it('there is no public path to create an alumni account: register needs staff auth + alumni:create + alumni:issue_account', () => {
+    const proto = AlumniAuthController.prototype as unknown as Record<
+      string,
+      object
+    >;
+    expect(
+      Reflect.getMetadata(ALUMNI_STAFF_ONLY_KEY, proto.register) as unknown,
+    ).toBe(true);
+    expect(
+      Reflect.getMetadata(
+        ALUMNI_PERMISSIONS_KEY,
+        proto.register,
+      ) as AlumniPermissionRequirement[],
+    ).toEqual([
+      { resource: 'alumni', action: 'create' },
+      { resource: 'alumni', action: 'issue_account' },
+    ]);
+    expect(
+      Reflect.getMetadata('__guards__', proto.register) as unknown[],
+    ).toEqual([
+      AlumniJwtGuard,
+      AlumniInstituteAdminViewOnlyGuard,
+      AlumniPermissionsGuard,
+    ]);
   });
 
   it('staff-only areas are closed to portal accounts: newsletters, communication, dashboard, reports, notifications', () => {

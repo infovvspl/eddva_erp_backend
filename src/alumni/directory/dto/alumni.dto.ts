@@ -167,6 +167,17 @@ export class CreateAlumniDto extends AlumniProfileFieldsDto {
   @IsOptional()
   @IsIn(['pending', 'verified'])
   verification_status?: 'pending' | 'verified';
+
+  @ApiPropertyOptional({
+    example: 'Temp#Pass2026',
+    description:
+      'Set this to also create the portal login in the same call (min 8 characters). Omit to create the profile only — a login can always be issued later via POST /profiles/:id/account. Needs alumni:issue_account in addition to alumni:create.',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  password?: string;
 }
 
 /** Staff update — every field optional. */

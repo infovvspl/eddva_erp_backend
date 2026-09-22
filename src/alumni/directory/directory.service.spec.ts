@@ -51,7 +51,7 @@ const uniqueViolation = () =>
     clientVersion: 'x',
   });
 
-describe('AlumniRegistrationService (self-registration)', () => {
+describe('AlumniRegistrationService (staff creates profile + account together)', () => {
   const db: Record<string, any> = {
     alumniProfile: {
       findFirst: jest.fn(),
@@ -61,19 +61,16 @@ describe('AlumniRegistrationService (self-registration)', () => {
     alumniUserDynamicRole: { findFirst: jest.fn(), create: jest.fn() },
     $transaction: jest.fn(),
   };
-  const auth = { buildLogin: jest.fn() };
   const roles = { ensure: jest.fn() };
   const audit = { log: jest.fn() };
   const notifications = { notifyAlumni: jest.fn(), notifyStaff: jest.fn() };
   const svc = new AlumniRegistrationService(
     db as never,
-    auth as never,
     roles as never,
     audit as never,
     notifications as never,
   );
   const dto = {
-    institute_id: 'inst-1',
     full_name: 'Alice Anand',
     email: 'alice@example.com',
     password: 'AlicePass#1',
@@ -86,13 +83,12 @@ describe('AlumniRegistrationService (self-registration)', () => {
       fn(db),
     );
     db.alumniProfile.findFirst.mockResolvedValue(null);
-    db.alumniUserDynamicRole.findFirst.mockResolvedValue(null);
     db.alumniProfile.count.mockResolvedValue(0);
     roles.ensure.mockResolvedValue({ role_id: 4 });
     db.alumniProfile.create.mockImplementation(({ data }: { data: object }) =>
       Promise.resolve({
         alumni_id: 11,
-        verification_status: 'pending',
+        verification_status: 'verified',
         ...data,
       }),
     );
@@ -100,19 +96,26 @@ describe('AlumniRegistrationService (self-registration)', () => {
       ({ data }: { data: object }) =>
         Promise.resolve({ id: 1, ...data, role: { name: 'Alumni' } }),
     );
-    auth.buildLogin.mockReturnValue({ alumni_token: 't', user: {} });
   });
 
-  it('creates a PENDING self-registered profile and one linked portal account together', async () => {
-    const out = await svc.register(dto);
+  it("there is no anonymous path here — the caller is always staff, and the institute comes from the staff member's own session, never the request body", async () => {
+    await svc.register(officer, dto);
+    expect(db.alumniProfile.create.mock.calls[0][0].data.institute_id).toBe(
+      'inst-1',
+    );
+  });
+
+  it('creates a VERIFIED (staff-vouched) profile and its linked portal account together, in one transaction', async () => {
+    const out = await svc.register(officer, dto);
     expect(out).toMatchObject({
       alumni_id: 11,
-      verification_status: 'pending',
-      alumni_token: 't',
+      verification_status: 'verified',
+      account: { username: 'alice@example.com' },
     });
+    expect(out).not.toHaveProperty('alumni_token'); // staff never gets a session for someone else's account
     expect(db.alumniProfile.create.mock.calls[0][0].data).toMatchObject({
-      source: 'self_registered',
-      verification_status: 'pending',
+      source: 'staff_created',
+      verification_status: 'verified',
       visibility: 'alumni_only',
       contact_visible: false,
     });
@@ -129,9 +132,27 @@ describe('AlumniRegistrationService (self-registration)', () => {
     expect(account.password_hash).not.toContain('AlicePass');
   });
 
-  it('never claims an existing profile with the same e-mail or student reference (no account takeover) — 409', async () => {
-    db.alumniProfile.findFirst.mockResolvedValue({ alumni_id: 2 });
-    expect(await code(svc.register(dto))).toBe('ALUMNI_ALREADY_REGISTERED');
+  it('can be routed through the verification queue instead of verified-by-default', async () => {
+    const out = await svc.register(officer, {
+      ...(dto as object),
+      verification_status: 'pending',
+    } as never);
+    expect(out.verification_status).toBe('pending');
+    expect(db.alumniProfile.create.mock.calls[0][0].data).toMatchObject({
+      verification_status: 'pending',
+      verified_at: null,
+      verified_by: null,
+    });
+  });
+
+  it('a duplicate e-mail or student reference names the clashing record (409), informative because the caller is staff', async () => {
+    db.alumniProfile.findFirst.mockResolvedValue({
+      alumni_id: 2,
+      email: 'alice@example.com',
+    });
+    expect(await code(svc.register(officer as never, dto))).toBe(
+      'ALUMNI_DUPLICATE',
+    );
     expect(db.alumniProfile.create).not.toHaveBeenCalled();
     expect(db.alumniUserDynamicRole.create).not.toHaveBeenCalled();
     const where = db.alumniProfile.findFirst.mock.calls[0][0].where;
@@ -142,58 +163,54 @@ describe('AlumniRegistrationService (self-registration)', () => {
   it('also checks the student reference when one is supplied', async () => {
     db.alumniProfile.findFirst.mockResolvedValue({ alumni_id: 2 });
     await code(
-      svc.register({ ...(dto as object), student_ref: 'STU-1' } as never),
+      svc.register(officer, {
+        ...(dto as object),
+        student_ref: 'STU-1',
+      } as never),
     );
     expect(db.alumniProfile.findFirst.mock.calls[0][0].where.OR).toContainEqual(
       { student_ref: 'STU-1' },
     );
   });
 
-  it('an e-mail already used as a login name is a duplicate too', async () => {
-    db.alumniUserDynamicRole.findFirst.mockResolvedValue({ id: 5 });
-    expect(await code(svc.register(dto))).toBe('ALUMNI_ALREADY_REGISTERED');
-  });
-
-  it('two racing registrations: the unique index turns the loser into the same clean 409', async () => {
+  it('two racing creates: the unique index turns the loser into the same clean 409', async () => {
     db.alumniProfile.create.mockRejectedValue(uniqueViolation());
-    await expect(svc.register(dto)).rejects.toThrow(/already exists/);
+    await expect(svc.register(officer as never, dto)).rejects.toThrow(
+      /already exists/,
+    );
   });
 
   it('rejects impossible years before touching the database', async () => {
     expect(
       await code(
-        svc.register({ ...(dto as object), batch_year: 2999 } as never),
+        svc.register(
+          officer as never,
+          {
+            ...(dto as object),
+            batch_year: 2999,
+          } as never,
+        ),
       ),
     ).toBe('INVALID_YEAR');
     expect(db.alumniProfile.findFirst).not.toHaveBeenCalled();
   });
 
-  it('flags a same-name-same-batch lookalike for staff without telling the registrant', async () => {
+  it('flags a same-name-same-batch lookalike in the response for the creating staff member to review', async () => {
     db.alumniProfile.count.mockResolvedValue(1);
-    const out = await svc.register(dto);
-    expect(JSON.stringify(out)).not.toMatch(/lookalike|duplicate/i);
-    expect(notifications.notifyStaff).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventType: 'verification_requested',
-        message: expect.stringContaining('share this name and batch'),
-      }),
-    );
+    const out = await svc.register(officer, dto);
+    expect(out.possible_duplicates).toBe(1);
   });
 
-  it('audits the registration as the alumnus, and notifies both sides', async () => {
-    await svc.register(dto);
+  it('audits as the creating staff member (not a synthetic alumnus actor) and welcomes the new alumnus', async () => {
+    await svc.register(officer, dto);
     expect(audit.log).toHaveBeenCalledWith(
-      expect.objectContaining({ eddva_user_id: 'alumni-11', alumni_id: 11 }),
-      expect.objectContaining({
-        action: 'self_register',
-        newStatus: 'pending',
-      }),
+      officer,
+      expect.objectContaining({ action: 'create', newStatus: 'verified' }),
     );
     expect(notifications.notifyAlumni).toHaveBeenCalledWith(
-      expect.objectContaining({ eventType: 'registration_received' }),
-      expect.anything(),
+      expect.objectContaining({ eventType: 'account_created' }),
+      expect.objectContaining({ alumni_id: 11 }),
     );
-    expect(notifications.notifyStaff).toHaveBeenCalled();
   });
 });
 
@@ -226,6 +243,7 @@ describe('AlumniService', () => {
     exists: jest.fn(),
     resolve: jest.fn(),
   };
+  const access = { assertPermission: jest.fn() };
   const svc = new AlumniService(
     db as never,
     lookup as never,
@@ -233,6 +251,7 @@ describe('AlumniService', () => {
     notifications as never,
     roles as never,
     files as never,
+    access as never,
   );
 
   beforeEach(() => {
@@ -252,6 +271,8 @@ describe('AlumniService', () => {
     );
     db.alumniProfile.findMany.mockResolvedValue([]);
     db.alumniProfile.count.mockResolvedValue(0);
+    roles.ensure.mockResolvedValue({ role_id: 4 });
+    access.assertPermission.mockResolvedValue(undefined);
   });
 
   describe('staff-created alumni', () => {
@@ -308,6 +329,77 @@ describe('AlumniService', () => {
           ),
         ),
       ).toBe('INVALID_YEAR');
+    });
+  });
+
+  describe('create with a password (combined profile + account call)', () => {
+    const dto = {
+      full_name: 'Bob',
+      email: 'bob@example.com',
+      batch_year: 2015,
+      password: 'BobsPass#1',
+    } as never;
+
+    beforeEach(() => {
+      db.alumniUserDynamicRole.findFirst.mockResolvedValue(null);
+      db.alumniUserDynamicRole.create.mockImplementation(
+        ({ data }: { data: object }) => Promise.resolve({ id: 9, ...data }),
+      );
+    });
+
+    it('needs issue_account in addition to create when a password is supplied', async () => {
+      access.assertPermission.mockRejectedValueOnce(
+        new ForbiddenException('no'),
+      );
+      await expect(svc.create(officer as never, dto)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(db.alumniProfile.create).not.toHaveBeenCalled();
+    });
+
+    it('no permission check at all when no password is given (profile-only create)', async () => {
+      await svc.create(officer, {
+        full_name: 'Bob',
+        email: 'bob@example.com',
+        batch_year: 2015,
+      });
+      expect(access.assertPermission).not.toHaveBeenCalled();
+    });
+
+    it('creates the profile and its login in one transaction, and never returns the password hash', async () => {
+      const out = await svc.create(officer, dto);
+      expect(out.account).toEqual({ username: 'bob@example.com' });
+      expect(JSON.stringify(out)).not.toContain('password_hash');
+      const account = db.alumniUserDynamicRole.create.mock.calls[0][0].data;
+      expect(account).toMatchObject({
+        alumni_id: 20,
+        eddva_user_id: 'alumni-20',
+        username: 'bob@example.com',
+        role_id: 4,
+      });
+      expect(audit.log).toHaveBeenCalledWith(
+        officer,
+        expect.objectContaining({ action: 'issue_account' }),
+      );
+    });
+
+    it('an e-mail already used as a login name (e.g. by a staff account) is rejected explicitly', async () => {
+      db.alumniUserDynamicRole.findFirst.mockResolvedValue({ id: 3 });
+      expect(await code(svc.create(officer as never, dto))).toBe(
+        'USERNAME_TAKEN',
+      );
+      expect(db.alumniUserDynamicRole.create).not.toHaveBeenCalled();
+    });
+
+    it('creating the profile without a password never touches the account table', async () => {
+      const out = await svc.create(officer, {
+        full_name: 'Bob',
+        email: 'bob@example.com',
+        batch_year: 2015,
+      });
+      expect(out.account).toBeNull();
+      expect(db.alumniUserDynamicRole.create).not.toHaveBeenCalled();
+      expect(roles.ensure).not.toHaveBeenCalled();
     });
   });
 

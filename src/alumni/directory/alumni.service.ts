@@ -8,7 +8,10 @@ import { AlumniProfile, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AlumniPlatformUser } from '../auth/alumni-auth.service';
 import { assertValidYears } from '../auth/alumni-registration.service';
-import { isAlumniPrincipal } from '../common/alumni-access.service';
+import {
+  AlumniAccessService,
+  isAlumniPrincipal,
+} from '../common/alumni-access.service';
 import { AlumniAuditService } from '../common/alumni-audit.service';
 import { ALUMNI_ENTITY } from '../common/alumni-entities';
 import {
@@ -81,6 +84,7 @@ export class AlumniService {
     private readonly notifications: AlumniNotificationService,
     private readonly roles: AlumniSystemRoleService,
     private readonly files: AlumniFileStorageService,
+    private readonly access: AlumniAccessService,
   ) {}
 
   /** The alumni id of a portal account; staff accounts have none. */
@@ -95,7 +99,15 @@ export class AlumniService {
 
   // ─── Create / read / update ──────────────────────────────────────────────
 
-  /** Staff-created alumni (historical students entered by the alumni office). */
+  /**
+   * Staff-created alumni (historical students entered by the alumni office).
+   * There is no public self-registration in this backend — nothing here can
+   * prove an anonymous caller owns the e-mail they claim, so a profile is
+   * always created by an authenticated staff member. Set `password` to also
+   * issue the portal login in the same call (needs `issue_account` on top of
+   * `create`); omit it to create the profile only and issue a login later via
+   * `POST /profiles/:id/account`.
+   */
   async create(actor: AlumniPlatformUser, dto: CreateAlumniDto) {
     assertValidYears(dto.batch_year, dto.graduation_year);
     await this.assertNoDuplicate(
@@ -103,46 +115,108 @@ export class AlumniService {
       dto.email,
       dto.student_ref,
     );
+    if (dto.password) {
+      await this.access.assertPermission(
+        actor,
+        'alumni',
+        'issue_account',
+        "Creating a profile with a login also needs the 'issue_account' permission on 'alumni'",
+      );
+    }
 
     const verified = (dto.verification_status ?? 'verified') === 'verified';
-    const created = await orConflict(DUPLICATE_MESSAGE, () =>
-      this.prisma.alumniProfile.create({
-        data: {
-          institute_id: actor.institute_id,
-          student_ref: dto.student_ref,
-          admission_no: dto.admission_no,
-          full_name: dto.full_name,
-          batch_year: dto.batch_year,
-          graduation_year: dto.graduation_year,
-          program: dto.program,
-          email: dto.email,
-          phone: dto.phone,
-          current_company: dto.current_company,
-          current_designation: dto.current_designation,
-          industry: dto.industry,
-          city: dto.city,
-          country: dto.country,
-          linkedin_url: dto.linkedin_url,
-          visibility: dto.visibility ?? 'alumni_only',
-          contact_visible: dto.contact_visible ?? false,
-          email_opt_in: dto.email_opt_in ?? true,
-          sms_opt_in: dto.sms_opt_in ?? true,
-          source: 'staff_created',
-          verification_status: verified ? 'verified' : 'pending',
-          verified_at: verified ? new Date() : null,
-          verified_by: verified ? actor.eddva_user_id : null,
-          created_by: actor.eddva_user_id,
-        },
+    const password_hash = dto.password
+      ? await bcrypt.hash(dto.password, 10)
+      : null;
+
+    const { profile, account } = await orConflict(DUPLICATE_MESSAGE, () =>
+      this.prisma.$transaction(async (tx) => {
+        const created = await tx.alumniProfile.create({
+          data: {
+            institute_id: actor.institute_id,
+            student_ref: dto.student_ref,
+            admission_no: dto.admission_no,
+            full_name: dto.full_name,
+            batch_year: dto.batch_year,
+            graduation_year: dto.graduation_year,
+            program: dto.program,
+            email: dto.email,
+            phone: dto.phone,
+            current_company: dto.current_company,
+            current_designation: dto.current_designation,
+            industry: dto.industry,
+            city: dto.city,
+            country: dto.country,
+            linkedin_url: dto.linkedin_url,
+            visibility: dto.visibility ?? 'alumni_only',
+            contact_visible: dto.contact_visible ?? false,
+            email_opt_in: dto.email_opt_in ?? true,
+            sms_opt_in: dto.sms_opt_in ?? true,
+            source: 'staff_created',
+            verification_status: verified ? 'verified' : 'pending',
+            verified_at: verified ? new Date() : null,
+            verified_by: verified ? actor.eddva_user_id : null,
+            created_by: actor.eddva_user_id,
+          },
+        });
+        if (!password_hash) return { profile: created, account: null };
+
+        // Same (institute_id, username) index used by issueAccount — a stray
+        // staff account already on this e-mail is rejected explicitly rather
+        // than surfacing as a raw unique-constraint 500.
+        const usernameOwner = await tx.alumniUserDynamicRole.findFirst({
+          where: {
+            institute_id: actor.institute_id,
+            username: { equals: created.email, mode: 'insensitive' },
+          },
+        });
+        if (usernameOwner) {
+          throw new BusinessException(
+            'USERNAME_TAKEN',
+            'Another account already uses this e-mail as its login name',
+            undefined,
+            409,
+          );
+        }
+        const role = await this.roles.ensure(actor.institute_id, tx);
+        const createdAccount = await tx.alumniUserDynamicRole.create({
+          data: {
+            institute_id: actor.institute_id,
+            eddva_user_id: `alumni-${created.alumni_id}`,
+            user_name: created.full_name,
+            user_email: created.email,
+            username: created.email,
+            password_hash,
+            role_id: role.role_id,
+            alumni_id: created.alumni_id,
+          },
+        });
+        return { profile: created, account: createdAccount };
       }),
     );
     await this.audit.log(actor, {
       entityType: ALUMNI_ENTITY.PROFILE,
-      entityId: String(created.alumni_id),
+      entityId: String(profile.alumni_id),
       action: 'create',
-      newStatus: created.verification_status,
-      metadata: { source: 'staff_created', email: created.email },
+      newStatus: profile.verification_status,
+      metadata: {
+        source: 'staff_created',
+        email: profile.email,
+        account_issued: Boolean(account),
+      },
     });
-    return fullView(created);
+    if (account) {
+      await this.audit.log(actor, {
+        entityType: ALUMNI_ENTITY.ACCOUNT,
+        entityId: String(profile.alumni_id),
+        action: 'issue_account',
+        metadata: { username: account.username },
+      });
+    }
+    return {
+      ...fullView(profile),
+      account: account ? { username: account.username } : null,
+    };
   }
 
   private async assertNoDuplicate(

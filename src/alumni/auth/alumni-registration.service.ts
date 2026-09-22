@@ -8,12 +8,8 @@ import { BusinessException } from '../common/business-exception';
 import { orConflict } from '../common/unique-violation.util';
 import { currentYear } from '../common/validation';
 import { AlumniNotificationService } from '../notifications/alumni-notification.service';
-import { AlumniAuthService } from './alumni-auth.service';
+import { AlumniPlatformUser } from './alumni-auth.service';
 import { RegisterAlumniDto } from './dto/register.dto';
-
-const ALREADY_REGISTERED_MESSAGE =
-  'An alumni profile already exists for this e-mail or student reference. ' +
-  'Log in if you already have an account, or ask the alumni office to enable your portal login.';
 
 /** Years must be real and consistent: batch ≤ graduation ≤ this year. */
 export function assertValidYears(
@@ -46,65 +42,62 @@ export function assertValidYears(
 }
 
 /**
- * Alumni self-registration. Creates the directory profile (verification
- * `pending`) and the portal account together, so a self-registered alumnus is
- * always "exactly one account ↔ exactly one profile".
+ * Creates an alumni profile and its portal login account together, in one
+ * transaction — the staff-facing counterpart of `AlumniService.issueAccount`
+ * (which adds a login to a profile that already exists). There is no public
+ * self-registration in this backend: an alumnus never proves ownership of an
+ * e-mail address to us (no e-mail provider exists here), so nobody
+ * unauthenticated is ever allowed to create or claim a profile. The caller is
+ * always staff — an Institute Admin, or a role holding `alumni:create` +
+ * `alumni:issue_account` — and the institute is taken from their own session,
+ * never from the request body.
  *
- * Duplicate handling: an existing profile with the same e-mail or the same
- * student reference is NEVER silently claimed. Linking an unauthenticated
- * registrant to a staff-created profile (which may already be verified and
- * carry contact details) would let anyone who knows an e-mail or student id
- * take it over — and this backend has no e-mail provider to prove ownership of
- * the address. The registrant is told to contact the alumni office, who can
- * issue a portal login for the existing profile (`POST profiles/:id/account`).
+ * Deliberately returns no login token for the new account: the response goes
+ * to the STAFF member who created it, and handing back a usable session for
+ * someone else's account would let staff silently impersonate any alumnus
+ * they create. The alumnus logs in themselves with the credentials staff set.
  */
 @Injectable()
 export class AlumniRegistrationService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auth: AlumniAuthService,
     private readonly roles: AlumniSystemRoleService,
     private readonly audit: AlumniAuditService,
     private readonly notifications: AlumniNotificationService,
   ) {}
 
-  async register(dto: RegisterAlumniDto) {
-    const instituteId = dto.institute_id;
+  async register(actor: AlumniPlatformUser, dto: RegisterAlumniDto) {
+    const instituteId = actor.institute_id;
     assertValidYears(dto.batch_year, dto.graduation_year);
 
-    const [profileClash, usernameClash] = await Promise.all([
-      this.prisma.alumniProfile.findFirst({
-        where: {
-          institute_id: instituteId,
-          OR: [
-            { email: dto.email },
-            ...(dto.student_ref ? [{ student_ref: dto.student_ref }] : []),
-          ],
-        },
-        select: { alumni_id: true },
-      }),
-      this.prisma.alumniUserDynamicRole.findFirst({
-        where: {
-          institute_id: instituteId,
-          username: { equals: dto.email, mode: 'insensitive' },
-        },
-        select: { id: true },
-      }),
-    ]);
-    if (profileClash || usernameClash) {
+    const clash = await this.prisma.alumniProfile.findFirst({
+      where: {
+        institute_id: instituteId,
+        OR: [
+          { email: dto.email },
+          ...(dto.student_ref ? [{ student_ref: dto.student_ref }] : []),
+        ],
+      },
+      select: { alumni_id: true, email: true, student_ref: true },
+    });
+    if (clash) {
       throw new BusinessException(
-        'ALUMNI_ALREADY_REGISTERED',
-        ALREADY_REGISTERED_MESSAGE,
-        undefined,
+        'ALUMNI_DUPLICATE',
+        'An alumni profile with this e-mail or student reference already exists',
+        {
+          alumni_id: clash.alumni_id,
+          field: clash.email === dto.email ? 'email' : 'student_ref',
+        },
         409,
       );
     }
 
     const password_hash = await bcrypt.hash(dto.password, 10);
+    const verified = (dto.verification_status ?? 'verified') === 'verified';
     const now = new Date();
 
     const { profile, assignment } = await orConflict(
-      ALREADY_REGISTERED_MESSAGE,
+      'An alumni profile with this e-mail or student reference already exists',
       () =>
         this.prisma.$transaction(async (tx) => {
           const role = await this.roles.ensure(instituteId, tx);
@@ -129,10 +122,13 @@ export class AlumniRegistrationService {
               contact_visible: dto.contact_visible ?? false,
               email_opt_in: dto.email_opt_in ?? true,
               sms_opt_in: dto.sms_opt_in ?? true,
-              source: 'self_registered',
-              verification_status: 'pending',
+              source: 'staff_created',
+              verification_status: verified ? 'verified' : 'pending',
               verification_note: dto.verification_note,
-              verification_requested_at: now,
+              verification_requested_at: verified ? null : now,
+              verified_at: verified ? now : null,
+              verified_by: verified ? actor.eddva_user_id : null,
+              created_by: actor.eddva_user_id,
             },
           });
           const account = await tx.alumniUserDynamicRole.create({
@@ -152,7 +148,7 @@ export class AlumniRegistrationService {
         }),
     );
 
-    // Same person, second entry? Flag it for staff without exposing it to the registrant.
+    // Same person, second entry? Flag it in the response for staff to review — never auto-merged.
     const lookalikes = await this.prisma.alumniProfile.count({
       where: {
         institute_id: instituteId,
@@ -162,52 +158,36 @@ export class AlumniRegistrationService {
       },
     });
 
-    await this.audit.log(
-      {
-        eddva_user_id: assignment.eddva_user_id,
-        institute_id: instituteId,
-        user_name: profile.full_name,
-        user_role: 'ALUMNI',
-        is_institute_admin: false,
-        alumni_id: profile.alumni_id,
+    await this.audit.log(actor, {
+      entityType: ALUMNI_ENTITY.PROFILE,
+      entityId: String(profile.alumni_id),
+      action: 'create',
+      newStatus: profile.verification_status,
+      metadata: {
+        source: 'staff_created',
+        email: profile.email,
+        account_issued: true,
+        possible_duplicates: lookalikes,
       },
-      {
-        entityType: ALUMNI_ENTITY.PROFILE,
-        entityId: String(profile.alumni_id),
-        action: 'self_register',
-        newStatus: 'pending',
-        metadata: { email: profile.email, possible_duplicates: lookalikes },
-      },
-    );
+    });
     await this.notifications.notifyAlumni(
       {
         instituteId,
         entityType: ALUMNI_ENTITY.PROFILE,
         entityId: profile.alumni_id,
-        eventType: 'registration_received',
-        message:
-          'Your alumni registration was received and is awaiting verification by the alumni office.',
+        eventType: 'account_created',
+        message: verified
+          ? 'An alumni account has been created for you. You can now log in with your registered e-mail.'
+          : 'An alumni account has been created for you and is awaiting verification by the alumni office.',
       },
       { alumni_id: profile.alumni_id, email: profile.email },
     );
-    await this.notifications.notifyStaff({
-      instituteId,
-      entityType: ALUMNI_ENTITY.PROFILE,
-      entityId: profile.alumni_id,
-      eventType: 'verification_requested',
-      message: `${profile.full_name} (batch ${profile.batch_year}) registered and awaits verification${
-        lookalikes > 0
-          ? ` — ${lookalikes} existing profile(s) share this name and batch`
-          : ''
-      }.`,
-    });
 
     return {
       alumni_id: profile.alumni_id,
       verification_status: profile.verification_status,
-      message:
-        'Registration received. You can log in now; some features unlock once the alumni office verifies your profile.',
-      ...this.auth.buildLogin(assignment),
+      account: { username: assignment.username },
+      possible_duplicates: lookalikes,
     };
   }
 }
