@@ -383,6 +383,19 @@ export class AlumniMeController {
     return this.svc.uploadPhoto(user, this.ownId(user), file);
   }
 
+  @Get('photo')
+  @RequirePermission({ resource: 'alumni', action: 'read' })
+  @ApiOperation({ summary: 'Download my profile photo' })
+  async photo(@AlumniUser() user: AlumniPlatformUser, @Res() res: Response) {
+    const { absolutePath, mime } = await this.svc.photoForDownload(
+      user,
+      this.ownId(user),
+    );
+    res.type(mime);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.sendFile(absolutePath);
+  }
+
   @Get('notifications')
   @RequirePermission({ resource: 'notifications', action: 'read' })
   @ApiOperation({ summary: 'My in-app notifications' })
