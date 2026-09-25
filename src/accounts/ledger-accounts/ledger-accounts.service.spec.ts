@@ -53,22 +53,34 @@ describe('LedgerAccountsService', () => {
   describe('assertPostable (Rules 2 & 5)', () => {
     it('rejects an inactive account', async () => {
       mockPrisma.ledgerAccount.findFirst.mockResolvedValue({ id: 'a-1', accountName: 'Cash', isActive: false, allowVoucherEntry: true });
-      await expect(service.assertPostable('a-1')).rejects.toThrow(BadRequestException);
+      await expect(service.assertPostable('a-1', 'inst-1')).rejects.toThrow(BadRequestException);
     });
 
     it('rejects a structural (non-leaf) account', async () => {
       mockPrisma.ledgerAccount.findFirst.mockResolvedValue({ id: 'a-1', accountName: 'Cash', isActive: true, allowVoucherEntry: false });
-      await expect(service.assertPostable('a-1')).rejects.toThrow(BadRequestException);
+      await expect(service.assertPostable('a-1', 'inst-1')).rejects.toThrow(BadRequestException);
     });
 
     it('rejects a non-existent account', async () => {
       mockPrisma.ledgerAccount.findFirst.mockResolvedValue(null);
-      await expect(service.assertPostable('missing')).rejects.toThrow(NotFoundException);
+      await expect(service.assertPostable('missing', 'inst-1')).rejects.toThrow(NotFoundException);
     });
 
     it('allows an active, postable leaf account', async () => {
       mockPrisma.ledgerAccount.findFirst.mockResolvedValue({ id: 'a-1', accountName: 'Cash', isActive: true, allowVoucherEntry: true });
-      await expect(service.assertPostable('a-1')).resolves.toBeDefined();
+      await expect(service.assertPostable('a-1', 'inst-1')).resolves.toBeDefined();
+    });
+
+    it('always scopes the lookup to the given institute', async () => {
+      mockPrisma.ledgerAccount.findFirst.mockResolvedValue({ id: 'a-1', accountName: 'Cash', isActive: true, allowVoucherEntry: true });
+      await service.assertPostable('a-1', 'inst-1');
+      expect(mockPrisma.ledgerAccount.findFirst).toHaveBeenCalledWith({ where: { id: 'a-1', instituteId: 'inst-1' } });
+    });
+
+    it('fails closed when no institute is supplied instead of searching every tenant', async () => {
+      mockPrisma.ledgerAccount.findFirst.mockClear();
+      await expect(service.assertPostable('a-1', '')).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.ledgerAccount.findFirst).not.toHaveBeenCalled();
     });
   });
 });

@@ -34,7 +34,7 @@ export interface AutoPostVoucherParams {
   entries: RawEntryInput[];
   sourceModule: string;
   sourceReferenceId: string;
-  instituteId?: string;
+  instituteId: string;
   userId: string;
 }
 
@@ -70,7 +70,7 @@ export class VouchersService {
   }
 
   /** Rules 1-2 & 5 (section 3/18): validates entry shape and account postability; returns validated entries + totals. */
-  private async validateEntries(rawEntries: RawEntryInput[], instituteId?: string) {
+  private async validateEntries(rawEntries: RawEntryInput[], instituteId: string) {
     if (!rawEntries || rawEntries.length < 2) {
       throw new BadRequestException('A voucher must have at least two entries (one debit, one credit)');
     }
@@ -95,7 +95,7 @@ export class VouchersService {
       await this.ledgerAccountsService.assertPostable(raw.accountId, instituteId);
 
       if (raw.costCenterId) {
-        const costCenter = await this.prisma.costCenter.findFirst({ where: { id: raw.costCenterId, ...(instituteId ? { instituteId } : {}) } });
+        const costCenter = await this.prisma.costCenter.findFirst({ where: { id: raw.costCenterId, instituteId } });
         if (!costCenter) throw new NotFoundException(`Cost center ${raw.costCenterId} not found`);
         if (!costCenter.isActive) throw new BadRequestException(`Cost center "${costCenter.name}" is inactive`);
       }
@@ -129,9 +129,10 @@ export class VouchersService {
     return `${prefix}${String(next).padStart(5, '0')}`;
   }
 
-  private async findOpenFyForDate(date: Date, instituteId?: string) {
+  private async findOpenFyForDate(date: Date, instituteId: string) {
+    if (!instituteId) throw new BadRequestException('instituteId is required to find the open financial year');
     const fy = await this.prisma.financialYear.findFirst({
-      where: { startDate: { lte: date }, endDate: { gte: date }, status: 'OPEN', ...(instituteId ? { instituteId } : {}) },
+      where: { startDate: { lte: date }, endDate: { gte: date }, status: 'OPEN', instituteId },
     });
     if (!fy) throw new BadRequestException(`No open financial year covers ${date.toISOString().slice(0, 10)}`);
     return fy;
@@ -433,7 +434,12 @@ export class VouchersService {
    * speak of here.
    */
   async createAndPostAuto(params: AutoPostVoucherParams) {
-    const existing = await this.prisma.voucher.findFirst({ where: { sourceModule: params.sourceModule, sourceReferenceId: params.sourceReferenceId } });
+    if (!params.instituteId) throw new BadRequestException('instituteId is required to auto-post a voucher');
+    // Idempotency lookup is scoped to the institute: source reference ids are only
+    // unique per module, so an unscoped match could return another tenant's voucher.
+    const existing = await this.prisma.voucher.findFirst({
+      where: { instituteId: params.instituteId, sourceModule: params.sourceModule, sourceReferenceId: params.sourceReferenceId },
+    });
     if (existing) return existing;
 
     const voucherDate = toCalendarDate(params.voucherDate);

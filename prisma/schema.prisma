@@ -490,18 +490,22 @@ model CanteenWalletTransaction {
 
 model LibCategory {
   category_id Int       @id @default(autoincrement())
-  name        String    @unique
+  institute_id String?
+  name        String
   books       LibBook[]
 
+  @@unique([institute_id, name])
+  @@index([institute_id])
   @@map("library_categories")
 }
 
 model LibMember {
   member_id           Int                  @id @default(autoincrement())
+  institute_id String?
   external_ref_id     String?
   name                String
   member_type         LibMemberType
-  library_card_number String               @unique
+  library_card_number String
   status              LibMemberStatus      @default(active)
   created_at          DateTime             @default(now())
   updated_at          DateTime             @updatedAt
@@ -510,6 +514,8 @@ model LibMember {
   notification_logs   LibNotificationLog[]
   reservations        LibReservation[]
 
+  @@unique([institute_id, library_card_number])
+  @@index([institute_id])
   @@map("library_members")
 }
 
@@ -527,7 +533,8 @@ model LibUser {
 
 model LibMembershipRule {
   rule_id           Int           @id @default(autoincrement())
-  member_type       LibMemberType @unique
+  institute_id String?
+  member_type       LibMemberType
   max_books_allowed Int
   loan_period_days  Int
   fine_per_day      Decimal       @db.Decimal(10, 2)
@@ -536,12 +543,15 @@ model LibMembershipRule {
   created_at        DateTime      @default(now())
   updated_at        DateTime      @updatedAt
 
+  @@unique([institute_id, member_type])
+  @@index([institute_id])
   @@map("library_membership_rules")
 }
 
 model LibBook {
   book_id         Int              @id @default(autoincrement())
-  isbn            String?          @unique
+  institute_id String?
+  isbn            String?
   title           String
   author          String
   publisher       String?
@@ -558,6 +568,8 @@ model LibBook {
   category        LibCategory      @relation(fields: [category_id], references: [category_id])
   reservations    LibReservation[]
 
+  @@unique([institute_id, isbn])
+  @@index([institute_id])
   @@map("library_books")
 }
 
@@ -580,9 +592,10 @@ model LibBookVendor {
 
 model LibBookCopy {
   copy_id          Int              @id @default(autoincrement())
+  institute_id String?
   book_id          Int
-  barcode          String           @unique
-  accession_number String           @unique
+  barcode          String
+  accession_number String
   rack_location    String?
   condition        LibCopyCondition @default(new)
   status           LibCopyStatus    @default(available)
@@ -593,11 +606,15 @@ model LibBookCopy {
   book             LibBook          @relation(fields: [book_id], references: [book_id])
   issue_records    LibIssueRecord[]
 
+  @@unique([institute_id, barcode])
+  @@unique([institute_id, accession_number])
+  @@index([institute_id])
   @@map("library_book_copies")
 }
 
 model LibIssueRecord {
   issue_id          Int            @id @default(autoincrement())
+  institute_id String?
   copy_id           Int
   member_id         Int
   issue_date        DateTime       @db.Date
@@ -618,11 +635,13 @@ model LibIssueRecord {
   member            LibMember      @relation(fields: [member_id], references: [member_id])
   returner          LibUser?       @relation("ReturnedTo", fields: [returned_to], references: [user_id])
 
+  @@index([institute_id, status])
   @@map("library_issue_records")
 }
 
 model LibReservation {
   reservation_id Int                  @id @default(autoincrement())
+  institute_id String?
   book_id        Int
   member_id      Int
   reserved_date  DateTime             @db.Date
@@ -633,11 +652,13 @@ model LibReservation {
   book           LibBook              @relation(fields: [book_id], references: [book_id])
   member         LibMember            @relation(fields: [member_id], references: [member_id])
 
+  @@index([institute_id, status])
   @@map("library_reservations")
 }
 
 model LibFine {
   fine_id       Int              @id @default(autoincrement())
+  institute_id String?
   issue_id      Int
   member_id     Int
   reason        LibFineReason
@@ -649,6 +670,7 @@ model LibFine {
   issue_record  LibIssueRecord   @relation(fields: [issue_id], references: [issue_id])
   member        LibMember        @relation(fields: [member_id], references: [member_id])
 
+  @@index([institute_id, status])
   @@map("library_fines")
 }
 

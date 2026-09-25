@@ -1,7 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireModuleSecret } from '../../common/utils/module-secret.util';
 
 export interface FrontOfficePlatformUser {
   eddva_user_id: string;
@@ -47,11 +48,7 @@ export class FrontOfficeAuthService {
   }
 
   private get frontOfficeJwtSecret(): string {
-    return (
-      process.env.FRONT_OFFICE_JWT_SECRET ||
-      process.env.JWT_SECRET ||
-      'front_office_dev_secret'
-    );
+    return requireModuleSecret('FRONT_OFFICE_JWT_SECRET');
   }
 
   /**
@@ -122,20 +119,32 @@ export class FrontOfficeAuthService {
   /**
    * Direct login for assigned role users (Front Desk, Department Staff, Managers).
    */
-  async directLogin(usernameOrEmail: string, rawPassword: string): Promise<{
+  async directLogin(
+    usernameOrEmail: string,
+    rawPassword: string,
+    instituteId?: string,
+  ): Promise<{
     front_office_token: string;
     user: FrontOfficePlatformUser & { role_name: string; permissions: any };
   }> {
-    const assignment = await this.prisma.frontOfficeUserDynamicRole.findFirst({
+    // (institute_id, username) is the unique key, so the same username can exist in two
+    // institutes. Refuse to guess between them; the caller can pass institute_id.
+    const matches = await this.prisma.frontOfficeUserDynamicRole.findMany({
       where: {
-        OR: [
-          { username: usernameOrEmail },
-          { user_email: usernameOrEmail },
-        ],
+        OR: [{ username: usernameOrEmail }, { user_email: usernameOrEmail }],
         is_active: true,
+        ...(instituteId ? { institute_id: instituteId } : {}),
       },
       include: { role: true },
+      take: 2,
     });
+
+    if (matches.length > 1) {
+      throw new BadRequestException(
+        'More than one account matches these credentials. Provide institute_id to log in.',
+      );
+    }
+    const assignment = matches[0];
 
     if (!assignment) {
       throw new UnauthorizedException('Invalid credentials or inactive account');

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 
 /**
  * NotificationService — architecture-named dedicated service.
@@ -37,8 +38,9 @@ export class LibNotificationService {
     await this.log(member_id, 'return_confirmed', issue_id);
   }
 
-  async findAllLogs(memberId?: number) {
-    const where: any = {};
+  // Logs belong to a member, so they are scoped through the member's institute.
+  async findAllLogs(instituteId: string, memberId?: number) {
+    const where: any = { member: { institute_id: requireInstituteId(instituteId) } };
     if (memberId) where.member_id = memberId;
     return this.prisma.libNotificationLog.findMany({
       where,

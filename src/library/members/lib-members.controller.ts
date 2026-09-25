@@ -23,6 +23,8 @@ import { LibJwtGuard } from '../auth/lib-jwt.guard';
 import { LibInstituteAdminViewOnlyGuard } from '../auth/lib-institute-admin-view-only.guard';
 import { LibPermissionsGuard } from '../auth/lib-permissions.guard';
 import { RequirePermission } from '../auth/require-permissions.decorator';
+import { LibUser } from '../auth/lib-user.decorator';
+import type { LibPlatformUser } from '../auth/lib-auth.service';
 
 @ApiTags('Library / Members')
 @ApiBearerAuth()
@@ -34,23 +36,23 @@ export class LibMembersController {
   @Post()
   @RequirePermission({ resource: 'members', action: 'create' })
   @ApiOperation({ summary: 'Register new library member (admin)' })
-  create(@Body() dto: CreateMemberDto) {
-    return this.membersService.create(dto);
+  create(@LibUser() user: LibPlatformUser, @Body() dto: CreateMemberDto) {
+    return this.membersService.create(user.institute_id, dto);
   }
 
   @Get()
   @RequirePermission({ resource: 'members', action: 'read' })
   @ApiOperation({ summary: 'List members (paginated, filterable by type/status)' })
-  findAll(@Query() query: MemberQueryDto) {
-    return this.membersService.findAll(query);
+  findAll(@LibUser() user: LibPlatformUser, @Query() query: MemberQueryDto) {
+    return this.membersService.findAll(user.institute_id, query);
   }
 
   @Get(':id')
   @RequirePermission({ resource: 'members', action: 'read' })
   @ApiOperation({ summary: 'Get member detail' })
   @ApiParam({ name: 'id', description: 'member_id of the Library Member (e.g. 1)' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.membersService.findOne(id);
+  findOne(@LibUser() user: LibPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.membersService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -58,25 +60,26 @@ export class LibMembersController {
   @ApiOperation({ summary: 'Update member (admin)' })
   @ApiParam({ name: 'id', description: 'member_id of the Library Member to update (e.g. 1)' })
   update(
+    @LibUser() user: LibPlatformUser,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMemberDto,
   ) {
-    return this.membersService.update(id, dto);
+    return this.membersService.update(user.institute_id, id, dto);
   }
 
   @Get(':id/current-issues')
   @RequirePermission({ resource: 'members', action: 'read' })
   @ApiOperation({ summary: 'Get active borrows for a member' })
   @ApiParam({ name: 'id', description: 'member_id of the Library Member (e.g. 1)' })
-  getCurrentIssues(@Param('id', ParseIntPipe) id: number) {
-    return this.membersService.getCurrentIssues(id);
+  getCurrentIssues(@LibUser() user: LibPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.membersService.getCurrentIssues(user.institute_id, id);
   }
 
   @Get(':id/fines')
   @RequirePermission({ resource: 'members', action: 'read' })
   @ApiOperation({ summary: 'Get fine history for a member' })
   @ApiParam({ name: 'id', description: 'member_id of the Library Member (e.g. 1)' })
-  getFines(@Param('id', ParseIntPipe) id: number) {
-    return this.membersService.getFines(id);
+  getFines(@LibUser() user: LibPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.membersService.getFines(user.institute_id, id);
   }
 }

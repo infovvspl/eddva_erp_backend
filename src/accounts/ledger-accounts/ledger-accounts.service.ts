@@ -69,8 +69,9 @@ export class LedgerAccountsService {
   }
 
   /** Rules 2 & 5 (section 3/18): only active, postable (leaf) ledger accounts may receive voucher entries. */
-  async assertPostable(accountId: string, instituteId?: string) {
-    const account = await this.prisma.ledgerAccount.findFirst({ where: { id: accountId, ...(instituteId ? { instituteId } : {}) } });
+  async assertPostable(accountId: string, instituteId: string) {
+    if (!instituteId) throw new BadRequestException('instituteId is required to validate a ledger account');
+    const account = await this.prisma.ledgerAccount.findFirst({ where: { id: accountId, instituteId } });
     if (!account) throw new NotFoundException(`Ledger account ${accountId} not found`);
     if (!account.isActive) throw new BadRequestException(`Ledger account "${account.accountName}" is inactive and cannot receive voucher entries`);
     if (!account.allowVoucherEntry) {

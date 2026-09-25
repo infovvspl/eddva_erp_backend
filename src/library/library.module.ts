@@ -12,6 +12,7 @@ import { LibNotificationsModule } from './notifications/lib-notifications.module
 import { LibSchedulerModule } from './scheduler/lib-scheduler.module';
 import { LibAuthModule } from './auth/lib-auth.module';
 import { LibRolesPermissionsModule } from './roles-permissions/lib-roles-permissions.module';
+import { LibDashboardModule } from './dashboard/lib-dashboard.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { LibRolesPermissionsModule } from './roles-permissions/lib-roles-permiss
     LibReservationsModule,
     LibIssuesModule,
     LibSchedulerModule,
+    LibDashboardModule,
   ],
 })
 export class LibraryModule {}

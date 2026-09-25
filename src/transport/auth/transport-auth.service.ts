@@ -1,7 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireModuleSecret } from '../../common/utils/module-secret.util';
 
 export interface TransportPlatformUser {
   eddva_user_id: string;
@@ -48,11 +49,7 @@ export class TransportAuthService {
   }
 
   private get transportJwtSecret(): string {
-    return (
-      process.env.TRANSPORT_JWT_SECRET ||
-      process.env.JWT_SECRET ||
-      'transport_dev_secret'
-    );
+    return requireModuleSecret('TRANSPORT_JWT_SECRET');
   }
 
   /**
@@ -123,20 +120,32 @@ export class TransportAuthService {
   /**
    * Direct login for assigned role users (Admin, Dispatcher, Driver App User).
    */
-  async directLogin(usernameOrEmail: string, rawPassword: string): Promise<{
+  async directLogin(
+    usernameOrEmail: string,
+    rawPassword: string,
+    instituteId?: string,
+  ): Promise<{
     transport_token: string;
     user: TransportPlatformUser & { role_name: string; permissions: any };
   }> {
-    const assignment = await this.prisma.transportUserDynamicRole.findFirst({
+    // (institute_id, username) is the unique key, so the same username can exist in two
+    // institutes. Refuse to guess between them; the caller can pass institute_id.
+    const matches = await this.prisma.transportUserDynamicRole.findMany({
       where: {
-        OR: [
-          { username: usernameOrEmail },
-          { user_email: usernameOrEmail },
-        ],
+        OR: [{ username: usernameOrEmail }, { user_email: usernameOrEmail }],
         is_active: true,
+        ...(instituteId ? { institute_id: instituteId } : {}),
       },
       include: { role: true },
+      take: 2,
     });
+
+    if (matches.length > 1) {
+      throw new BadRequestException(
+        'More than one account matches these credentials. Provide institute_id to log in.',
+      );
+    }
+    const assignment = matches[0];
 
     if (!assignment) {
       throw new UnauthorizedException('Invalid credentials or inactive account');

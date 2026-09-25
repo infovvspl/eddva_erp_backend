@@ -4,6 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { LibNotificationService } from '../notifications/lib-notification.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 
@@ -16,18 +17,20 @@ export class LibReservationsService {
     private readonly notificationService: LibNotificationService,
   ) {}
 
-  async create(dto: CreateReservationDto & { book_id: number }) {
+  async create(instituteId: string, dto: CreateReservationDto & { book_id: number }) {
+    const institute_id = requireInstituteId(instituteId);
     const { book_id, member_id } = dto;
 
-    const book = await this.prisma.libBook.findUnique({ where: { book_id } });
+    const book = await this.prisma.libBook.findFirst({ where: { book_id, institute_id } });
     if (!book) throw new NotFoundException(`Book #${book_id} not found`);
 
-    const member = await this.prisma.libMember.findUnique({ where: { member_id } });
+    const member = await this.prisma.libMember.findFirst({ where: { member_id, institute_id } });
     if (!member) throw new NotFoundException(`Member #${member_id} not found`);
 
     // Check: member doesn't already have this title on loan
     const alreadyIssued = await this.prisma.libIssueRecord.findFirst({
       where: {
+        institute_id,
         member_id,
         status: { in: ['issued', 'overdue'] },
         copy: { book_id },
@@ -39,7 +42,7 @@ export class LibReservationsService {
 
     // Check: no duplicate pending reservation
     const existing = await this.prisma.libReservation.findFirst({
-      where: { book_id, member_id, status: 'pending' },
+      where: { institute_id, book_id, member_id, status: 'pending' },
     });
     if (existing) {
       throw new ConflictException('Member already has a pending reservation for this title');
@@ -51,6 +54,7 @@ export class LibReservationsService {
 
     return this.prisma.libReservation.create({
       data: {
+        institute_id,
         book_id,
         member_id,
         reserved_date: today,
@@ -60,9 +64,9 @@ export class LibReservationsService {
     });
   }
 
-  async cancel(reservationId: number) {
-    const reservation = await this.prisma.libReservation.findUnique({
-      where: { reservation_id: reservationId },
+  async cancel(instituteId: string, reservationId: number) {
+    const reservation = await this.prisma.libReservation.findFirst({
+      where: { reservation_id: reservationId, institute_id: requireInstituteId(instituteId) },
     });
     if (!reservation) throw new NotFoundException(`Reservation #${reservationId} not found`);
     if (['cancelled', 'fulfilled', 'expired'].includes(reservation.status)) {
@@ -74,8 +78,8 @@ export class LibReservationsService {
     });
   }
 
-  async findAll(status?: string) {
-    const where: any = {};
+  async findAll(instituteId: string, status?: string) {
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (status) where.status = status;
     return this.prisma.libReservation.findMany({
       where,
@@ -87,9 +91,10 @@ export class LibReservationsService {
     });
   }
 
-  async notifyNextInQueue(bookId: number) {
+  async notifyNextInQueue(instituteId: string, bookId: number) {
+    const institute_id = requireInstituteId(instituteId);
     const next = await this.prisma.libReservation.findFirst({
-      where: { book_id: bookId, status: 'pending' },
+      where: { institute_id, book_id: bookId, status: 'pending' },
       orderBy: { reserved_date: 'asc' },
     });
     if (!next) return;

@@ -1,8 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { INSTITUTE_ADMIN_ROLE_NAMES } from '../common/institute-admin-role-names';
+import { requireModuleSecret } from '../../common/utils/module-secret.util';
 
 export interface SalesPurchasePlatformUser {
   eddva_user_id: string;
@@ -50,11 +51,7 @@ export class SalesPurchaseAuthService {
   }
 
   private get salesPurchaseJwtSecret(): string {
-    return (
-      process.env.SALES_PURCHASE_JWT_SECRET ||
-      process.env.JWT_SECRET ||
-      'sales_purchase_dev_secret'
-    );
+    return requireModuleSecret('SALES_PURCHASE_JWT_SECRET');
   }
 
   /**
@@ -134,19 +131,29 @@ export class SalesPurchaseAuthService {
   async directLogin(
     usernameOrEmail: string,
     rawPassword: string,
+    instituteId?: string,
   ): Promise<{
     sales_purchase_token: string;
     user: SalesPurchasePlatformUser & { role_name: string; permissions: any };
   }> {
-    const assignment = await this.prisma.salesPurchaseUserDynamicRole.findFirst(
-      {
-        where: {
-          OR: [{ username: usernameOrEmail }, { user_email: usernameOrEmail }],
-          is_active: true,
-        },
-        include: { role: true },
+    // (institute_id, username) is the unique key, so the same username can exist in two
+    // institutes. Refuse to guess between them; the caller can pass institute_id.
+    const matches = await this.prisma.salesPurchaseUserDynamicRole.findMany({
+      where: {
+        OR: [{ username: usernameOrEmail }, { user_email: usernameOrEmail }],
+        is_active: true,
+        ...(instituteId ? { institute_id: instituteId } : {}),
       },
-    );
+      include: { role: true },
+      take: 2,
+    });
+
+    if (matches.length > 1) {
+      throw new BadRequestException(
+        'More than one account matches these credentials. Provide institute_id to log in.',
+      );
+    }
+    const assignment = matches[0];
 
     if (!assignment) {
       throw new UnauthorizedException(

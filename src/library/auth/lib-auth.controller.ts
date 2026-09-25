@@ -53,7 +53,11 @@ export class LibAuthController {
       'Allows Librarians and staff assigned custom dynamic roles by Institute Admin to log in directly using username/email and password created for them.',
   })
   async login(@Body() dto: LibDirectLoginDto) {
-    return this.authService.directLogin(dto.username, dto.password);
+    return this.authService.directLogin(
+      dto.username,
+      dto.password,
+      dto.institute_id,
+    );
   }
 
   /**

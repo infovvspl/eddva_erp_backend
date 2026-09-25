@@ -1,16 +1,21 @@
 import * as crypto from 'crypto';
+import { InternalServerErrorException } from '@nestjs/common';
 
 /**
  * AES-256-GCM helper for encrypting visitor ID proof numbers at rest.
  * Stored format: "<ivHex>:<authTagHex>:<cipherTextHex>".
  *
- * Key resolution order: FRONT_OFFICE_ID_PROOF_KEY (preferred, 32-byte hex/utf8)
- * falls back to a key derived from JWT_SECRET so the feature works out of the
- * box in dev without a new required env var (document as follow-up: set
- * FRONT_OFFICE_ID_PROOF_KEY explicitly in production).
+ * The key comes from FRONT_OFFICE_ID_PROOF_KEY only: no fallback to JWT_SECRET
+ * (so rotating a login secret can never make stored ID proofs unreadable) and
+ * no committed default. A missing key fails closed.
  */
 function resolveKey(): Buffer {
-  const raw = process.env.FRONT_OFFICE_ID_PROOF_KEY || process.env.JWT_SECRET || 'front_office_dev_key_change_in_prod';
+  const raw = process.env.FRONT_OFFICE_ID_PROOF_KEY;
+  if (!raw) {
+    throw new InternalServerErrorException(
+      'FRONT_OFFICE_ID_PROOF_KEY must be set to store visitor ID proofs',
+    );
+  }
   return crypto.createHash('sha256').update(raw).digest();
 }
 

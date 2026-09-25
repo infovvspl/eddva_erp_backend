@@ -45,7 +45,11 @@ export class TransportAuthController {
   @ApiResponse({ status: 200, description: 'Login successful. Returns transport_token.' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async directLogin(@Body() dto: TransportDirectLoginDto) {
-    return this.authService.directLogin(dto.username, dto.password);
+    return this.authService.directLogin(
+      dto.username,
+      dto.password,
+      dto.institute_id,
+    );
   }
 
   @Get('me')

@@ -1,6 +1,0 @@
-PORT=3000
-DATABASE_URL="postgresql://postgres:vvspl05@localhost:5432/eddva_erp?schema=public"
-JWT_SECRET="eddva_erp_super_secret_jwt_key_2026"
-JWT_EXPIRES_IN="1d"
-# SALES_PURCHASE_JWT_SECRET="720725f230a95a29cad44cf6a21635c8ca7fb339847f4435521db089ca8de11e"
-CANTEEN_JWT_SECRET="8209cfeac40a51bb313adb4bbe4023152bd9ddc60946d7e7cc0e84726b5e5a0a"

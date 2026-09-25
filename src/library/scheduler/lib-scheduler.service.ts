@@ -46,6 +46,8 @@ export class LibSchedulerService {
 
       let finesCreated = 0;
       for (const issue of overdueIssues) {
+        // Rows not yet assigned to an institute are skipped: a fine must belong to a school.
+        if (!issue.institute_id) continue;
         const rawOverdue = diffDays(today, new Date(issue.due_date));
         const overdueDays = Math.max(0, rawOverdue - issue.grace_period_days);
         if (overdueDays <= 0) continue;
@@ -54,7 +56,7 @@ export class LibSchedulerService {
         const maxCap = issue.max_fine_cap ? Number(issue.max_fine_cap) : null;
         const amount = this.finesService.calculateFine(overdueDays, finePerDay, maxCap);
 
-        await this.finesService.createFine(issue.issue_id, issue.member_id, 'overdue', amount);
+        await this.finesService.createFine(issue.institute_id, issue.issue_id, issue.member_id, 'overdue', amount);
 
         // Step 3: Notify overdue
         await this.notificationService.sendOverdueAlert(issue.member_id, issue.issue_id);

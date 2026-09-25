@@ -45,6 +45,22 @@ export class AccountsAccessService {
       }
     }
 
+    // A permission an admin has deactivated in the catalogue (is_active = false)
+    // must stop granting access even if a role still lists it. Previously the
+    // flag was stored but never consulted, so toggling it had no effect.
+    const inactive = await this.prisma.accountsPermission.findMany({
+      where: { is_active: false },
+      select: { key: true },
+    });
+    if (inactive.length > 0) {
+      const inactiveKeys = new Set(inactive.map((p) => p.key));
+      rules = rules.map((rule) =>
+        rule && Array.isArray(rule.actions)
+          ? { ...rule, actions: rule.actions.filter((action) => !inactiveKeys.has(`${rule.resource}:${action}`)) }
+          : rule,
+      );
+    }
+
     return { rules, roleName };
   }
 

@@ -56,7 +56,11 @@ export class SalesPurchaseAuthController {
   })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async directLogin(@Body() dto: SalesPurchaseDirectLoginDto) {
-    return this.authService.directLogin(dto.username, dto.password);
+    return this.authService.directLogin(
+      dto.username,
+      dto.password,
+      dto.institute_id,
+    );
   }
 
   @Get('me')

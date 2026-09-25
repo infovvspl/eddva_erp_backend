@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { LibNotificationService } from '../notifications/lib-notification.service';
 import { PayFineDto } from './dto/pay-fine.dto';
 import { WaiveFineDto } from './dto/waive-fine.dto';
-import type { Prisma } from '@prisma/client';
 
 /**
  * FineService (calc engine) — architecture-named service.
@@ -33,6 +33,7 @@ export class LibFinesService {
    * Create a fine record (called by ReturnService and SchedulerService).
    */
   async createFine(
+    instituteId: string,
     issueId: number,
     memberId: number,
     reason: 'overdue' | 'lost_book' | 'damaged_book',
@@ -40,6 +41,7 @@ export class LibFinesService {
   ) {
     const fine = await this.prisma.libFine.create({
       data: {
+        institute_id: requireInstituteId(instituteId),
         issue_id: issueId,
         member_id: memberId,
         reason,
@@ -51,27 +53,28 @@ export class LibFinesService {
     return fine;
   }
 
-  async findByMember(memberId: number) {
-    const member = await this.prisma.libMember.findUnique({ where: { member_id: memberId } });
+  async findByMember(instituteId: string, memberId: number) {
+    const institute_id = requireInstituteId(instituteId);
+    const member = await this.prisma.libMember.findFirst({ where: { member_id: memberId, institute_id } });
     if (!member) throw new NotFoundException(`Member #${memberId} not found`);
     return this.prisma.libFine.findMany({
-      where: { member_id: memberId },
+      where: { member_id: memberId, institute_id },
       include: { payments: true },
       orderBy: { calculated_at: 'desc' },
     });
   }
 
-  async findOne(fineId: number) {
-    const fine = await this.prisma.libFine.findUnique({
-      where: { fine_id: fineId },
+  async findOne(instituteId: string, fineId: number) {
+    const fine = await this.prisma.libFine.findFirst({
+      where: { fine_id: fineId, institute_id: requireInstituteId(instituteId) },
       include: { payments: true, member: true },
     });
     if (!fine) throw new NotFoundException(`Fine #${fineId} not found`);
     return fine;
   }
 
-  async pay(fineId: number, dto: PayFineDto) {
-    const fine = await this.findOne(fineId);
+  async pay(instituteId: string, fineId: number, dto: PayFineDto) {
+    const fine = await this.findOne(instituteId, fineId);
     if (fine.status === 'paid' || fine.status === 'waived') {
       throw new ConflictException(`Fine #${fineId} is already ${fine.status}`);
     }
@@ -115,8 +118,8 @@ export class LibFinesService {
     return { payment, new_status: newStatus };
   }
 
-  async waive(fineId: number, _dto: WaiveFineDto) {
-    const fine = await this.findOne(fineId);
+  async waive(instituteId: string, fineId: number, _dto: WaiveFineDto) {
+    const fine = await this.findOne(instituteId, fineId);
     if (fine.status === 'paid' || fine.status === 'waived') {
       throw new ConflictException(`Fine #${fineId} is already ${fine.status}`);
     }
