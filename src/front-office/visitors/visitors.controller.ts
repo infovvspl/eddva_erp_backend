@@ -29,7 +29,7 @@ export class VisitorsController {
   @ApiOperation({ summary: 'Create a visitor master record' })
   async create(@Body() dto: CreateVisitorDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
     const canViewSensitive = await this.access.hasPermission(user, 'visitors', 'sensitive_view');
-    return this.visitorsService.create(dto, user.eddva_user_id, canViewSensitive);
+    return this.visitorsService.create(user.institute_id, dto, user.eddva_user_id, canViewSensitive);
   }
 
   @Get()
@@ -40,7 +40,7 @@ export class VisitorsController {
   @ApiQuery({ name: 'limit', required: false })
   async findAll(@FrontOfficeUser() user: FrontOfficePlatformUser, @Query('search') search?: string, @Query('page') page?: string, @Query('limit') limit?: string) {
     const canViewSensitive = await this.access.hasPermission(user, 'visitors', 'sensitive_view');
-    return this.visitorsService.findAll(
+    return this.visitorsService.findAll(user.institute_id, 
       { search, page: page ? Number(page) : undefined, limit: limit ? Number(limit) : undefined },
       canViewSensitive,
       user.eddva_user_id,
@@ -53,7 +53,7 @@ export class VisitorsController {
   @ApiParam({ name: 'id', example: 1 })
   async findOne(@Param('id', ParseIntPipe) id: number, @FrontOfficeUser() user: FrontOfficePlatformUser) {
     const canViewSensitive = await this.access.hasPermission(user, 'visitors', 'sensitive_view');
-    return this.visitorsService.findOne(id, canViewSensitive, user.eddva_user_id);
+    return this.visitorsService.findOne(user.institute_id, id, canViewSensitive, user.eddva_user_id);
   }
 
   @Patch(':id')
@@ -62,23 +62,23 @@ export class VisitorsController {
   @ApiParam({ name: 'id', example: 1 })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateVisitorDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
     const canViewSensitive = await this.access.hasPermission(user, 'visitors', 'sensitive_view');
-    return this.visitorsService.update(id, dto, user.eddva_user_id, canViewSensitive);
+    return this.visitorsService.update(user.institute_id, id, dto, user.eddva_user_id, canViewSensitive);
   }
 
   @Get(':id/visits')
   @RequirePermission({ resource: 'visitors', action: 'read' })
   @ApiOperation({ summary: 'Get a visitor visit (visitor_log) history' })
   @ApiParam({ name: 'id', example: 1 })
-  getVisits(@Param('id', ParseIntPipe) id: number) {
-    return this.visitorsService.getVisits(id);
+  getVisits(@FrontOfficeUser() user: FrontOfficePlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.visitorsService.getVisits(user.institute_id, id);
   }
 
   @Get(':id/appointments')
   @RequirePermission({ resource: 'visitors', action: 'read' })
   @ApiOperation({ summary: 'Get a visitor appointment history' })
   @ApiParam({ name: 'id', example: 1 })
-  getAppointmentHistory(@Param('id', ParseIntPipe) id: number) {
-    return this.visitorsService.getAppointmentHistory(id);
+  getAppointmentHistory(@FrontOfficeUser() user: FrontOfficePlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.visitorsService.getAppointmentHistory(user.institute_id, id);
   }
 
   @Get(':id/audit')

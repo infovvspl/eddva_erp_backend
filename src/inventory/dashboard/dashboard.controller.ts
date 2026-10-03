@@ -4,6 +4,8 @@ import { InventoryJwtGuard } from '../auth/inventory-jwt.guard';
 import { InventoryInstituteAdminViewOnlyGuard } from '../auth/inventory-institute-admin-view-only.guard';
 import { InventoryPermissionsGuard } from '../auth/inventory-permissions.guard';
 import { RequirePermission } from '../auth/require-permissions.decorator';
+import { InventoryUser } from '../auth/inventory-user.decorator';
+import type { InventoryPlatformUser } from '../auth/inventory-auth.service';
 import { DashboardService } from './dashboard.service';
 
 @ApiTags('Inventory / Dashboard')
@@ -18,7 +20,7 @@ export class DashboardController {
   @ApiOperation({ summary: 'Inventory dashboard summary — stock, issues, assets, valuation, category/vendor breakdowns' })
   @ApiQuery({ name: 'from', required: false, example: '2026-08-01' })
   @ApiQuery({ name: 'to', required: false, example: '2026-08-31' })
-  getSummary(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.dashboardService.getSummary(from, to);
+  getSummary(@InventoryUser() user: InventoryPlatformUser, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.dashboardService.getSummary(user.institute_id, from, to);
   }
 }

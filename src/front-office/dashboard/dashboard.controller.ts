@@ -4,6 +4,8 @@ import { FrontOfficeJwtGuard } from '../auth/front-office-jwt.guard';
 import { FrontOfficeInstituteAdminViewOnlyGuard } from '../auth/front-office-institute-admin-view-only.guard';
 import { FrontOfficePermissionsGuard } from '../auth/front-office-permissions.guard';
 import { RequirePermission } from '../auth/require-permissions.decorator';
+import { FrontOfficeUser } from '../auth/front-office-user.decorator';
+import type { FrontOfficePlatformUser } from '../auth/front-office-auth.service';
 import { DashboardService } from './dashboard.service';
 
 @ApiTags('Front Office / Dashboard')
@@ -18,7 +20,7 @@ export class DashboardController {
   @ApiOperation({ summary: 'Front Office dashboard/summary metrics (visitors, enquiries, appointments, complaints)' })
   @ApiQuery({ name: 'from', required: false, example: '2026-08-01' })
   @ApiQuery({ name: 'to', required: false, example: '2026-08-31' })
-  getSummary(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.dashboardService.getSummary(from, to);
+  getSummary(@FrontOfficeUser() user: FrontOfficePlatformUser, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.dashboardService.getSummary(user.institute_id, from, to);
   }
 }

@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CanteenAuditService } from '../common/canteen-audit.service';
 import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
 import { UpdateMenuCategoryDto } from './dto/update-menu-category.dto';
@@ -23,8 +24,9 @@ export class CanteenMenuService {
   ) {}
 
   // --- Categories ---
-  async getCategories() {
+  async getCategories(instituteId: string) {
     return this.prisma.canteenMenuCategory.findMany({
+      where: { instituteId: requireInstituteId(instituteId) },
       include: {
         _count: { select: { items: true } },
       },
@@ -32,9 +34,9 @@ export class CanteenMenuService {
     });
   }
 
-  async getCategoryById(id: string) {
-    const category = await this.prisma.canteenMenuCategory.findUnique({
-      where: { id },
+  async getCategoryById(instituteId: string, id: string) {
+    const category = await this.prisma.canteenMenuCategory.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: { items: true },
     });
     if (!category) {
@@ -43,9 +45,10 @@ export class CanteenMenuService {
     return category;
   }
 
-  async createCategory(dto: CreateMenuCategoryDto, actorUserId?: string) {
-    const existing = await this.prisma.canteenMenuCategory.findUnique({
-      where: { name: dto.name },
+  async createCategory(instituteId: string, dto: CreateMenuCategoryDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const existing = await this.prisma.canteenMenuCategory.findFirst({
+      where: { name: dto.name, instituteId: instId },
     });
     if (existing) {
       throw new ConflictException(`Category '${dto.name}' already exists.`);
@@ -53,6 +56,7 @@ export class CanteenMenuService {
 
     const category = await this.prisma.canteenMenuCategory.create({
       data: {
+        instituteId: instId,
         name: dto.name,
         displayOrder: dto.displayOrder ?? 0,
       },
@@ -69,12 +73,13 @@ export class CanteenMenuService {
     return category;
   }
 
-  async updateCategory(id: string, dto: UpdateMenuCategoryDto, actorUserId?: string) {
-    const category = await this.getCategoryById(id);
+  async updateCategory(instituteId: string, id: string, dto: UpdateMenuCategoryDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const category = await this.getCategoryById(instId, id);
 
     if (dto.name && dto.name !== category.name) {
-      const existing = await this.prisma.canteenMenuCategory.findUnique({
-        where: { name: dto.name },
+      const existing = await this.prisma.canteenMenuCategory.findFirst({
+        where: { name: dto.name, instituteId: instId },
       });
       if (existing) {
         throw new ConflictException(`Category '${dto.name}' already exists.`);
@@ -100,9 +105,9 @@ export class CanteenMenuService {
     return updated;
   }
 
-  async deleteCategory(id: string, actorUserId?: string) {
-    const category = await this.prisma.canteenMenuCategory.findUnique({
-      where: { id },
+  async deleteCategory(instituteId: string, id: string, actorUserId?: string) {
+    const category = await this.prisma.canteenMenuCategory.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: { items: true },
     });
     if (!category) {
@@ -129,7 +134,7 @@ export class CanteenMenuService {
   }
 
   // --- Menu Items ---
-  async getItems(params: {
+  async getItems(instituteId: string, params: {
     page?: number;
     limit?: number;
     search?: string;
@@ -144,7 +149,7 @@ export class CanteenMenuService {
     const limit = Number(params.limit) || 25;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = { instituteId: requireInstituteId(instituteId) };
 
     if (params.search) {
       where.OR = [
@@ -204,9 +209,9 @@ export class CanteenMenuService {
     };
   }
 
-  async getItemById(id: string) {
-    const item = await this.prisma.canteenMenuItem.findUnique({
-      where: { id },
+  async getItemById(instituteId: string, id: string) {
+    const item = await this.prisma.canteenMenuItem.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: {
         category: true,
         schedules: true,
@@ -218,11 +223,13 @@ export class CanteenMenuService {
     return item;
   }
 
-  async createItem(dto: CreateMenuItemDto, actorUserId?: string) {
-    await this.getCategoryById(dto.categoryId);
+  async createItem(instituteId: string, dto: CreateMenuItemDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    await this.getCategoryById(instId, dto.categoryId);
 
     const item = await this.prisma.canteenMenuItem.create({
       data: {
+        instituteId: instId,
         categoryId: dto.categoryId,
         name: dto.name,
         description: dto.description || null,
@@ -247,11 +254,12 @@ export class CanteenMenuService {
     return item;
   }
 
-  async updateItem(id: string, dto: UpdateMenuItemDto, actorUserId?: string) {
-    const item = await this.getItemById(id);
+  async updateItem(instituteId: string, id: string, dto: UpdateMenuItemDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const item = await this.getItemById(instId, id);
 
     if (dto.categoryId && dto.categoryId !== item.categoryId) {
-      await this.getCategoryById(dto.categoryId);
+      await this.getCategoryById(instId, dto.categoryId);
     }
 
     const updated = await this.prisma.canteenMenuItem.update({
@@ -281,8 +289,8 @@ export class CanteenMenuService {
     return updated;
   }
 
-  async toggleAvailability(id: string, dto: UpdateItemAvailabilityDto, actorUserId?: string) {
-    const item = await this.getItemById(id);
+  async toggleAvailability(instituteId: string, id: string, dto: UpdateItemAvailabilityDto, actorUserId?: string) {
+    const item = await this.getItemById(instituteId, id);
 
     const updated = await this.prisma.canteenMenuItem.update({
       where: { id },
@@ -302,9 +310,9 @@ export class CanteenMenuService {
     return updated;
   }
 
-  async deleteItem(id: string, actorUserId?: string) {
-    const item = await this.prisma.canteenMenuItem.findUnique({
-      where: { id },
+  async deleteItem(instituteId: string, id: string, actorUserId?: string) {
+    const item = await this.prisma.canteenMenuItem.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: { orderItems: true },
     });
     if (!item) {
@@ -347,17 +355,17 @@ export class CanteenMenuService {
   }
 
   // --- Schedules ---
-  async getSchedulesByItem(itemId: string) {
-    await this.getItemById(itemId);
+  async getSchedulesByItem(instituteId: string, itemId: string) {
+    await this.getItemById(instituteId, itemId);
     return this.prisma.canteenMenuSchedule.findMany({
       where: { itemId },
       orderBy: { dayOfWeek: 'asc' },
     });
   }
 
-  async getScheduleById(id: string) {
-    const schedule = await this.prisma.canteenMenuSchedule.findUnique({
-      where: { id },
+  async getScheduleById(instituteId: string, id: string) {
+    const schedule = await this.prisma.canteenMenuSchedule.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: { item: true },
     });
     if (!schedule) {
@@ -366,8 +374,9 @@ export class CanteenMenuService {
     return schedule;
   }
 
-  async createSchedule(itemId: string, dto: CreateMenuScheduleDto, actorUserId?: string) {
-    await this.getItemById(itemId);
+  async createSchedule(instituteId: string, itemId: string, dto: CreateMenuScheduleDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    await this.getItemById(instId, itemId);
 
     if (dto.startTime >= dto.endTime) {
       throw new BadRequestException('startTime must be strictly before endTime.');
@@ -375,6 +384,7 @@ export class CanteenMenuService {
 
     const schedule = await this.prisma.canteenMenuSchedule.create({
       data: {
+        instituteId: instId,
         itemId,
         dayOfWeek: dto.dayOfWeek.toUpperCase(),
         startTime: dto.startTime,
@@ -393,8 +403,8 @@ export class CanteenMenuService {
     return schedule;
   }
 
-  async updateSchedule(id: string, dto: UpdateMenuScheduleDto, actorUserId?: string) {
-    const schedule = await this.getScheduleById(id);
+  async updateSchedule(instituteId: string, id: string, dto: UpdateMenuScheduleDto, actorUserId?: string) {
+    const schedule = await this.getScheduleById(instituteId, id);
 
     const startTime = dto.startTime ?? schedule.startTime;
     const endTime = dto.endTime ?? schedule.endTime;
@@ -423,8 +433,8 @@ export class CanteenMenuService {
     return updated;
   }
 
-  async deleteSchedule(id: string, actorUserId?: string) {
-    const schedule = await this.getScheduleById(id);
+  async deleteSchedule(instituteId: string, id: string, actorUserId?: string) {
+    const schedule = await this.getScheduleById(instituteId, id);
 
     await this.prisma.canteenMenuSchedule.delete({ where: { id } });
 

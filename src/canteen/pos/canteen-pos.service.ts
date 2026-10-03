@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CanteenAuditService } from '../common/canteen-audit.service';
 import { CreatePosTerminalDto } from './dto/create-pos-terminal.dto';
 import { UpdatePosTerminalDto } from './dto/update-pos-terminal.dto';
@@ -19,8 +20,9 @@ export class CanteenPosService {
   ) {}
 
   // --- Terminals ---
-  async getTerminals() {
+  async getTerminals(instituteId: string) {
     return this.prisma.canteenPosTerminal.findMany({
+      where: { instituteId: requireInstituteId(instituteId) },
       include: {
         _count: { select: { shifts: true, orders: true } },
       },
@@ -28,9 +30,9 @@ export class CanteenPosService {
     });
   }
 
-  async getTerminalById(id: string) {
-    const terminal = await this.prisma.canteenPosTerminal.findUnique({
-      where: { id },
+  async getTerminalById(instituteId: string, id: string) {
+    const terminal = await this.prisma.canteenPosTerminal.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: {
         shifts: {
           orderBy: { shiftStart: 'desc' },
@@ -44,9 +46,10 @@ export class CanteenPosService {
     return terminal;
   }
 
-  async createTerminal(dto: CreatePosTerminalDto, actorUserId?: string) {
-    const existing = await this.prisma.canteenPosTerminal.findUnique({
-      where: { name: dto.name },
+  async createTerminal(instituteId: string, dto: CreatePosTerminalDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const existing = await this.prisma.canteenPosTerminal.findFirst({
+      where: { name: dto.name, instituteId: instId },
     });
     if (existing) {
       throw new ConflictException(`Terminal with name '${dto.name}' already exists.`);
@@ -54,6 +57,7 @@ export class CanteenPosService {
 
     const terminal = await this.prisma.canteenPosTerminal.create({
       data: {
+        instituteId: instId,
         name: dto.name,
         location: dto.location || null,
       },
@@ -70,12 +74,13 @@ export class CanteenPosService {
     return terminal;
   }
 
-  async updateTerminal(id: string, dto: UpdatePosTerminalDto, actorUserId?: string) {
-    const terminal = await this.getTerminalById(id);
+  async updateTerminal(instituteId: string, id: string, dto: UpdatePosTerminalDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const terminal = await this.getTerminalById(instId, id);
 
     if (dto.name && dto.name !== terminal.name) {
-      const existing = await this.prisma.canteenPosTerminal.findUnique({
-        where: { name: dto.name },
+      const existing = await this.prisma.canteenPosTerminal.findFirst({
+        where: { name: dto.name, instituteId: instId },
       });
       if (existing) {
         throw new ConflictException(`Terminal '${dto.name}' already exists.`);
@@ -101,9 +106,9 @@ export class CanteenPosService {
     return updated;
   }
 
-  async deleteTerminal(id: string, actorUserId?: string) {
-    const terminal = await this.prisma.canteenPosTerminal.findUnique({
-      where: { id },
+  async deleteTerminal(instituteId: string, id: string, actorUserId?: string) {
+    const terminal = await this.prisma.canteenPosTerminal.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: { shifts: true, orders: true },
     });
     if (!terminal) {
@@ -130,8 +135,9 @@ export class CanteenPosService {
   }
 
   // --- POS Shifts ---
-  async openShift(dto: OpenPosShiftDto, staffUserId: string) {
-    await this.getTerminalById(dto.terminalId);
+  async openShift(instituteId: string, dto: OpenPosShiftDto, staffUserId: string) {
+    const instId = requireInstituteId(instituteId);
+    await this.getTerminalById(instId, dto.terminalId);
 
     // Rule: Only ONE active OPEN shift per terminal
     const activeShift = await this.prisma.canteenPosShift.findFirst({
@@ -149,6 +155,7 @@ export class CanteenPosService {
 
     const shift = await this.prisma.canteenPosShift.create({
       data: {
+        instituteId: instId,
         terminalId: dto.terminalId,
         staffId: staffUserId,
         openingCash: dto.openingCash,
@@ -171,7 +178,7 @@ export class CanteenPosService {
     return shift;
   }
 
-  async getShifts(params: {
+  async getShifts(instituteId: string, params: {
     page?: number;
     limit?: number;
     terminalId?: string;
@@ -182,7 +189,7 @@ export class CanteenPosService {
     const limit = Number(params.limit) || 25;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = { instituteId: requireInstituteId(instituteId) };
     if (params.terminalId) where.terminalId = params.terminalId;
     if (params.staffId) where.staffId = params.staffId;
     if (params.status) where.status = params.status;
@@ -211,9 +218,9 @@ export class CanteenPosService {
     };
   }
 
-  async getShiftById(id: string) {
-    const shift = await this.prisma.canteenPosShift.findUnique({
-      where: { id },
+  async getShiftById(instituteId: string, id: string) {
+    const shift = await this.prisma.canteenPosShift.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: {
         terminal: true,
       },
@@ -224,8 +231,8 @@ export class CanteenPosService {
     return shift;
   }
 
-  async closeShift(id: string, dto: ClosePosShiftDto, actorUserId?: string) {
-    const shift = await this.getShiftById(id);
+  async closeShift(instituteId: string, id: string, dto: ClosePosShiftDto, actorUserId?: string) {
+    const shift = await this.getShiftById(instituteId, id);
 
     if (shift.status === 'CLOSED') {
       throw new BadRequestException('This POS shift is already closed.');

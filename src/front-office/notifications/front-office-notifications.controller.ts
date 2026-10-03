@@ -4,6 +4,8 @@ import { FrontOfficeJwtGuard } from '../auth/front-office-jwt.guard';
 import { FrontOfficeInstituteAdminViewOnlyGuard } from '../auth/front-office-institute-admin-view-only.guard';
 import { FrontOfficePermissionsGuard } from '../auth/front-office-permissions.guard';
 import { RequirePermission } from '../auth/require-permissions.decorator';
+import { FrontOfficeUser } from '../auth/front-office-user.decorator';
+import type { FrontOfficePlatformUser } from '../auth/front-office-auth.service';
 import { FrontOfficeNotificationService } from './front-office-notification.service';
 
 @ApiTags('Front Office / Notifications')
@@ -20,11 +22,12 @@ export class FrontOfficeNotificationsController {
   @ApiQuery({ name: 'entityId', required: false })
   @ApiQuery({ name: 'recipientEmployeeId', required: false })
   findAll(
+    @FrontOfficeUser() user: FrontOfficePlatformUser,
     @Query('entityType') entityType?: string,
     @Query('entityId') entityId?: string,
     @Query('recipientEmployeeId') recipientEmployeeId?: string,
   ) {
-    return this.notificationService.findAll({
+    return this.notificationService.findAll(user.institute_id, {
       entityType,
       entityId: entityId ? Number(entityId) : undefined,
       recipientEmployeeId: recipientEmployeeId ? Number(recipientEmployeeId) : undefined,

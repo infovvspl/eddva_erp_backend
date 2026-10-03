@@ -4,6 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CanteenAuditService } from '../common/canteen-audit.service';
 import { CreateCanteenMemberDto } from './dto/create-canteen-member.dto';
 import { UpdateCanteenMemberDto } from './dto/update-canteen-member.dto';
@@ -16,7 +17,7 @@ export class CanteenMembersService {
     private readonly auditService: CanteenAuditService,
   ) {}
 
-  async getMembers(params: {
+  async getMembers(instituteId: string, params: {
     page?: number;
     limit?: number;
     search?: string;
@@ -28,7 +29,7 @@ export class CanteenMembersService {
     const limit = Number(params.limit) || 25;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = { instituteId: requireInstituteId(instituteId) };
 
     if (params.search) {
       where.OR = [
@@ -76,9 +77,9 @@ export class CanteenMembersService {
     };
   }
 
-  async getMemberById(id: string) {
-    const member = await this.prisma.canteenMember.findUnique({
-      where: { id },
+  async getMemberById(instituteId: string, id: string) {
+    const member = await this.prisma.canteenMember.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: { wallet: true },
     });
     if (!member) {
@@ -87,9 +88,9 @@ export class CanteenMembersService {
     return member;
   }
 
-  async getMemberByBarcode(barcode: string) {
-    const member = await this.prisma.canteenMember.findUnique({
-      where: { idCardBarcode: barcode },
+  async getMemberByBarcode(instituteId: string, barcode: string) {
+    const member = await this.prisma.canteenMember.findFirst({
+      where: { idCardBarcode: barcode, instituteId: requireInstituteId(instituteId) },
       include: { wallet: true },
     });
     if (!member) {
@@ -98,9 +99,10 @@ export class CanteenMembersService {
     return member;
   }
 
-  async createMember(dto: CreateCanteenMemberDto, actorUserId?: string) {
-    const existingBarcode = await this.prisma.canteenMember.findUnique({
-      where: { idCardBarcode: dto.idCardBarcode },
+  async createMember(instituteId: string, dto: CreateCanteenMemberDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const existingBarcode = await this.prisma.canteenMember.findFirst({
+      where: { idCardBarcode: dto.idCardBarcode, instituteId: instId },
     });
     if (existingBarcode) {
       throw new ConflictException(`Member with barcode '${dto.idCardBarcode}' already exists.`);
@@ -109,6 +111,7 @@ export class CanteenMembersService {
     const member = await this.prisma.$transaction(async (tx) => {
       const m = await tx.canteenMember.create({
         data: {
+          instituteId: instId,
           name: dto.name,
           memberType: dto.memberType ?? CanteenMemberType.STUDENT,
           idCardBarcode: dto.idCardBarcode,
@@ -119,6 +122,7 @@ export class CanteenMembersService {
       // Auto-create wallet with initial 0 balance
       await tx.canteenWallet.create({
         data: {
+          instituteId: instId,
           memberId: m.id,
           balance: 0,
           status: 'ACTIVE',
@@ -142,12 +146,13 @@ export class CanteenMembersService {
     return member;
   }
 
-  async updateMember(id: string, dto: UpdateCanteenMemberDto, actorUserId?: string) {
-    const member = await this.getMemberById(id);
+  async updateMember(instituteId: string, id: string, dto: UpdateCanteenMemberDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const member = await this.getMemberById(instId, id);
 
     if (dto.idCardBarcode && dto.idCardBarcode !== member.idCardBarcode) {
-      const existing = await this.prisma.canteenMember.findUnique({
-        where: { idCardBarcode: dto.idCardBarcode },
+      const existing = await this.prisma.canteenMember.findFirst({
+        where: { idCardBarcode: dto.idCardBarcode, instituteId: instId },
       });
       if (existing) {
         throw new ConflictException(`Barcode '${dto.idCardBarcode}' is already assigned to another member.`);
@@ -176,9 +181,9 @@ export class CanteenMembersService {
     return updated;
   }
 
-  async deleteMember(id: string, actorUserId?: string) {
-    const member = await this.prisma.canteenMember.findUnique({
-      where: { id },
+  async deleteMember(instituteId: string, id: string, actorUserId?: string) {
+    const member = await this.prisma.canteenMember.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: { orders: true, wallet: { include: { transactions: true } } },
     });
     if (!member) {

@@ -36,7 +36,7 @@ export class CanteenMembersController {
   @RequirePermission({ resource: 'members', action: 'create' })
   @Post()
   async createMember(@Body() dto: CreateCanteenMemberDto, @CanteenUser() user: CanteenPlatformUser) {
-    return this.membersService.createMember(dto, user.eddva_user_id);
+    return this.membersService.createMember(user.institute_id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'List canteen members (with search, memberType, barcode, pagination)' })
@@ -49,6 +49,7 @@ export class CanteenMembersController {
   @RequirePermission({ resource: 'members', action: 'read' })
   @Get()
   async getMembers(
+    @CanteenUser() user: CanteenPlatformUser,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('search') search?: string,
@@ -56,7 +57,7 @@ export class CanteenMembersController {
     @Query('externalRefId') externalRefId?: string,
     @Query('sort') sort?: string,
   ) {
-    return this.membersService.getMembers({
+    return this.membersService.getMembers(user.institute_id, {
       page,
       limit,
       search,
@@ -69,15 +70,15 @@ export class CanteenMembersController {
   @ApiOperation({ summary: 'Lookup member profile by barcode' })
   @RequirePermission({ resource: 'members', action: 'barcode_lookup' })
   @Get('barcode/:barcode')
-  async getMemberByBarcode(@Param('barcode') barcode: string) {
-    return this.membersService.getMemberByBarcode(barcode);
+  async getMemberByBarcode(@CanteenUser() user: CanteenPlatformUser, @Param('barcode') barcode: string) {
+    return this.membersService.getMemberByBarcode(user.institute_id, barcode);
   }
 
   @ApiOperation({ summary: 'Get canteen member by ID' })
   @RequirePermission({ resource: 'members', action: 'read' })
   @Get(':id')
-  async getMemberById(@Param('id') id: string) {
-    return this.membersService.getMemberById(id);
+  async getMemberById(@CanteenUser() user: CanteenPlatformUser, @Param('id') id: string) {
+    return this.membersService.getMemberById(user.institute_id, id);
   }
 
   @ApiOperation({ summary: 'Update canteen member details' })
@@ -88,13 +89,13 @@ export class CanteenMembersController {
     @Body() dto: UpdateCanteenMemberDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.membersService.updateMember(id, dto, user.eddva_user_id);
+    return this.membersService.updateMember(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Delete canteen member profile' })
   @RequirePermission({ resource: 'members', action: 'delete' })
   @Delete(':id')
   async deleteMember(@Param('id') id: string, @CanteenUser() user: CanteenPlatformUser) {
-    return this.membersService.deleteMember(id, user.eddva_user_id);
+    return this.membersService.deleteMember(user.institute_id, id, user.eddva_user_id);
   }
 }

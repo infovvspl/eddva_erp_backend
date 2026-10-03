@@ -32,7 +32,7 @@ export class StockController {
   @RequirePermission({ resource: 'stock', action: 'purchase' })
   @ApiOperation({ summary: 'Receive a purchase — atomically creates the purchase record, a purchase_in ledger entry, and updates stock_balances (and asset units, for item_type=asset)' })
   createPurchase(@Body() dto: CreatePurchaseDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.purchasesService.create(dto, user.eddva_user_id);
+    return this.purchasesService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get('purchases')
@@ -46,6 +46,7 @@ export class StockController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   listPurchases(
+    @InventoryUser() user: InventoryPlatformUser,
     @Query('vendor_id') vendorId?: string,
     @Query('item_id') itemId?: string,
     @Query('location_id') locationId?: string,
@@ -54,7 +55,7 @@ export class StockController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.purchasesService.findAll({
+    return this.purchasesService.findAll(user.institute_id, {
       vendor_id: vendorId ? Number(vendorId) : undefined,
       item_id: itemId ? Number(itemId) : undefined,
       location_id: locationId ? Number(locationId) : undefined,
@@ -69,8 +70,8 @@ export class StockController {
   @RequirePermission({ resource: 'stock', action: 'read' })
   @ApiOperation({ summary: 'Get a purchase, including any asset units created from it' })
   @ApiParam({ name: 'id', example: 1 })
-  getPurchase(@Param('id', ParseIntPipe) id: number) {
-    return this.purchasesService.findOne(id);
+  getPurchase(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.purchasesService.findOne(user.institute_id, id);
   }
 
   // ─── Transfers ────────────────────────────────────────────────────────
@@ -79,7 +80,7 @@ export class StockController {
   @RequirePermission({ resource: 'stock', action: 'transfer' })
   @ApiOperation({ summary: 'Transfer stock between locations — atomically creates transfer_out + transfer_in ledger entries; rejects if source stock is insufficient' })
   createTransfer(@Body() dto: CreateTransferDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.transfersService.create(dto, user.eddva_user_id);
+    return this.transfersService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get('transfers')
@@ -92,6 +93,7 @@ export class StockController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   listTransfers(
+    @InventoryUser() user: InventoryPlatformUser,
     @Query('item_id') itemId?: string,
     @Query('location_id') locationId?: string,
     @Query('date_from') dateFrom?: string,
@@ -99,7 +101,7 @@ export class StockController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.transfersService.findAll({
+    return this.transfersService.findAll(user.institute_id, {
       item_id: itemId ? Number(itemId) : undefined,
       location_id: locationId ? Number(locationId) : undefined,
       date_from: dateFrom,
@@ -113,8 +115,8 @@ export class StockController {
   @RequirePermission({ resource: 'stock', action: 'read' })
   @ApiOperation({ summary: 'Get a transfer' })
   @ApiParam({ name: 'id', example: 1 })
-  getTransfer(@Param('id', ParseIntPipe) id: number) {
-    return this.transfersService.findOne(id);
+  getTransfer(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.transfersService.findOne(user.institute_id, id);
   }
 
   // ─── Adjustments ──────────────────────────────────────────────────────
@@ -123,7 +125,7 @@ export class StockController {
   @RequirePermission({ resource: 'stock', action: 'adjust' })
   @ApiOperation({ summary: 'Record a stock adjustment (damaged/expired/lost/audit_correction) — creates an immutable ledger entry' })
   createAdjustment(@Body() dto: CreateAdjustmentDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.adjustmentsService.create(dto, user.eddva_user_id);
+    return this.adjustmentsService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get('adjustments')
@@ -137,6 +139,7 @@ export class StockController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   listAdjustments(
+    @InventoryUser() user: InventoryPlatformUser,
     @Query('item_id') itemId?: string,
     @Query('location_id') locationId?: string,
     @Query('reason') reason?: string,
@@ -145,7 +148,7 @@ export class StockController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.adjustmentsService.findAll({
+    return this.adjustmentsService.findAll(user.institute_id, {
       item_id: itemId ? Number(itemId) : undefined,
       location_id: locationId ? Number(locationId) : undefined,
       reason,
@@ -160,8 +163,8 @@ export class StockController {
   @RequirePermission({ resource: 'stock', action: 'read' })
   @ApiOperation({ summary: 'Get an adjustment' })
   @ApiParam({ name: 'id', example: 1 })
-  getAdjustment(@Param('id', ParseIntPipe) id: number) {
-    return this.adjustmentsService.findOne(id);
+  getAdjustment(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.adjustmentsService.findOne(user.institute_id, id);
   }
 
   // ─── Balances / Ledger / Reconciliation ──────────────────────────────
@@ -174,12 +177,13 @@ export class StockController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   getBalances(
+    @InventoryUser() user: InventoryPlatformUser,
     @Query('item_id') itemId?: string,
     @Query('location_id') locationId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.balancesService.getBalances({
+    return this.balancesService.getBalances(user.institute_id, {
       item_id: itemId ? Number(itemId) : undefined,
       location_id: locationId ? Number(locationId) : undefined,
       page: page ? Number(page) : undefined,
@@ -199,6 +203,7 @@ export class StockController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   getLedger(
+    @InventoryUser() user: InventoryPlatformUser,
     @Query('item_id') itemId?: string,
     @Query('location_id') locationId?: string,
     @Query('transaction_type') transactionType?: string,
@@ -208,7 +213,7 @@ export class StockController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.balancesService.getLedger({
+    return this.balancesService.getLedger(user.institute_id, {
       item_id: itemId ? Number(itemId) : undefined,
       location_id: locationId ? Number(locationId) : undefined,
       transaction_type: transactionType,
@@ -224,7 +229,7 @@ export class StockController {
   @RequirePermission({ resource: 'stock', action: 'reconcile' })
   @ApiOperation({ summary: 'Recompute stock_balances from stock_ledger (the ledger always wins) — optionally scoped to one item' })
   @ApiQuery({ name: 'item_id', required: false })
-  reconcile(@Query('item_id') itemId?: string) {
-    return this.balancesService.reconcile(itemId ? Number(itemId) : undefined);
+  reconcile(@InventoryUser() user: InventoryPlatformUser, @Query('item_id') itemId?: string) {
+    return this.balancesService.reconcile(user.institute_id, itemId ? Number(itemId) : undefined);
   }
 }

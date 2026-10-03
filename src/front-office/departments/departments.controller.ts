@@ -21,23 +21,23 @@ export class DepartmentsController {
   @RequirePermission({ resource: 'departments', action: 'create' })
   @ApiOperation({ summary: 'Create a Front Office department' })
   create(@Body() dto: CreateDepartmentDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.departmentsService.create(dto, user.eddva_user_id);
+    return this.departmentsService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get()
   @RequirePermission({ resource: 'departments', action: 'read' })
   @ApiOperation({ summary: 'List/search Front Office departments' })
   @ApiQuery({ name: 'search', required: false })
-  findAll(@Query('search') search?: string) {
-    return this.departmentsService.findAll(search);
+  findAll(@FrontOfficeUser() user: FrontOfficePlatformUser, @Query('search') search?: string) {
+    return this.departmentsService.findAll(user.institute_id, search);
   }
 
   @Get(':id')
   @RequirePermission({ resource: 'departments', action: 'read' })
   @ApiOperation({ summary: 'Get a Front Office department' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.departmentsService.findOne(id);
+  findOne(@FrontOfficeUser() user: FrontOfficePlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.departmentsService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -45,6 +45,6 @@ export class DepartmentsController {
   @ApiOperation({ summary: 'Update a Front Office department' })
   @ApiParam({ name: 'id', example: 1 })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateDepartmentDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.departmentsService.update(id, dto, user.eddva_user_id);
+    return this.departmentsService.update(user.institute_id, id, dto, user.eddva_user_id);
   }
 }

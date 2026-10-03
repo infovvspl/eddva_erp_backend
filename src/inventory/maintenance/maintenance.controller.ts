@@ -21,7 +21,7 @@ export class MaintenanceController {
   @RequirePermission({ resource: 'assets', action: 'maintain' })
   @ApiOperation({ summary: 'Report a maintenance issue for an asset unit — moves the asset to under_repair' })
   create(@Body() dto: CreateMaintenanceDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.maintenanceService.create(dto, user.eddva_user_id);
+    return this.maintenanceService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get()
@@ -32,12 +32,13 @@ export class MaintenanceController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   findAll(
+    @InventoryUser() user: InventoryPlatformUser,
     @Query('asset_unit_id') assetUnitId?: string,
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.maintenanceService.findAll({
+    return this.maintenanceService.findAll(user.institute_id, {
       asset_unit_id: assetUnitId ? Number(assetUnitId) : undefined,
       status,
       page: page ? Number(page) : undefined,
@@ -49,8 +50,8 @@ export class MaintenanceController {
   @RequirePermission({ resource: 'assets', action: 'read' })
   @ApiOperation({ summary: 'Get a maintenance record' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.maintenanceService.findOne(id);
+  findOne(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.maintenanceService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -58,6 +59,6 @@ export class MaintenanceController {
   @ApiOperation({ summary: 'Update maintenance status/cost — resolving the last open ticket returns the asset to in_store' })
   @ApiParam({ name: 'id', example: 1 })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateMaintenanceDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.maintenanceService.update(id, dto, user.eddva_user_id);
+    return this.maintenanceService.update(user.institute_id, id, dto, user.eddva_user_id);
   }
 }

@@ -33,7 +33,7 @@ export class ComplaintsController {
   @RequirePermission({ resource: 'complaints', action: 'create' })
   @ApiOperation({ summary: 'Register a complaint' })
   create(@Body() dto: CreateComplaintDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.complaintsService.create(dto, user.eddva_user_id);
+    return this.complaintsService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get()
@@ -63,7 +63,7 @@ export class ComplaintsController {
     @Query('limit') limit?: string,
   ) {
     const scope = await this.access.resolveScope(user);
-    return this.complaintsService.findAll(
+    return this.complaintsService.findAll(user.institute_id, 
       {
         category,
         priority,
@@ -84,8 +84,8 @@ export class ComplaintsController {
   @RequirePermission({ resource: 'complaints', action: 'read' })
   @ApiOperation({ summary: 'Get complaint details' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.complaintsService.findOne(id);
+  findOne(@FrontOfficeUser() user: FrontOfficePlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.complaintsService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -93,7 +93,7 @@ export class ComplaintsController {
   @ApiOperation({ summary: 'Update complaint details' })
   @ApiParam({ name: 'id', example: 1 })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateComplaintDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.complaintsService.update(id, dto, user.eddva_user_id);
+    return this.complaintsService.update(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Patch(':id/assign')
@@ -101,7 +101,7 @@ export class ComplaintsController {
   @ApiOperation({ summary: 'Assign/reassign a complaint' })
   @ApiParam({ name: 'id', example: 1 })
   assign(@Param('id', ParseIntPipe) id: number, @Body() dto: AssignComplaintDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.complaintsService.assign(id, dto, user.eddva_user_id);
+    return this.complaintsService.assign(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Patch(':id/priority')
@@ -109,7 +109,7 @@ export class ComplaintsController {
   @ApiOperation({ summary: 'Change complaint priority' })
   @ApiParam({ name: 'id', example: 1 })
   changePriority(@Param('id', ParseIntPipe) id: number, @Body() dto: ChangeComplaintPriorityDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.complaintsService.changePriority(id, dto, user.eddva_user_id);
+    return this.complaintsService.changePriority(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Patch(':id/status')
@@ -117,7 +117,7 @@ export class ComplaintsController {
   @ApiOperation({ summary: 'Change complaint status (open → in_progress → resolved → closed, reopen supported)' })
   @ApiParam({ name: 'id', example: 1 })
   changeStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: ChangeComplaintStatusDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.complaintsService.changeStatus(id, dto, user.eddva_user_id);
+    return this.complaintsService.changeStatus(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Post(':id/resolve')
@@ -125,7 +125,7 @@ export class ComplaintsController {
   @ApiOperation({ summary: 'Mark complaint resolved' })
   @ApiParam({ name: 'id', example: 1 })
   resolve(@Param('id', ParseIntPipe) id: number, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.complaintsService.resolve(id, user.eddva_user_id);
+    return this.complaintsService.resolve(user.institute_id, id, user.eddva_user_id);
   }
 
   @Post(':id/close')
@@ -133,7 +133,7 @@ export class ComplaintsController {
   @ApiOperation({ summary: 'Close a complaint' })
   @ApiParam({ name: 'id', example: 1 })
   close(@Param('id', ParseIntPipe) id: number, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.complaintsService.close(id, user.eddva_user_id);
+    return this.complaintsService.close(user.institute_id, id, user.eddva_user_id);
   }
 
   @Post(':id/escalate')
@@ -141,7 +141,7 @@ export class ComplaintsController {
   @ApiOperation({ summary: 'Escalate a complaint to a manager (raises priority to at least high)' })
   @ApiParam({ name: 'id', example: 1 })
   escalate(@Param('id', ParseIntPipe) id: number, @Body() dto: EscalateComplaintDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.complaintsService.escalate(id, dto, user.eddva_user_id);
+    return this.complaintsService.escalate(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Post(':id/updates')
@@ -149,15 +149,15 @@ export class ComplaintsController {
   @ApiOperation({ summary: 'Add a complaint update/timeline entry' })
   @ApiParam({ name: 'id', example: 1 })
   addUpdate(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateComplaintUpdateDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.complaintsService.addUpdate(id, dto, user.eddva_user_id);
+    return this.complaintsService.addUpdate(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Get(':id/updates')
   @RequirePermission({ resource: 'complaints', action: 'read' })
   @ApiOperation({ summary: 'Get the full complaint update/timeline history' })
   @ApiParam({ name: 'id', example: 1 })
-  listUpdates(@Param('id', ParseIntPipe) id: number) {
-    return this.complaintsService.listUpdates(id);
+  listUpdates(@FrontOfficeUser() user: FrontOfficePlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.complaintsService.listUpdates(user.institute_id, id);
   }
 
   @Get(':id/audit')

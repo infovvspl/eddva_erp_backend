@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { FrontOfficeAuditService } from '../common/front-office-audit.service';
 import { FrontOfficeNotificationService } from '../notifications/front-office-notification.service';
 import { FO_ENTITY } from '../common/front-office-entities';
@@ -28,29 +29,31 @@ export class ComplaintsService {
     private readonly notifications: FrontOfficeNotificationService,
   ) {}
 
-  private async assertEmployeeExists(employeeId: number) {
-    const employee = await this.prisma.frontOfficeEmployee.findUnique({ where: { employee_id: employeeId } });
+  private async assertEmployeeExists(instituteId: string, employeeId: number) {
+    const employee = await this.prisma.frontOfficeEmployee.findFirst({ where: { employee_id: employeeId, institute_id: instituteId } });
     if (!employee) throw new NotFoundException(`Employee #${employeeId} not found`);
     return employee;
   }
 
-  private async assertExists(id: number) {
-    const complaint = await this.prisma.frontOfficeComplaint.findUnique({ where: { complaint_id: id } });
+  private async assertExists(instituteId: string, id: number) {
+    const complaint = await this.prisma.frontOfficeComplaint.findFirst({ where: { complaint_id: id, institute_id: instituteId } });
     if (!complaint) throw new NotFoundException(`Complaint #${id} not found`);
     return complaint;
   }
 
-  private async addTimelineEntry(complaintId: number, notes: string, statusChange: string | undefined, actorId?: string) {
+  private async addTimelineEntry(instituteId: string, complaintId: number, notes: string, statusChange: string | undefined, actorId?: string) {
     return this.prisma.frontOfficeComplaintUpdate.create({
-      data: { complaint_id: complaintId, notes, status_change: statusChange, updated_by: actorId },
+      data: { institute_id: instituteId, complaint_id: complaintId, notes, status_change: statusChange, updated_by: actorId },
     });
   }
 
-  async create(dto: CreateComplaintDto, actorId?: string) {
-    if (dto.assigned_to) await this.assertEmployeeExists(dto.assigned_to);
+  async create(instituteId: string, dto: CreateComplaintDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    if (dto.assigned_to) await this.assertEmployeeExists(institute_id, dto.assigned_to);
 
     const complaint = await this.prisma.frontOfficeComplaint.create({
       data: {
+        institute_id,
         complainant_name: dto.complainant_name,
         phone: dto.phone,
         email: dto.email,
@@ -62,11 +65,12 @@ export class ComplaintsService {
       },
     });
 
-    await this.addTimelineEntry(complaint.complaint_id, 'Complaint registered', undefined, actorId);
+    await this.addTimelineEntry(institute_id, complaint.complaint_id, 'Complaint registered', undefined, actorId);
     await this.audit.log({ userId: actorId, entityType: FO_ENTITY.COMPLAINT, entityId: String(complaint.complaint_id), action: 'create' });
 
     if (dto.assigned_to) {
       await this.notifications.send({
+        instituteId: institute_id,
         entityType: 'complaint',
         entityId: complaint.complaint_id,
         eventType: 'complaint_assigned',
@@ -79,6 +83,7 @@ export class ComplaintsService {
   }
 
   async findAll(
+    instituteId: string,
     params: {
       category?: string;
       priority?: string;
@@ -96,7 +101,7 @@ export class ComplaintsService {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const filters: any = {};
+    const filters: any = { institute_id: requireInstituteId(instituteId) };
     if (params.category) filters.category = params.category;
     if (params.priority) filters.priority = params.priority;
     if (params.status) filters.status = params.status;
@@ -125,17 +130,18 @@ export class ComplaintsService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findOne(id: number) {
-    const complaint = await this.prisma.frontOfficeComplaint.findUnique({
-      where: { complaint_id: id },
+  async findOne(instituteId: string, id: number) {
+    const complaint = await this.prisma.frontOfficeComplaint.findFirst({
+      where: { complaint_id: id, institute_id: requireInstituteId(instituteId) },
       include: { assignee: true, updates: { orderBy: { updated_at: 'desc' } } },
     });
     if (!complaint) throw new NotFoundException(`Complaint #${id} not found`);
     return complaint;
   }
 
-  async update(id: number, dto: UpdateComplaintDto, actorId?: string) {
-    await this.assertExists(id);
+  async update(instituteId: string, id: number, dto: UpdateComplaintDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertExists(institute_id, id);
     const updated = await this.prisma.frontOfficeComplaint.update({
       where: { complaint_id: id },
       data: { complainant_name: dto.complainant_name, phone: dto.phone, email: dto.email, category: dto.category, description: dto.description },
@@ -144,14 +150,15 @@ export class ComplaintsService {
     return updated;
   }
 
-  async assign(id: number, dto: AssignComplaintDto, actorId?: string) {
-    const existing = await this.assertExists(id);
-    await this.assertEmployeeExists(dto.assigned_to);
+  async assign(instituteId: string, id: number, dto: AssignComplaintDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.assertExists(institute_id, id);
+    await this.assertEmployeeExists(institute_id, dto.assigned_to);
 
     const updated = await this.prisma.frontOfficeComplaint.update({ where: { complaint_id: id }, data: { assigned_to: dto.assigned_to } });
     const action = existing.assigned_to ? 'reassign' : 'assign';
 
-    await this.addTimelineEntry(id, dto.reason || `Complaint ${action}ed to employee #${dto.assigned_to}`, action, actorId);
+    await this.addTimelineEntry(institute_id, id, dto.reason || `Complaint ${action}ed to employee #${dto.assigned_to}`, action, actorId);
     await this.audit.log({
       userId: actorId,
       entityType: FO_ENTITY.COMPLAINT,
@@ -162,6 +169,7 @@ export class ComplaintsService {
       newStatus: String(dto.assigned_to),
     });
     await this.notifications.send({
+      instituteId: institute_id,
       entityType: 'complaint',
       entityId: id,
       eventType: existing.assigned_to ? 'complaint_reassigned' : 'complaint_assigned',
@@ -172,11 +180,12 @@ export class ComplaintsService {
     return updated;
   }
 
-  async changePriority(id: number, dto: ChangeComplaintPriorityDto, actorId?: string) {
-    const existing = await this.assertExists(id);
+  async changePriority(instituteId: string, id: number, dto: ChangeComplaintPriorityDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.assertExists(institute_id, id);
     const updated = await this.prisma.frontOfficeComplaint.update({ where: { complaint_id: id }, data: { priority: dto.priority as any } });
 
-    await this.addTimelineEntry(id, dto.reason || `Priority changed from ${existing.priority} to ${dto.priority}`, 'priority_change', actorId);
+    await this.addTimelineEntry(institute_id, id, dto.reason || `Priority changed from ${existing.priority} to ${dto.priority}`, 'priority_change', actorId);
     await this.audit.log({
       userId: actorId,
       entityType: FO_ENTITY.COMPLAINT,
@@ -189,6 +198,7 @@ export class ComplaintsService {
 
     if (existing.assigned_to && PRIORITY_RANK[dto.priority] > PRIORITY_RANK[existing.priority]) {
       await this.notifications.send({
+        instituteId: institute_id,
         entityType: 'complaint',
         entityId: id,
         eventType: 'complaint_priority_changed',
@@ -200,8 +210,9 @@ export class ComplaintsService {
     return updated;
   }
 
-  async changeStatus(id: number, dto: ChangeComplaintStatusDto, actorId?: string) {
-    const existing = await this.assertExists(id);
+  async changeStatus(instituteId: string, id: number, dto: ChangeComplaintStatusDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.assertExists(institute_id, id);
     const allowed = ALLOWED_TRANSITIONS[existing.status] || [];
     if (!allowed.includes(dto.status)) {
       throw new ConflictException(`Cannot transition complaint from "${existing.status}" to "${dto.status}"`);
@@ -213,11 +224,12 @@ export class ComplaintsService {
     });
 
     const action = existing.status === dto.status ? 'status_change' : dto.status === 'open' && existing.status !== 'open' ? 'reopen' : 'status_change';
-    await this.addTimelineEntry(id, dto.reason || `Status changed from ${existing.status} to ${dto.status}`, action, actorId);
+    await this.addTimelineEntry(institute_id, id, dto.reason || `Status changed from ${existing.status} to ${dto.status}`, action, actorId);
     await this.audit.log({ userId: actorId, entityType: FO_ENTITY.COMPLAINT, entityId: String(id), action, oldStatus: existing.status, newStatus: dto.status, reason: dto.reason });
 
     if (existing.assigned_to) {
       await this.notifications.send({
+        instituteId: institute_id,
         entityType: 'complaint',
         entityId: id,
         eventType: `complaint_${dto.status}`,
@@ -229,17 +241,18 @@ export class ComplaintsService {
     return updated;
   }
 
-  resolve(id: number, actorId?: string) {
-    return this.changeStatus(id, { status: 'resolved' as any }, actorId);
+  resolve(instituteId: string, id: number, actorId?: string) {
+    return this.changeStatus(instituteId, id, { status: 'resolved' as any }, actorId);
   }
 
-  close(id: number, actorId?: string) {
-    return this.changeStatus(id, { status: 'closed' as any }, actorId);
+  close(instituteId: string, id: number, actorId?: string) {
+    return this.changeStatus(instituteId, id, { status: 'closed' as any }, actorId);
   }
 
-  async escalate(id: number, dto: EscalateComplaintDto, actorId?: string) {
-    const existing = await this.assertExists(id);
-    await this.assertEmployeeExists(dto.to_employee_id);
+  async escalate(instituteId: string, id: number, dto: EscalateComplaintDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.assertExists(institute_id, id);
+    await this.assertEmployeeExists(institute_id, dto.to_employee_id);
 
     const nextPriority = PRIORITY_RANK[existing.priority] < PRIORITY_RANK.high ? 'high' : existing.priority;
 
@@ -248,7 +261,7 @@ export class ComplaintsService {
       data: { assigned_to: dto.to_employee_id, priority: nextPriority as any },
     });
 
-    await this.addTimelineEntry(id, dto.reason || `Escalated to employee #${dto.to_employee_id}`, 'escalated', actorId);
+    await this.addTimelineEntry(institute_id, id, dto.reason || `Escalated to employee #${dto.to_employee_id}`, 'escalated', actorId);
     await this.audit.log({
       userId: actorId,
       entityType: FO_ENTITY.COMPLAINT,
@@ -260,6 +273,7 @@ export class ComplaintsService {
       metadata: { escalated_from: existing.assigned_to, escalated_to: dto.to_employee_id },
     });
     await this.notifications.send({
+      instituteId: institute_id,
       entityType: 'complaint',
       entityId: id,
       eventType: 'complaint_escalated',
@@ -270,15 +284,17 @@ export class ComplaintsService {
     return updated;
   }
 
-  async addUpdate(id: number, dto: CreateComplaintUpdateDto, actorId?: string) {
-    await this.assertExists(id);
-    const update = await this.addTimelineEntry(id, dto.notes, undefined, actorId);
+  async addUpdate(instituteId: string, id: number, dto: CreateComplaintUpdateDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertExists(institute_id, id);
+    const update = await this.addTimelineEntry(institute_id, id, dto.notes, undefined, actorId);
     await this.audit.log({ userId: actorId, entityType: FO_ENTITY.COMPLAINT_UPDATE, entityId: String(update.update_id), action: 'create', metadata: { complaint_id: id } });
     return update;
   }
 
-  async listUpdates(id: number) {
-    await this.assertExists(id);
-    return this.prisma.frontOfficeComplaintUpdate.findMany({ where: { complaint_id: id }, orderBy: { updated_at: 'desc' } });
+  async listUpdates(instituteId: string, id: number) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertExists(institute_id, id);
+    return this.prisma.frontOfficeComplaintUpdate.findMany({ where: { complaint_id: id, institute_id }, orderBy: { updated_at: 'desc' } });
   }
 }

@@ -27,6 +27,7 @@ export class AssetUnitsController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   findAll(
+    @InventoryUser() user: InventoryPlatformUser,
     @Query('item_id') itemId?: string,
     @Query('location_id') locationId?: string,
     @Query('holder_id') holderId?: string,
@@ -35,7 +36,7 @@ export class AssetUnitsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.assetUnitsService.findAll({
+    return this.assetUnitsService.findAll(user.institute_id, {
       item_id: itemId ? Number(itemId) : undefined,
       location_id: locationId ? Number(locationId) : undefined,
       holder_id: holderId ? Number(holderId) : undefined,
@@ -50,8 +51,8 @@ export class AssetUnitsController {
   @RequirePermission({ resource: 'assets', action: 'read' })
   @ApiOperation({ summary: 'Look up an asset by its unique tag/barcode — the primary barcode/QR scanning workflow endpoint' })
   @ApiParam({ name: 'tag', example: 'LAPTOP-0001' })
-  findByTag(@Param('tag') tag: string) {
-    return this.assetUnitsService.findByTag(tag);
+  findByTag(@InventoryUser() user: InventoryPlatformUser, @Param('tag') tag: string) {
+    return this.assetUnitsService.findByTag(user.institute_id, tag);
   }
 
   @Patch(':tag')
@@ -59,6 +60,6 @@ export class AssetUnitsController {
   @ApiOperation({ summary: 'Update an asset unit (serial number, location, warranty, or a direct status override outside the issue/return flow)' })
   @ApiParam({ name: 'tag', example: 'LAPTOP-0001' })
   update(@Param('tag') tag: string, @Body() dto: UpdateAssetUnitDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.assetUnitsService.update(tag, dto, user.eddva_user_id);
+    return this.assetUnitsService.update(user.institute_id, tag, dto, user.eddva_user_id);
   }
 }

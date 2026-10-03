@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { FrontOfficeAuditService } from '../common/front-office-audit.service';
 import { FO_ENTITY } from '../common/front-office-entities';
 import { combineDateAndTime } from '../common/time.util';
@@ -14,22 +15,24 @@ export class EmployeesService {
     private readonly audit: FrontOfficeAuditService,
   ) {}
 
-  private async assertDepartmentExists(departmentId: number) {
-    const dept = await this.prisma.frontOfficeDepartment.findUnique({ where: { department_id: departmentId } });
+  private async assertDepartmentExists(instituteId: string, departmentId: number) {
+    const dept = await this.prisma.frontOfficeDepartment.findFirst({ where: { department_id: departmentId, institute_id: instituteId } });
     if (!dept) throw new NotFoundException(`Department #${departmentId} not found`);
     return dept;
   }
 
-  async create(dto: CreateEmployeeDto, actorId?: string) {
-    await this.assertDepartmentExists(dto.department_id);
+  async create(instituteId: string, dto: CreateEmployeeDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertDepartmentExists(institute_id, dto.department_id);
 
     if (dto.email) {
-      const clash = await this.prisma.frontOfficeEmployee.findUnique({ where: { email: dto.email } });
+      const clash = await this.prisma.frontOfficeEmployee.findFirst({ where: { email: dto.email, institute_id } });
       if (clash) throw new ConflictException(`An employee with email "${dto.email}" already exists`);
     }
 
     const employee = await this.prisma.frontOfficeEmployee.create({
       data: {
+        institute_id,
         name: dto.name,
         department_id: dto.department_id,
         designation: dto.designation,
@@ -47,11 +50,11 @@ export class EmployeesService {
     return employee;
   }
 
-  async findAll(params: { search?: string; departmentId?: number; page?: number; limit?: number }) {
+  async findAll(instituteId: string, params: { search?: string; departmentId?: number; page?: number; limit?: number }) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const where: any = {};
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (params.departmentId) where.department_id = params.departmentId;
     if (params.search) {
       where.OR = [
@@ -75,21 +78,22 @@ export class EmployeesService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findOne(id: number) {
-    const employee = await this.prisma.frontOfficeEmployee.findUnique({
-      where: { employee_id: id },
+  async findOne(instituteId: string, id: number) {
+    const employee = await this.prisma.frontOfficeEmployee.findFirst({
+      where: { employee_id: id, institute_id: requireInstituteId(instituteId) },
       include: { department: true },
     });
     if (!employee) throw new NotFoundException(`Employee #${id} not found`);
     return employee;
   }
 
-  async update(id: number, dto: UpdateEmployeeDto, actorId?: string) {
-    const existing = await this.findOne(id);
+  async update(instituteId: string, id: number, dto: UpdateEmployeeDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.findOne(institute_id, id);
 
-    if (dto.department_id) await this.assertDepartmentExists(dto.department_id);
+    if (dto.department_id) await this.assertDepartmentExists(institute_id, dto.department_id);
     if (dto.email && dto.email !== existing.email) {
-      const clash = await this.prisma.frontOfficeEmployee.findUnique({ where: { email: dto.email } });
+      const clash = await this.prisma.frontOfficeEmployee.findFirst({ where: { email: dto.email, institute_id } });
       if (clash) throw new ConflictException(`An employee with email "${dto.email}" already exists`);
     }
 
@@ -116,9 +120,10 @@ export class EmployeesService {
     return updated;
   }
 
-  async getAppointments(employeeId: number, params: { from?: string; to?: string; status?: string }) {
-    await this.findOne(employeeId);
-    const where: any = { host_employee_id: employeeId };
+  async getAppointments(instituteId: string, employeeId: number, params: { from?: string; to?: string; status?: string }) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.findOne(institute_id, employeeId);
+    const where: any = { host_employee_id: employeeId, institute_id };
     if (params.status) where.status = params.status;
     if (params.from || params.to) {
       where.appointment_date = {};
@@ -135,20 +140,23 @@ export class EmployeesService {
     });
   }
 
-  async getAvailability(employeeId: number, date?: string) {
-    await this.findOne(employeeId);
-    const where: any = { employee_id: employeeId };
+  async getAvailability(instituteId: string, employeeId: number, date?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.findOne(institute_id, employeeId);
+    const where: any = { employee_id: employeeId, institute_id };
     if (date) where.date = new Date(date);
     return this.prisma.frontOfficeAvailabilitySlot.findMany({ where, orderBy: [{ date: 'asc' }, { start_time: 'asc' }] });
   }
 
-  async createAvailabilitySlot(employeeId: number, dto: CreateAvailabilitySlotDto) {
-    await this.findOne(employeeId);
+  async createAvailabilitySlot(instituteId: string, employeeId: number, dto: CreateAvailabilitySlotDto) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.findOne(institute_id, employeeId);
     if (dto.start_time >= dto.end_time) {
       throw new BadRequestException('end_time must be after start_time');
     }
     return this.prisma.frontOfficeAvailabilitySlot.create({
       data: {
+        institute_id,
         employee_id: employeeId,
         date: new Date(dto.date),
         start_time: dto.start_time,
@@ -158,8 +166,8 @@ export class EmployeesService {
     });
   }
 
-  async updateAvailabilitySlot(slotId: number, dto: Partial<CreateAvailabilitySlotDto>) {
-    const slot = await this.prisma.frontOfficeAvailabilitySlot.findUnique({ where: { slot_id: slotId } });
+  async updateAvailabilitySlot(instituteId: string, slotId: number, dto: Partial<CreateAvailabilitySlotDto>) {
+    const slot = await this.prisma.frontOfficeAvailabilitySlot.findFirst({ where: { slot_id: slotId, institute_id: requireInstituteId(instituteId) } });
     if (!slot) throw new NotFoundException(`Availability slot #${slotId} not found`);
 
     const start_time = dto.start_time ?? slot.start_time;
@@ -179,8 +187,8 @@ export class EmployeesService {
     });
   }
 
-  async deleteAvailabilitySlot(slotId: number) {
-    const slot = await this.prisma.frontOfficeAvailabilitySlot.findUnique({ where: { slot_id: slotId } });
+  async deleteAvailabilitySlot(instituteId: string, slotId: number) {
+    const slot = await this.prisma.frontOfficeAvailabilitySlot.findFirst({ where: { slot_id: slotId, institute_id: requireInstituteId(instituteId) } });
     if (!slot) throw new NotFoundException(`Availability slot #${slotId} not found`);
     await this.prisma.frontOfficeAvailabilitySlot.delete({ where: { slot_id: slotId } });
     return { deleted: true };
@@ -193,7 +201,8 @@ export class EmployeesService {
    * unconstrained/available, since availability configuration is optional
    * per section 16) AND no conflicting non-cancelled appointment.
    */
-  async findAvailableEmployees(params: { date: string; start_time: string; end_time: string; department_id?: number }) {
+  async findAvailableEmployees(instituteId: string, params: { date: string; start_time: string; end_time: string; department_id?: number }) {
+    const institute_id = requireInstituteId(instituteId);
     if (params.start_time >= params.end_time) {
       throw new BadRequestException('end_time must be after start_time');
     }
@@ -202,7 +211,7 @@ export class EmployeesService {
     const dateOnly = new Date(params.date);
 
     const employees = await this.prisma.frontOfficeEmployee.findMany({
-      where: { status: 'ACTIVE', department_id: params.department_id },
+      where: { status: 'ACTIVE', institute_id, department_id: params.department_id },
       include: {
         availability_slots: { where: { date: dateOnly } },
         hosted_appointments: {

@@ -37,21 +37,21 @@ export class CanteenPaymentsController {
     @Body() dto: CreateCanteenPaymentDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.paymentsService.processPayment(orderId, dto, user.eddva_user_id);
+    return this.paymentsService.processPayment(user.institute_id, orderId, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Get payment records for order' })
   @RequirePermission({ resource: 'payments', action: 'read' })
   @Get('orders/:orderId/payments')
-  async getPaymentsByOrder(@Param('orderId') orderId: string) {
-    return this.paymentsService.getPaymentsByOrder(orderId);
+  async getPaymentsByOrder(@CanteenUser() user: CanteenPlatformUser, @Param('orderId') orderId: string) {
+    return this.paymentsService.getPaymentsByOrder(user.institute_id, orderId);
   }
 
   @ApiOperation({ summary: 'Get payment record details' })
   @RequirePermission({ resource: 'payments', action: 'read' })
   @Get('payments/:id')
-  async getPaymentById(@Param('id') id: string) {
-    return this.paymentsService.getPaymentById(id);
+  async getPaymentById(@CanteenUser() user: CanteenPlatformUser, @Param('id') id: string) {
+    return this.paymentsService.getPaymentById(user.institute_id, id);
   }
 
   @ApiOperation({ summary: 'Refund/Reverse payment transaction' })
@@ -62,6 +62,6 @@ export class CanteenPaymentsController {
     @Body() dto: RefundCanteenPaymentDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.paymentsService.refundPayment(id, dto, user.eddva_user_id);
+    return this.paymentsService.refundPayment(user.institute_id, id, dto, user.eddva_user_id);
   }
 }

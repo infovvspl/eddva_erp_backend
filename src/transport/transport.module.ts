@@ -23,6 +23,9 @@ import { TrackingService } from './tracking/tracking.service';
 import { FeesController } from './fees/fees.controller';
 import { FeesService } from './fees/fees.service';
 
+import { DashboardController } from './dashboard/dashboard.controller';
+import { DashboardService } from './dashboard/dashboard.service';
+
 @Module({
   imports: [TransportAuthModule, TransportRolesPermissionsModule],
   controllers: [
@@ -33,6 +36,7 @@ import { FeesService } from './fees/fees.service';
     TrackingController,
     TrackingIngestController,
     FeesController,
+    DashboardController,
   ],
   providers: [
     TransportAccessService,
@@ -43,6 +47,7 @@ import { FeesService } from './fees/fees.service';
     DriversService,
     TrackingService,
     FeesService,
+    DashboardService,
   ],
 })
 export class TransportModule {}

@@ -73,13 +73,15 @@ export class FrontOfficeAccessService {
     const isDeptStaff = roleStr.includes('DEPARTMENT STAFF') || roleStr.includes('DEPT_STAFF') || roleStr.includes('DEPT STAFF');
 
     if (!isManager && !isDeptStaff) {
-      // front_desk (or any other role holding the base permission) sees everything
+      // front_desk (or any other role holding the base permission) sees everything within the institute
       return { isAdmin: false, employeeId: null, departmentId: null, scope: 'all' };
     }
 
+    // email is now unique per institute, not globally — a lookup without the institute
+    // filter could resolve to a same-email employee at a different school.
     const email = actor.user_email;
     const employee = email
-      ? await this.prisma.frontOfficeEmployee.findUnique({ where: { email } })
+      ? await this.prisma.frontOfficeEmployee.findFirst({ where: { email, institute_id: actor.institute_id } })
       : null;
 
     if (!employee) {

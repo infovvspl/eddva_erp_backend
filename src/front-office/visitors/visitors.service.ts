@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { FrontOfficeAuditService } from '../common/front-office-audit.service';
 import { FO_ENTITY } from '../common/front-office-entities';
 import { decryptIdProof, encryptIdProof, maskIdProof } from '../common/id-proof-crypto.util';
@@ -32,15 +33,16 @@ export class VisitorsService {
     return { ...visitor, id_proof_number: decryptIdProof(visitor.id_proof_number) };
   }
 
-  async findDuplicate(phone?: string, email?: string) {
+  async findDuplicate(instituteId: string, phone?: string, email?: string) {
     if (!phone && !email) return null;
     return this.prisma.frontOfficeVisitor.findFirst({
-      where: { OR: [phone ? { phone } : undefined, email ? { email } : undefined].filter(Boolean) as any },
+      where: { institute_id: instituteId, OR: [phone ? { phone } : undefined, email ? { email } : undefined].filter(Boolean) as any },
     });
   }
 
-  async create(dto: CreateVisitorDto, actorId: string | undefined, canViewSensitive: boolean) {
-    const duplicate = await this.findDuplicate(dto.phone, dto.email);
+  async create(instituteId: string, dto: CreateVisitorDto, actorId: string | undefined, canViewSensitive: boolean) {
+    const institute_id = requireInstituteId(instituteId);
+    const duplicate = await this.findDuplicate(institute_id, dto.phone, dto.email);
     if (duplicate) {
       throw new ConflictException(
         `A visitor with this ${duplicate.phone === dto.phone ? 'phone number' : 'email'} already exists (visitor_id ${duplicate.visitor_id}). Update the existing record instead of creating a duplicate.`,
@@ -49,6 +51,7 @@ export class VisitorsService {
 
     const visitor = await this.prisma.frontOfficeVisitor.create({
       data: {
+        institute_id,
         full_name: dto.full_name,
         phone: dto.phone,
         email: dto.email,
@@ -72,14 +75,17 @@ export class VisitorsService {
 
   /** Used internally by check-in / appointment-conversion flows to avoid creating duplicate visitor masters. */
   async findOrCreate(
+    instituteId: string,
     data: { full_name: string; phone?: string; email?: string; id_proof_type?: string; id_proof_number?: string; photo_url?: string; organization?: string },
     actorId?: string,
   ) {
-    const existing = await this.findDuplicate(data.phone, data.email);
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.findDuplicate(institute_id, data.phone, data.email);
     if (existing) return existing;
 
     return this.prisma.frontOfficeVisitor.create({
       data: {
+        institute_id,
         full_name: data.full_name,
         phone: data.phone,
         email: data.email,
@@ -92,11 +98,11 @@ export class VisitorsService {
     });
   }
 
-  async findAll(params: { search?: string; page?: number; limit?: number }, canViewSensitive: boolean, viewerId?: string) {
+  async findAll(instituteId: string, params: { search?: string; page?: number; limit?: number }, canViewSensitive: boolean, viewerId?: string) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const where: any = {};
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (params.search) {
       where.OR = [
         { full_name: { contains: params.search, mode: 'insensitive' } },
@@ -120,18 +126,19 @@ export class VisitorsService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findOne(id: number, canViewSensitive: boolean, viewerId?: string) {
-    const visitor = await this.prisma.frontOfficeVisitor.findUnique({ where: { visitor_id: id } });
+  async findOne(instituteId: string, id: number, canViewSensitive: boolean, viewerId?: string) {
+    const visitor = await this.prisma.frontOfficeVisitor.findFirst({ where: { visitor_id: id, institute_id: requireInstituteId(instituteId) } });
     if (!visitor) throw new NotFoundException(`Visitor #${id} not found`);
     return this.serialize(visitor, canViewSensitive, viewerId);
   }
 
-  async update(id: number, dto: UpdateVisitorDto, actorId: string | undefined, canViewSensitive: boolean) {
-    const existing = await this.prisma.frontOfficeVisitor.findUnique({ where: { visitor_id: id } });
+  async update(instituteId: string, id: number, dto: UpdateVisitorDto, actorId: string | undefined, canViewSensitive: boolean) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.prisma.frontOfficeVisitor.findFirst({ where: { visitor_id: id, institute_id } });
     if (!existing) throw new NotFoundException(`Visitor #${id} not found`);
 
     if ((dto.phone && dto.phone !== existing.phone) || (dto.email && dto.email !== existing.email)) {
-      const duplicate = await this.findDuplicate(dto.phone !== existing.phone ? dto.phone : undefined, dto.email !== existing.email ? dto.email : undefined);
+      const duplicate = await this.findDuplicate(institute_id, dto.phone !== existing.phone ? dto.phone : undefined, dto.email !== existing.email ? dto.email : undefined);
       if (duplicate && duplicate.visitor_id !== id) {
         throw new ConflictException(`Another visitor already uses this ${duplicate.phone === dto.phone ? 'phone number' : 'email'} (visitor_id ${duplicate.visitor_id})`);
       }
@@ -154,26 +161,28 @@ export class VisitorsService {
     return this.serialize(updated, canViewSensitive, actorId);
   }
 
-  async getVisits(id: number) {
-    await this.assertExists(id);
+  async getVisits(instituteId: string, id: number) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertExists(institute_id, id);
     return this.prisma.frontOfficeVisitorLog.findMany({
-      where: { visitor_id: id },
+      where: { visitor_id: id, institute_id },
       include: { host_employee: { select: { employee_id: true, name: true, department_id: true } }, appointment: true },
       orderBy: { check_in_time: 'desc' },
     });
   }
 
-  async getAppointmentHistory(id: number) {
-    await this.assertExists(id);
+  async getAppointmentHistory(instituteId: string, id: number) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertExists(institute_id, id);
     return this.prisma.frontOfficeAppointment.findMany({
-      where: { visitor_id: id },
+      where: { visitor_id: id, institute_id },
       include: { host_employee: { select: { employee_id: true, name: true } }, department: { select: { name: true } } },
       orderBy: { appointment_date: 'desc' },
     });
   }
 
-  private async assertExists(id: number) {
-    const visitor = await this.prisma.frontOfficeVisitor.findUnique({ where: { visitor_id: id } });
+  private async assertExists(instituteId: string, id: number) {
+    const visitor = await this.prisma.frontOfficeVisitor.findFirst({ where: { visitor_id: id, institute_id: instituteId } });
     if (!visitor) throw new NotFoundException(`Visitor #${id} not found`);
     return visitor;
   }

@@ -21,23 +21,23 @@ export class VendorsController {
   @RequirePermission({ resource: 'vendors', action: 'create' })
   @ApiOperation({ summary: 'Create a vendor' })
   create(@Body() dto: CreateVendorDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.vendorsService.create(dto, user.eddva_user_id);
+    return this.vendorsService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get()
   @RequirePermission({ resource: 'vendors', action: 'read' })
   @ApiOperation({ summary: 'List/search vendors' })
   @ApiQuery({ name: 'search', required: false })
-  findAll(@Query('search') search?: string) {
-    return this.vendorsService.findAll(search);
+  findAll(@InventoryUser() user: InventoryPlatformUser, @Query('search') search?: string) {
+    return this.vendorsService.findAll(user.institute_id, search);
   }
 
   @Get(':id')
   @RequirePermission({ resource: 'vendors', action: 'read' })
   @ApiOperation({ summary: 'Get a vendor with its item associations' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.vendorsService.findOne(id);
+  findOne(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.vendorsService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -45,6 +45,6 @@ export class VendorsController {
   @ApiOperation({ summary: 'Update a vendor (activate/deactivate included)' })
   @ApiParam({ name: 'id', example: 1 })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateVendorDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.vendorsService.update(id, dto, user.eddva_user_id);
+    return this.vendorsService.update(user.institute_id, id, dto, user.eddva_user_id);
   }
 }

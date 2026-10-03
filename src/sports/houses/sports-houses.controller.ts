@@ -21,6 +21,8 @@ import { SportsJwtGuard } from '../auth/sports-jwt.guard';
 import { SportsInstituteAdminViewOnlyGuard } from '../auth/sports-institute-admin-view-only.guard';
 import { SportsPermissionsGuard } from '../auth/sports-permissions.guard';
 import { RequirePermission } from '../auth/require-permissions.decorator';
+import { SportsUser } from '../auth/sports-user.decorator';
+import type { SportsPlatformUser } from '../auth/sports-auth.service';
 
 @ApiTags('Sports / House Management')
 @ApiBearerAuth()
@@ -32,38 +34,38 @@ export class SportsHousesController {
   @Post()
   @RequirePermission({ resource: 'houses', action: 'create' })
   @ApiOperation({ summary: 'Create a new House (e.g. Red House, Falcon House)' })
-  createHouse(@Body() dto: CreateHouseDto) {
-    return this.svc.createHouse(dto);
+  createHouse(@SportsUser() user: SportsPlatformUser, @Body() dto: CreateHouseDto) {
+    return this.svc.createHouse(user.institute_id, dto);
   }
 
   @Get()
   @RequirePermission({ resource: 'houses', action: 'read' })
   @ApiOperation({ summary: 'List all Houses' })
-  listHouses() {
-    return this.svc.listHouses();
+  listHouses(@SportsUser() user: SportsPlatformUser) {
+    return this.svc.listHouses(user.institute_id);
   }
 
   @Get('standings')
   @RequirePermission({ resource: 'houses', action: 'read' })
   @ApiOperation({ summary: 'Get House Standings & Total Points (source of truth leaderboard)' })
-  getStandings(@Query('academic_year') academicYear?: string) {
-    return this.svc.getStandings(academicYear ?? '2026-27');
+  getStandings(@SportsUser() user: SportsPlatformUser, @Query('academic_year') academicYear?: string) {
+    return this.svc.getStandings(user.institute_id, academicYear ?? '2026-27');
   }
 
   @Get(':id')
   @RequirePermission({ resource: 'houses', action: 'read' })
   @ApiOperation({ summary: 'Get House details' })
   @ApiParam({ name: 'id', description: 'house_id of the House (e.g. 1)' })
-  getHouse(@Param('id', ParseIntPipe) id: number) {
-    return this.svc.getHouse(id);
+  getHouse(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.svc.getHouse(user.institute_id, id);
   }
 
   @Patch(':id')
   @RequirePermission({ resource: 'houses', action: 'update' })
   @ApiOperation({ summary: 'Update House details' })
   @ApiParam({ name: 'id', description: 'house_id of the House to update' })
-  updateHouse(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateHouseDto) {
-    return this.svc.updateHouse(id, dto);
+  updateHouse(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateHouseDto) {
+    return this.svc.updateHouse(user.institute_id, id, dto);
   }
 
   @Delete(':id')
@@ -71,39 +73,39 @@ export class SportsHousesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a House' })
   @ApiParam({ name: 'id', description: 'house_id of the House to delete' })
-  deleteHouse(@Param('id', ParseIntPipe) id: number) {
-    return this.svc.deleteHouse(id);
+  deleteHouse(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.svc.deleteHouse(user.institute_id, id);
   }
 
   @Post(':id/members')
   @RequirePermission({ resource: 'houses', action: 'update' })
   @ApiOperation({ summary: 'Assign student participant to a house for academic year' })
   @ApiParam({ name: 'id', description: 'house_id of target House (e.g. 1)' })
-  addMember(@Param('id', ParseIntPipe) houseId: number, @Body() dto: AddHouseMemberDto) {
-    return this.svc.addMember(houseId, dto);
+  addMember(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) houseId: number, @Body() dto: AddHouseMemberDto) {
+    return this.svc.addMember(user.institute_id, houseId, dto);
   }
 
   @Get(':id/members')
   @RequirePermission({ resource: 'houses', action: 'read' })
   @ApiOperation({ summary: 'List members of a house' })
   @ApiParam({ name: 'id', description: 'house_id of target House (e.g. 1)' })
-  getMembers(@Param('id', ParseIntPipe) houseId: number, @Query('academic_year') academicYear?: string) {
-    return this.svc.getMembers(houseId, academicYear);
+  getMembers(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) houseId: number, @Query('academic_year') academicYear?: string) {
+    return this.svc.getMembers(user.institute_id, houseId, academicYear);
   }
 
   @Post(':id/points')
   @RequirePermission({ resource: 'houses', action: 'award_points' })
   @ApiOperation({ summary: 'Award or deduct points (Points Ledger entry — source of truth for standings)' })
   @ApiParam({ name: 'id', description: 'house_id of target House (e.g. 1)' })
-  awardPoints(@Param('id', ParseIntPipe) houseId: number, @Body() dto: AwardHousePointsDto) {
-    return this.svc.awardPoints(houseId, dto);
+  awardPoints(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) houseId: number, @Body() dto: AwardHousePointsDto) {
+    return this.svc.awardPoints(user.institute_id, houseId, dto);
   }
 
   @Get(':id/points')
   @RequirePermission({ resource: 'houses', action: 'read' })
   @ApiOperation({ summary: 'View detailed house points history ledger' })
   @ApiParam({ name: 'id', description: 'house_id of target House (e.g. 1)' })
-  getPointsHistory(@Param('id', ParseIntPipe) houseId: number) {
-    return this.svc.getPointsHistory(houseId);
+  getPointsHistory(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) houseId: number) {
+    return this.svc.getPointsHistory(user.institute_id, houseId);
   }
 }

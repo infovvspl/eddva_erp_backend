@@ -21,7 +21,7 @@ export class LocationsController {
   @RequirePermission({ resource: 'locations', action: 'create' })
   @ApiOperation({ summary: 'Create a physical inventory location (store/department/classroom/lab)' })
   create(@Body() dto: CreateLocationDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.locationsService.create(dto, user.eddva_user_id);
+    return this.locationsService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get()
@@ -29,16 +29,16 @@ export class LocationsController {
   @ApiOperation({ summary: 'List/search/filter locations' })
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'type', required: false })
-  findAll(@Query('search') search?: string, @Query('type') type?: string) {
-    return this.locationsService.findAll(search, type);
+  findAll(@InventoryUser() user: InventoryPlatformUser, @Query('search') search?: string, @Query('type') type?: string) {
+    return this.locationsService.findAll(user.institute_id, search, type);
   }
 
   @Get(':id')
   @RequirePermission({ resource: 'locations', action: 'read' })
   @ApiOperation({ summary: 'Get a location' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.locationsService.findOne(id);
+  findOne(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.locationsService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -46,6 +46,6 @@ export class LocationsController {
   @ApiOperation({ summary: 'Update a location (rename, retype, activate/deactivate)' })
   @ApiParam({ name: 'id', example: 1 })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLocationDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.locationsService.update(id, dto, user.eddva_user_id);
+    return this.locationsService.update(user.institute_id, id, dto, user.eddva_user_id);
   }
 }

@@ -38,21 +38,21 @@ export class CanteenPosController {
   @RequirePermission({ resource: 'pos_terminals', action: 'create' })
   @Post('pos-terminals')
   async createTerminal(@Body() dto: CreatePosTerminalDto, @CanteenUser() user: CanteenPlatformUser) {
-    return this.posService.createTerminal(dto, user.eddva_user_id);
+    return this.posService.createTerminal(user.institute_id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'List POS terminals' })
   @RequirePermission({ resource: 'pos_terminals', action: 'read' })
   @Get('pos-terminals')
-  async getTerminals() {
-    return this.posService.getTerminals();
+  async getTerminals(@CanteenUser() user: CanteenPlatformUser) {
+    return this.posService.getTerminals(user.institute_id);
   }
 
   @ApiOperation({ summary: 'Get POS terminal by ID' })
   @RequirePermission({ resource: 'pos_terminals', action: 'read' })
   @Get('pos-terminals/:id')
-  async getTerminalById(@Param('id') id: string) {
-    return this.posService.getTerminalById(id);
+  async getTerminalById(@CanteenUser() user: CanteenPlatformUser, @Param('id') id: string) {
+    return this.posService.getTerminalById(user.institute_id, id);
   }
 
   @ApiOperation({ summary: 'Update POS terminal' })
@@ -63,14 +63,14 @@ export class CanteenPosController {
     @Body() dto: UpdatePosTerminalDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.posService.updateTerminal(id, dto, user.eddva_user_id);
+    return this.posService.updateTerminal(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Delete POS terminal' })
   @RequirePermission({ resource: 'pos_terminals', action: 'delete' })
   @Delete('pos-terminals/:id')
   async deleteTerminal(@Param('id') id: string, @CanteenUser() user: CanteenPlatformUser) {
-    return this.posService.deleteTerminal(id, user.eddva_user_id);
+    return this.posService.deleteTerminal(user.institute_id, id, user.eddva_user_id);
   }
 
   // --- Shifts ---
@@ -78,7 +78,7 @@ export class CanteenPosController {
   @RequirePermission({ resource: 'pos_shifts', action: 'open' })
   @Post('shifts/open')
   async openShift(@Body() dto: OpenPosShiftDto, @CanteenUser() user: CanteenPlatformUser) {
-    return this.posService.openShift(dto, user.eddva_user_id);
+    return this.posService.openShift(user.institute_id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'List POS shifts' })
@@ -90,13 +90,14 @@ export class CanteenPosController {
   @RequirePermission({ resource: 'pos_shifts', action: 'read' })
   @Get('shifts')
   async getShifts(
+    @CanteenUser() user: CanteenPlatformUser,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('terminalId') terminalId?: string,
     @Query('staffId') staffId?: string,
     @Query('status') status?: string,
   ) {
-    return this.posService.getShifts({
+    return this.posService.getShifts(user.institute_id, {
       page,
       limit,
       terminalId,
@@ -108,8 +109,8 @@ export class CanteenPosController {
   @ApiOperation({ summary: 'Get POS shift by ID' })
   @RequirePermission({ resource: 'pos_shifts', action: 'read' })
   @Get('shifts/:id')
-  async getShiftById(@Param('id') id: string) {
-    return this.posService.getShiftById(id);
+  async getShiftById(@CanteenUser() user: CanteenPlatformUser, @Param('id') id: string) {
+    return this.posService.getShiftById(user.institute_id, id);
   }
 
   @ApiOperation({ summary: 'Close POS shift and reconcile cash' })
@@ -120,6 +121,6 @@ export class CanteenPosController {
     @Body() dto: ClosePosShiftDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.posService.closeShift(id, dto, user.eddva_user_id);
+    return this.posService.closeShift(user.institute_id, id, dto, user.eddva_user_id);
   }
 }

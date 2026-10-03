@@ -21,7 +21,7 @@ export class HoldersController {
   @RequirePermission({ resource: 'holders', action: 'create' })
   @ApiOperation({ summary: 'Create a holder (staff/student/department) — use the parent system integration where available instead of duplicating master data' })
   create(@Body() dto: CreateHolderDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.holdersService.create(dto, user.eddva_user_id);
+    return this.holdersService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get()
@@ -32,20 +32,21 @@ export class HoldersController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   findAll(
+    @InventoryUser() user: InventoryPlatformUser,
     @Query('search') search?: string,
     @Query('holder_type') holderType?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.holdersService.findAll({ search, holder_type: holderType, page: page ? Number(page) : undefined, limit: limit ? Number(limit) : undefined });
+    return this.holdersService.findAll(user.institute_id, { search, holder_type: holderType, page: page ? Number(page) : undefined, limit: limit ? Number(limit) : undefined });
   }
 
   @Get(':id')
   @RequirePermission({ resource: 'holders', action: 'read' })
   @ApiOperation({ summary: 'Get a holder' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.holdersService.findOne(id);
+  findOne(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.holdersService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -53,14 +54,14 @@ export class HoldersController {
   @ApiOperation({ summary: 'Update a holder' })
   @ApiParam({ name: 'id', example: 1 })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateHolderDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.holdersService.update(id, dto, user.eddva_user_id);
+    return this.holdersService.update(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Get(':id/current-issues')
   @RequirePermission({ resource: 'holders', action: 'read' })
   @ApiOperation({ summary: 'Everything currently issued to this holder (consumables and assets, including overdue/pending-approval)' })
   @ApiParam({ name: 'id', example: 1 })
-  currentIssues(@Param('id', ParseIntPipe) id: number) {
-    return this.holdersService.currentIssues(id);
+  currentIssues(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.holdersService.currentIssues(user.institute_id, id);
   }
 }

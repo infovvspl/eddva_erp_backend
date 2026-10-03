@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CreateHouseDto, UpdateHouseDto } from './dto/create-house.dto';
 import { AddHouseMemberDto } from './dto/add-house-member.dto';
 import { AwardHousePointsDto } from './dto/award-house-points.dto';
@@ -8,12 +9,13 @@ import { AwardHousePointsDto } from './dto/award-house-points.dto';
 export class SportsHousesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createHouse(dto: CreateHouseDto) {
-    return this.prisma.sportsHouse.create({ data: dto });
+  async createHouse(instituteId: string, dto: CreateHouseDto) {
+    return this.prisma.sportsHouse.create({ data: { ...dto, institute_id: requireInstituteId(instituteId) } });
   }
 
-  async listHouses() {
+  async listHouses(instituteId: string) {
     return this.prisma.sportsHouse.findMany({
+      where: { institute_id: requireInstituteId(instituteId) },
       include: {
         house_master: true,
         _count: { select: { memberships: true } },
@@ -22,29 +24,36 @@ export class SportsHousesService {
     });
   }
 
-  async getHouse(id: number) {
-    const house = await this.prisma.sportsHouse.findUnique({
-      where: { house_id: id },
+  async getHouse(instituteId: string, id: number) {
+    const house = await this.prisma.sportsHouse.findFirst({
+      where: { house_id: id, institute_id: requireInstituteId(instituteId) },
       include: { house_master: true, standings: true },
     });
     if (!house) throw new NotFoundException(`House #${id} not found`);
     return house;
   }
 
-  async updateHouse(id: number, dto: UpdateHouseDto) {
-    await this.getHouse(id);
+  async updateHouse(instituteId: string, id: number, dto: UpdateHouseDto) {
+    await this.getHouse(instituteId, id);
     return this.prisma.sportsHouse.update({ where: { house_id: id }, data: dto });
   }
 
-  async deleteHouse(id: number) {
-    await this.getHouse(id);
+  async deleteHouse(instituteId: string, id: number) {
+    await this.getHouse(instituteId, id);
     return this.prisma.sportsHouse.delete({ where: { house_id: id } });
   }
 
   // ─── House Memberships ─────────────────────────────────────────────────────
 
-  async addMember(houseId: number, dto: AddHouseMemberDto) {
-    await this.getHouse(houseId);
+  async addMember(instituteId: string, houseId: number, dto: AddHouseMemberDto) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.getHouse(institute_id, houseId);
+
+    // The participant must belong to the same institute as the house being joined.
+    const participant = await this.prisma.sportsParticipant.findFirst({
+      where: { participant_id: dto.participant_id, institute_id },
+    });
+    if (!participant) throw new NotFoundException(`Participant #${dto.participant_id} not found`);
 
     return this.prisma.sportsHouseMembership.upsert({
       where: {
@@ -58,6 +67,7 @@ export class SportsHousesService {
         status: dto.status ?? 'active',
       },
       create: {
+        institute_id,
         house_id: houseId,
         participant_id: dto.participant_id,
         academic_year: dto.academic_year,
@@ -67,11 +77,12 @@ export class SportsHousesService {
     });
   }
 
-  async getMembers(houseId: number, academic_year?: string) {
-    await this.getHouse(houseId);
+  async getMembers(instituteId: string, houseId: number, academic_year?: string) {
+    await this.getHouse(instituteId, houseId);
     return this.prisma.sportsHouseMembership.findMany({
       where: {
         house_id: houseId,
+        institute_id: instituteId,
         ...(academic_year && { academic_year }),
       },
       include: { participant: true },
@@ -81,11 +92,13 @@ export class SportsHousesService {
 
   // ─── Points Ledger & Standings ─────────────────────────────────────────────
 
-  async awardPoints(houseId: number, dto: AwardHousePointsDto, userId?: number) {
-    await this.getHouse(houseId);
+  async awardPoints(instituteId: string, houseId: number, dto: AwardHousePointsDto, userId?: number) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.getHouse(institute_id, houseId);
 
     const pointRecord = await this.prisma.sportsHousePoint.create({
       data: {
+        institute_id,
         house_id: houseId,
         points: dto.points,
         source_type: dto.source_type,
@@ -97,32 +110,33 @@ export class SportsHousesService {
     });
 
     // Recompute standings for this academic year
-    await this.recalculateStandings(dto.academic_year);
+    await this.recalculateStandings(institute_id, dto.academic_year);
 
     return pointRecord;
   }
 
-  async getPointsHistory(houseId: number) {
-    await this.getHouse(houseId);
+  async getPointsHistory(instituteId: string, houseId: number) {
+    await this.getHouse(instituteId, houseId);
     return this.prisma.sportsHousePoint.findMany({
-      where: { house_id: houseId },
+      where: { house_id: houseId, institute_id: instituteId },
       include: { awarder_user: true },
       orderBy: { awarded_date: 'desc' },
     });
   }
 
-  async getStandings(academic_year: string = '2026-27') {
-    await this.recalculateStandings(academic_year);
+  async getStandings(instituteId: string, academic_year: string = '2026-27') {
+    const institute_id = requireInstituteId(instituteId);
+    await this.recalculateStandings(institute_id, academic_year);
 
     return this.prisma.sportsHouseStanding.findMany({
-      where: { academic_year },
+      where: { academic_year, institute_id },
       include: { house: true },
       orderBy: { total_points: 'desc' },
     });
   }
 
-  private async recalculateStandings(academic_year: string) {
-    const houses = await this.prisma.sportsHouse.findMany();
+  private async recalculateStandings(instituteId: string, academic_year: string) {
+    const houses = await this.prisma.sportsHouse.findMany({ where: { institute_id: instituteId } });
 
     const standingsMap: { house_id: number; total: number }[] = [];
 
@@ -152,6 +166,7 @@ export class SportsHousesService {
           rank: i + 1,
         },
         create: {
+          institute_id: instituteId,
           house_id: item.house_id,
           academic_year,
           total_points: item.total,

@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CanteenAuditService } from '../common/canteen-audit.service';
 import { CreateCanteenWalletDto } from './dto/create-canteen-wallet.dto';
 import { UpdateCanteenWalletDto } from './dto/update-canteen-wallet.dto';
@@ -25,9 +26,9 @@ export class CanteenWalletService {
   ) {}
 
   // --- Wallets ---
-  async getWalletByMemberId(memberId: string) {
-    const wallet = await this.prisma.canteenWallet.findUnique({
-      where: { memberId },
+  async getWalletByMemberId(instituteId: string, memberId: string) {
+    const wallet = await this.prisma.canteenWallet.findFirst({
+      where: { memberId, instituteId: requireInstituteId(instituteId) },
       include: {
         member: true,
         transactions: {
@@ -42,9 +43,9 @@ export class CanteenWalletService {
     return wallet;
   }
 
-  async getWalletById(id: string) {
-    const wallet = await this.prisma.canteenWallet.findUnique({
-      where: { id },
+  async getWalletById(instituteId: string, id: string) {
+    const wallet = await this.prisma.canteenWallet.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: {
         member: true,
         transactions: {
@@ -59,9 +60,10 @@ export class CanteenWalletService {
     return wallet;
   }
 
-  async createWallet(memberId: string, dto: CreateCanteenWalletDto, actorUserId?: string) {
-    const member = await this.prisma.canteenMember.findUnique({
-      where: { id: memberId },
+  async createWallet(instituteId: string, memberId: string, dto: CreateCanteenWalletDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const member = await this.prisma.canteenMember.findFirst({
+      where: { id: memberId, instituteId: instId },
     });
     if (!member) {
       throw new NotFoundException('Member profile not found.');
@@ -79,6 +81,7 @@ export class CanteenWalletService {
     const wallet = await this.prisma.$transaction(async (tx) => {
       const w = await tx.canteenWallet.create({
         data: {
+          instituteId: instId,
           memberId,
           balance: initialBal,
           status: CanteenWalletStatus.ACTIVE,
@@ -90,6 +93,7 @@ export class CanteenWalletService {
       if (initialBal > 0) {
         await tx.canteenWalletTransaction.create({
           data: {
+            instituteId: instId,
             walletId: w.id,
             type: CanteenWalletTransType.CREDIT,
             amount: initialBal,
@@ -115,8 +119,8 @@ export class CanteenWalletService {
     return wallet;
   }
 
-  async updateWallet(id: string, dto: UpdateCanteenWalletDto, actorUserId?: string) {
-    const wallet = await this.getWalletById(id);
+  async updateWallet(instituteId: string, id: string, dto: UpdateCanteenWalletDto, actorUserId?: string) {
+    const wallet = await this.getWalletById(instituteId, id);
 
     const updated = await this.prisma.canteenWallet.update({
       where: { id },
@@ -139,9 +143,9 @@ export class CanteenWalletService {
     return updated;
   }
 
-  async deleteWallet(id: string, actorUserId?: string) {
-    const wallet = await this.prisma.canteenWallet.findUnique({
-      where: { id },
+  async deleteWallet(instituteId: string, id: string, actorUserId?: string) {
+    const wallet = await this.prisma.canteenWallet.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: { transactions: true },
     });
     if (!wallet) {
@@ -167,8 +171,9 @@ export class CanteenWalletService {
   }
 
   // --- Top-ups ---
-  async processTopup(walletId: string, dto: TopupCanteenWalletDto, approverUserId?: string) {
-    const wallet = await this.getWalletById(walletId);
+  async processTopup(instituteId: string, walletId: string, dto: TopupCanteenWalletDto, approverUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const wallet = await this.getWalletById(instId, walletId);
 
     if (wallet.status !== CanteenWalletStatus.ACTIVE) {
       throw new BadRequestException('Cannot top-up a blocked or inactive wallet.');
@@ -183,6 +188,7 @@ export class CanteenWalletService {
     return this.prisma.$transaction(async (tx) => {
       const topup = await tx.canteenWalletTopup.create({
         data: {
+          instituteId: instId,
           walletId,
           amount: topupAmount,
           paymentMode: dto.paymentMode,
@@ -202,6 +208,7 @@ export class CanteenWalletService {
 
       const ledger = await tx.canteenWalletTransaction.create({
         data: {
+          instituteId: instId,
           walletId,
           type: CanteenWalletTransType.CREDIT,
           amount: topupAmount,
@@ -233,17 +240,17 @@ export class CanteenWalletService {
     });
   }
 
-  async getTopupsByWallet(walletId: string) {
-    await this.getWalletById(walletId);
+  async getTopupsByWallet(instituteId: string, walletId: string) {
+    await this.getWalletById(instituteId, walletId);
     return this.prisma.canteenWalletTopup.findMany({
       where: { walletId },
       orderBy: { topupDate: 'desc' },
     });
   }
 
-  async getTopupById(id: string) {
-    const topup = await this.prisma.canteenWalletTopup.findUnique({
-      where: { id },
+  async getTopupById(instituteId: string, id: string) {
+    const topup = await this.prisma.canteenWalletTopup.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: {
         wallet: { include: { member: true } },
       },
@@ -255,8 +262,8 @@ export class CanteenWalletService {
   }
 
   // --- Wallet Ledger / Transactions ---
-  async getTransactionsByWallet(walletId: string, page = 1, limit = 25) {
-    await this.getWalletById(walletId);
+  async getTransactionsByWallet(instituteId: string, walletId: string, page = 1, limit = 25) {
+    await this.getWalletById(instituteId, walletId);
 
     const skip = (Number(page) - 1) * Number(limit);
     const take = Number(limit);
@@ -282,9 +289,9 @@ export class CanteenWalletService {
     };
   }
 
-  async getTransactionById(id: string) {
-    const txn = await this.prisma.canteenWalletTransaction.findUnique({
-      where: { id },
+  async getTransactionById(instituteId: string, id: string) {
+    const txn = await this.prisma.canteenWalletTransaction.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: { wallet: { include: { member: true } } },
     });
     if (!txn) {
@@ -294,8 +301,8 @@ export class CanteenWalletService {
   }
 
   // --- Block / Unblock ---
-  async blockWallet(id: string, dto: BlockWalletDto, actorUserId?: string) {
-    const wallet = await this.getWalletById(id);
+  async blockWallet(instituteId: string, id: string, dto: BlockWalletDto, actorUserId?: string) {
+    const wallet = await this.getWalletById(instituteId, id);
 
     if (wallet.status === CanteenWalletStatus.BLOCKED) {
       throw new BadRequestException('Wallet is already blocked.');
@@ -318,8 +325,8 @@ export class CanteenWalletService {
     return updated;
   }
 
-  async unblockWallet(id: string, actorUserId?: string) {
-    const wallet = await this.getWalletById(id);
+  async unblockWallet(instituteId: string, id: string, actorUserId?: string) {
+    const wallet = await this.getWalletById(instituteId, id);
 
     if (wallet.status === CanteenWalletStatus.ACTIVE) {
       throw new BadRequestException('Wallet is already active.');

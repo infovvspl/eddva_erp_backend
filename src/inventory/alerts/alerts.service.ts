@@ -1,26 +1,29 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 
 @Injectable()
 export class AlertsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Items whose total stock across all locations is at/below their reorder_level, with a per-location breakdown. */
-  async lowStock() {
+  async lowStock(instituteId: string) {
+    const institute_id = requireInstituteId(instituteId);
     const rows = await this.prisma.$queryRawUnsafe<Array<{ item_id: number; total_qty: bigint | null }>>(
       `SELECT i.item_id, COALESCE(SUM(b.quantity), 0) AS total_qty
        FROM inv_items i
        LEFT JOIN inv_stock_balances b ON b.item_id = i.item_id
-       WHERE i.status = 'ACTIVE'
+       WHERE i.status = 'ACTIVE' AND i.institute_id = $1
        GROUP BY i.item_id
        HAVING COALESCE(SUM(b.quantity), 0) <= (SELECT reorder_level FROM inv_items WHERE item_id = i.item_id)`,
+      institute_id,
     );
 
     const itemIds = rows.map((r) => r.item_id);
     if (itemIds.length === 0) return [];
 
     const items = await this.prisma.invItem.findMany({
-      where: { item_id: { in: itemIds } },
+      where: { item_id: { in: itemIds }, institute_id },
       include: {
         category: { select: { name: true } },
         balances: { include: { location: { select: { location_id: true, name: true } } } },
@@ -41,10 +44,11 @@ export class AlertsService {
   }
 
   /** Active issues whose expected_return_date has passed without being fully returned. */
-  async overdueReturns() {
+  async overdueReturns(instituteId: string) {
     const now = new Date();
     return this.prisma.invAssetIssue.findMany({
       where: {
+        institute_id: requireInstituteId(instituteId),
         expected_return_date: { lt: now },
         status: { in: ['issued', 'partially_returned'] },
       },

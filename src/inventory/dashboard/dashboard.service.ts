@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 
 function startOfToday() {
   const d = new Date();
@@ -23,7 +24,8 @@ export class DashboardService {
     return Object.keys(range).length > 0 ? range : undefined;
   }
 
-  async getSummary(from?: string, to?: string) {
+  async getSummary(instituteId: string, from?: string, to?: string) {
+    const institute_id = requireInstituteId(instituteId);
     const todayStart = startOfToday();
     const todayEnd = endOfToday();
     const purchaseDateRange = this.dateRange(from, to);
@@ -39,33 +41,35 @@ export class DashboardService {
       byVendorPurchases,
       valuationRows,
     ] = await Promise.all([
-      this.prisma.invItem.count({ where: { status: 'ACTIVE' } }),
+      this.prisma.invItem.count({ where: { status: 'ACTIVE', institute_id } }),
       this.prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
         `SELECT COUNT(*) as count FROM (
            SELECT i.item_id
            FROM inv_items i
            LEFT JOIN inv_stock_balances b ON b.item_id = i.item_id
-           WHERE i.status = 'ACTIVE'
+           WHERE i.status = 'ACTIVE' AND i.institute_id = $1
            GROUP BY i.item_id
            HAVING COALESCE(SUM(b.quantity), 0) <= (SELECT reorder_level FROM inv_items WHERE item_id = i.item_id)
          ) low_stock`,
+        institute_id,
       ),
-      this.prisma.invStockBalance.groupBy({ by: ['location_id'], _sum: { quantity: true } }),
-      this.prisma.invAssetIssue.count({ where: { issue_date: { gte: todayStart, lt: todayEnd } } }),
-      this.prisma.invAssetIssue.count({ where: { expected_return_date: { lt: new Date() }, status: { in: ['issued', 'partially_returned'] } } }),
-      this.prisma.invAssetUnit.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.prisma.invStockBalance.groupBy({ by: ['location_id'], where: { institute_id }, _sum: { quantity: true } }),
+      this.prisma.invAssetIssue.count({ where: { institute_id, issue_date: { gte: todayStart, lt: todayEnd } } }),
+      this.prisma.invAssetIssue.count({ where: { institute_id, expected_return_date: { lt: new Date() }, status: { in: ['issued', 'partially_returned'] } } }),
+      this.prisma.invAssetUnit.groupBy({ by: ['status'], where: { institute_id }, _count: { _all: true } }),
       this.prisma.$queryRawUnsafe<Array<{ category: string; issue_count: bigint }>>(
         `SELECT c.name AS category, COUNT(iss.issue_id) AS issue_count
          FROM inv_asset_issues iss
          JOIN inv_items i ON i.item_id = iss.item_id
          JOIN inv_categories c ON c.category_id = i.category_id
-         WHERE iss.status IN ('issued','partially_returned','returned')
+         WHERE iss.status IN ('issued','partially_returned','returned') AND iss.institute_id = $1
          GROUP BY c.name
          ORDER BY issue_count DESC`,
+        institute_id,
       ),
       this.prisma.invStockPurchase.groupBy({
         by: ['vendor_id'],
-        where: { purchase_date: purchaseDateRange },
+        where: { institute_id, purchase_date: purchaseDateRange },
         _sum: { total_amount: true },
         _count: { _all: true },
       }),
@@ -77,14 +81,16 @@ export class DashboardService {
            WHERE p.item_id = b.item_id
            ORDER BY p.purchase_date DESC, p.purchase_id DESC
            LIMIT 1
-         ) latest ON true`,
+         ) latest ON true
+         WHERE b.institute_id = $1`,
+        institute_id,
       ),
     ]);
 
-    const locations = await this.prisma.invLocation.findMany({ where: { location_id: { in: stockByLocation.map((r) => r.location_id) } } });
+    const locations = await this.prisma.invLocation.findMany({ where: { location_id: { in: stockByLocation.map((r) => r.location_id) }, institute_id } });
     const locationMap = new Map(locations.map((l) => [l.location_id, l.name]));
 
-    const vendors = await this.prisma.invVendor.findMany({ where: { vendor_id: { in: byVendorPurchases.map((r) => r.vendor_id) } } });
+    const vendors = await this.prisma.invVendor.findMany({ where: { vendor_id: { in: byVendorPurchases.map((r) => r.vendor_id) }, institute_id } });
     const vendorMap = new Map(vendors.map((v) => [v.vendor_id, v.name]));
 
     const assetStatusMap = Object.fromEntries(assetsByStatus.map((r) => [r.status, r._count._all]));

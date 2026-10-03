@@ -27,7 +27,7 @@ export class AppointmentsController {
   @RequirePermission({ resource: 'appointments', action: 'create' })
   @ApiOperation({ summary: 'Create an appointment (server-side conflict check, concurrency-safe)' })
   create(@Body() dto: CreateAppointmentDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.appointmentsService.create(dto, user.eddva_user_id);
+    return this.appointmentsService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get()
@@ -55,7 +55,7 @@ export class AppointmentsController {
     @Query('limit') limit?: string,
   ) {
     const scope = await this.access.resolveScope(user);
-    return this.appointmentsService.findAll(
+    return this.appointmentsService.findAll(user.institute_id, 
       {
         date_from: dateFrom,
         date_to: dateTo,
@@ -76,7 +76,7 @@ export class AppointmentsController {
   @ApiOperation({ summary: "Today's appointments" })
   async today(@FrontOfficeUser() user: FrontOfficePlatformUser) {
     const scope = await this.access.resolveScope(user);
-    return this.appointmentsService.today(this.access.hostScopedWhere(scope));
+    return this.appointmentsService.today(user.institute_id, this.access.hostScopedWhere(scope));
   }
 
   @Get('upcoming')
@@ -85,7 +85,7 @@ export class AppointmentsController {
   @ApiQuery({ name: 'days', required: false })
   async upcoming(@FrontOfficeUser() user: FrontOfficePlatformUser, @Query('days') days?: string) {
     const scope = await this.access.resolveScope(user);
-    return this.appointmentsService.upcoming(days ? Number(days) : undefined, this.access.hostScopedWhere(scope));
+    return this.appointmentsService.upcoming(user.institute_id, days ? Number(days) : undefined, this.access.hostScopedWhere(scope));
   }
 
   @Get('availability')
@@ -93,8 +93,8 @@ export class AppointmentsController {
   @ApiOperation({ summary: 'Open time windows for a host on a given date' })
   @ApiQuery({ name: 'host_employee_id', example: 1 })
   @ApiQuery({ name: 'date', example: '2026-09-01' })
-  getAvailableSlots(@Query('host_employee_id') hostEmployeeId: string, @Query('date') date: string) {
-    return this.appointmentsService.getAvailableSlots(Number(hostEmployeeId), date);
+  getAvailableSlots(@FrontOfficeUser() user: FrontOfficePlatformUser, @Query('host_employee_id') hostEmployeeId: string, @Query('date') date: string) {
+    return this.appointmentsService.getAvailableSlots(user.institute_id, Number(hostEmployeeId), date);
   }
 
   @Get('conflicts')
@@ -106,13 +106,14 @@ export class AppointmentsController {
   @ApiQuery({ name: 'end_time', example: '10:30' })
   @ApiQuery({ name: 'exclude_appointment_id', required: false })
   checkConflicts(
+    @FrontOfficeUser() user: FrontOfficePlatformUser,
     @Query('host_employee_id') hostEmployeeId: string,
     @Query('date') date: string,
     @Query('start_time') startTime: string,
     @Query('end_time') endTime: string,
     @Query('exclude_appointment_id') excludeAppointmentId?: string,
   ) {
-    return this.appointmentsService.checkConflicts({
+    return this.appointmentsService.checkConflicts(user.institute_id, {
       host_employee_id: Number(hostEmployeeId),
       date,
       start_time: startTime,
@@ -125,8 +126,8 @@ export class AppointmentsController {
   @RequirePermission({ resource: 'appointments', action: 'read' })
   @ApiOperation({ summary: 'Get appointment details' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.appointmentsService.findOne(id);
+  findOne(@FrontOfficeUser() user: FrontOfficePlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.appointmentsService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -134,7 +135,7 @@ export class AppointmentsController {
   @ApiOperation({ summary: 'Update appointment details (visitor/purpose — not date/time/host, use reschedule for that)' })
   @ApiParam({ name: 'id', example: 1 })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateAppointmentDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.appointmentsService.update(id, dto, user.eddva_user_id);
+    return this.appointmentsService.update(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Post(':id/confirm')
@@ -142,7 +143,7 @@ export class AppointmentsController {
   @ApiOperation({ summary: 'Confirm a scheduled appointment' })
   @ApiParam({ name: 'id', example: 1 })
   confirm(@Param('id', ParseIntPipe) id: number, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.appointmentsService.confirm(id, user.eddva_user_id);
+    return this.appointmentsService.confirm(user.institute_id, id, user.eddva_user_id);
   }
 
   @Post(':id/cancel')
@@ -150,7 +151,7 @@ export class AppointmentsController {
   @ApiOperation({ summary: 'Cancel an appointment' })
   @ApiParam({ name: 'id', example: 1 })
   cancel(@Param('id', ParseIntPipe) id: number, @Body() dto: CancelAppointmentDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.appointmentsService.cancel(id, dto, user.eddva_user_id);
+    return this.appointmentsService.cancel(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Post(':id/complete')
@@ -158,7 +159,7 @@ export class AppointmentsController {
   @ApiOperation({ summary: 'Mark a confirmed appointment completed' })
   @ApiParam({ name: 'id', example: 1 })
   complete(@Param('id', ParseIntPipe) id: number, @Body() dto: CompleteAppointmentDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.appointmentsService.complete(id, dto, user.eddva_user_id);
+    return this.appointmentsService.complete(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Post(':id/no-show')
@@ -166,7 +167,7 @@ export class AppointmentsController {
   @ApiOperation({ summary: 'Mark an appointment as a no-show' })
   @ApiParam({ name: 'id', example: 1 })
   noShow(@Param('id', ParseIntPipe) id: number, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.appointmentsService.noShow(id, user.eddva_user_id);
+    return this.appointmentsService.noShow(user.institute_id, id, user.eddva_user_id);
   }
 
   @Post(':id/reschedule')
@@ -174,6 +175,6 @@ export class AppointmentsController {
   @ApiOperation({ summary: 'Reschedule an appointment — re-validates the new slot (concurrency-safe)' })
   @ApiParam({ name: 'id', example: 1 })
   reschedule(@Param('id', ParseIntPipe) id: number, @Body() dto: RescheduleAppointmentDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.appointmentsService.reschedule(id, dto, user.eddva_user_id);
+    return this.appointmentsService.reschedule(user.institute_id, id, dto, user.eddva_user_id);
   }
 }

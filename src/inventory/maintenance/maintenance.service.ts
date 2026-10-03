@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { InventoryAuditService } from '../common/inventory-audit.service';
 import { INV_ENTITY } from '../common/inventory-entities';
 import { CreateMaintenanceDto } from './dto/create-maintenance.dto';
@@ -12,13 +13,15 @@ export class MaintenanceService {
     private readonly audit: InventoryAuditService,
   ) {}
 
-  async create(dto: CreateMaintenanceDto, actorId?: string) {
-    const assetUnit = await this.prisma.invAssetUnit.findUnique({ where: { asset_unit_id: dto.asset_unit_id } });
+  async create(instituteId: string, dto: CreateMaintenanceDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const assetUnit = await this.prisma.invAssetUnit.findFirst({ where: { asset_unit_id: dto.asset_unit_id, institute_id } });
     if (!assetUnit) throw new NotFoundException(`Asset unit #${dto.asset_unit_id} not found`);
 
     const record = await this.prisma.$transaction(async (tx) => {
       const created = await tx.invAssetMaintenance.create({
         data: {
+          institute_id,
           asset_unit_id: dto.asset_unit_id,
           issue_reported: dto.issue_reported,
           service_date: dto.service_date ? new Date(dto.service_date) : undefined,
@@ -39,11 +42,11 @@ export class MaintenanceService {
     return record;
   }
 
-  async findAll(params: { asset_unit_id?: number; status?: string; page?: number; limit?: number }) {
+  async findAll(instituteId: string, params: { asset_unit_id?: number; status?: string; page?: number; limit?: number }) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const where: any = {};
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (params.asset_unit_id) where.asset_unit_id = params.asset_unit_id;
     if (params.status) where.status = params.status;
 
@@ -60,17 +63,17 @@ export class MaintenanceService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findOne(id: number) {
-    const record = await this.prisma.invAssetMaintenance.findUnique({
-      where: { maintenance_id: id },
+  async findOne(instituteId: string, id: number) {
+    const record = await this.prisma.invAssetMaintenance.findFirst({
+      where: { maintenance_id: id, institute_id: requireInstituteId(instituteId) },
       include: { asset_unit: true },
     });
     if (!record) throw new NotFoundException(`Maintenance record #${id} not found`);
     return record;
   }
 
-  async update(id: number, dto: UpdateMaintenanceDto, actorId?: string) {
-    const existing = await this.findOne(id);
+  async update(instituteId: string, id: number, dto: UpdateMaintenanceDto, actorId?: string) {
+    const existing = await this.findOne(instituteId, id);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.invAssetMaintenance.update({
