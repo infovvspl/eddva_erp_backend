@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CreateTournamentDto, UpdateTournamentDto } from './dto/create-tournament.dto';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { CreateFixtureDto } from './dto/create-fixture.dto';
@@ -16,9 +17,20 @@ export class SportsTournamentsService {
 
   // ─── Tournaments CRUD ──────────────────────────────────────────────────────
 
-  async createTournament(dto: CreateTournamentDto, userId?: number) {
+  async createTournament(instituteId: string, dto: CreateTournamentDto, userId?: number) {
+    const institute_id = requireInstituteId(instituteId);
+
+    // The sport and (if given) the venue must belong to the same institute.
+    const sport = await this.prisma.sportsSport.findFirst({ where: { sport_id: dto.sport_id, institute_id } });
+    if (!sport) throw new NotFoundException(`Sport #${dto.sport_id} not found`);
+    if (dto.venue_id) {
+      const venue = await this.prisma.sportsVenue.findFirst({ where: { venue_id: dto.venue_id, institute_id } });
+      if (!venue) throw new NotFoundException(`Venue #${dto.venue_id} not found`);
+    }
+
     return this.prisma.sportsTournament.create({
       data: {
+        institute_id,
         name: dto.name,
         sport_id: dto.sport_id,
         level: dto.level ?? 'inter_house',
@@ -33,8 +45,9 @@ export class SportsTournamentsService {
     });
   }
 
-  async listTournaments() {
+  async listTournaments(instituteId: string) {
     return this.prisma.sportsTournament.findMany({
+      where: { institute_id: requireInstituteId(instituteId) },
       include: {
         sport: true,
         venue: true,
@@ -44,9 +57,9 @@ export class SportsTournamentsService {
     });
   }
 
-  async getTournament(id: number) {
-    const item = await this.prisma.sportsTournament.findUnique({
-      where: { tournament_id: id },
+  async getTournament(instituteId: string, id: number) {
+    const item = await this.prisma.sportsTournament.findFirst({
+      where: { tournament_id: id, institute_id: requireInstituteId(instituteId) },
       include: {
         sport: true,
         venue: true,
@@ -58,8 +71,16 @@ export class SportsTournamentsService {
     return item;
   }
 
-  async updateTournament(id: number, dto: UpdateTournamentDto) {
-    await this.getTournament(id);
+  async updateTournament(instituteId: string, id: number, dto: UpdateTournamentDto) {
+    await this.getTournament(instituteId, id);
+    if (dto.sport_id) {
+      const sport = await this.prisma.sportsSport.findFirst({ where: { sport_id: dto.sport_id, institute_id: instituteId } });
+      if (!sport) throw new NotFoundException(`Sport #${dto.sport_id} not found`);
+    }
+    if (dto.venue_id !== undefined && dto.venue_id !== null) {
+      const venue = await this.prisma.sportsVenue.findFirst({ where: { venue_id: dto.venue_id, institute_id: instituteId } });
+      if (!venue) throw new NotFoundException(`Venue #${dto.venue_id} not found`);
+    }
     return this.prisma.sportsTournament.update({
       where: { tournament_id: id },
       data: {
@@ -78,11 +99,13 @@ export class SportsTournamentsService {
 
   // ─── Teams Management ──────────────────────────────────────────────────────
 
-  async createTeam(tournamentId: number, dto: CreateTeamDto) {
-    await this.getTournament(tournamentId);
+  async createTeam(instituteId: string, tournamentId: number, dto: CreateTeamDto) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.getTournament(institute_id, tournamentId);
 
     const team = await this.prisma.sportsTournamentTeam.create({
       data: {
+        institute_id,
         tournament_id: tournamentId,
         team_name: dto.team_name,
         house_id: dto.house_id,
@@ -94,6 +117,7 @@ export class SportsTournamentsService {
       for (const m of dto.members) {
         await this.prisma.sportsTournamentTeamMember.create({
           data: {
+            institute_id,
             tournament_team_id: team.tournament_team_id,
             participant_id: m.participant_id,
             role: m.role ?? 'player',
@@ -108,10 +132,10 @@ export class SportsTournamentsService {
     });
   }
 
-  async getTeams(tournamentId: number) {
-    await this.getTournament(tournamentId);
+  async getTeams(instituteId: string, tournamentId: number) {
+    await this.getTournament(instituteId, tournamentId);
     return this.prisma.sportsTournamentTeam.findMany({
-      where: { tournament_id: tournamentId },
+      where: { tournament_id: tournamentId, institute_id: instituteId },
       include: { house: true, coach: true, members: { include: { participant: true } } },
       orderBy: { team_name: 'asc' },
     });
@@ -119,22 +143,23 @@ export class SportsTournamentsService {
 
   // ─── Fixtures Management ───────────────────────────────────────────────────
 
-  async createFixture(tournamentId: number, dto: CreateFixtureDto) {
-    await this.getTournament(tournamentId);
+  async createFixture(instituteId: string, tournamentId: number, dto: CreateFixtureDto) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.getTournament(institute_id, tournamentId);
 
     if (dto.team_a_id === dto.team_b_id) {
       throw new BadRequestException('Team A and Team B cannot be the same team');
     }
 
     const teamA = await this.prisma.sportsTournamentTeam.findFirst({
-      where: { tournament_team_id: dto.team_a_id, tournament_id: tournamentId },
+      where: { tournament_team_id: dto.team_a_id, tournament_id: tournamentId, institute_id },
     });
     if (!teamA) {
       throw new NotFoundException(`Team A #${dto.team_a_id} not found in Tournament #${tournamentId}`);
     }
 
     const teamB = await this.prisma.sportsTournamentTeam.findFirst({
-      where: { tournament_team_id: dto.team_b_id, tournament_id: tournamentId },
+      where: { tournament_team_id: dto.team_b_id, tournament_id: tournamentId, institute_id },
     });
     if (!teamB) {
       throw new NotFoundException(`Team B #${dto.team_b_id} not found in Tournament #${tournamentId}`);
@@ -142,6 +167,7 @@ export class SportsTournamentsService {
 
     return this.prisma.sportsFixture.create({
       data: {
+        institute_id,
         tournament_id: tournamentId,
         round: dto.round,
         team_a_id: dto.team_a_id,
@@ -154,10 +180,10 @@ export class SportsTournamentsService {
     });
   }
 
-  async getFixtures(tournamentId: number) {
-    await this.getTournament(tournamentId);
+  async getFixtures(instituteId: string, tournamentId: number) {
+    await this.getTournament(instituteId, tournamentId);
     return this.prisma.sportsFixture.findMany({
-      where: { tournament_id: tournamentId },
+      where: { tournament_id: tournamentId, institute_id: instituteId },
       include: {
         team_a: true,
         team_b: true,
@@ -170,12 +196,20 @@ export class SportsTournamentsService {
 
   // ─── Result Recording & Scoring ───────────────────────────────────────────
 
-  async recordResult(fixtureId: number, dto: RecordResultDto, userId?: number) {
-    const fixture = await this.prisma.sportsFixture.findUnique({
-      where: { fixture_id: fixtureId },
+  async recordResult(instituteId: string, fixtureId: number, dto: RecordResultDto, userId?: number) {
+    const institute_id = requireInstituteId(instituteId);
+    const fixture = await this.prisma.sportsFixture.findFirst({
+      where: { fixture_id: fixtureId, institute_id },
       include: { tournament: true },
     });
     if (!fixture) throw new NotFoundException(`Fixture #${fixtureId} not found`);
+
+    if (dto.winner_team_id) {
+      const winnerBelongsToFixture = [fixture.team_a_id, fixture.team_b_id].includes(dto.winner_team_id);
+      if (!winnerBelongsToFixture) {
+        throw new BadRequestException(`Team #${dto.winner_team_id} is not one of this fixture's teams`);
+      }
+    }
 
     const result = await this.prisma.sportsFixtureResult.upsert({
       where: { fixture_id: fixtureId },
@@ -187,6 +221,7 @@ export class SportsTournamentsService {
         recorded_by: userId ?? null,
       },
       create: {
+        institute_id,
         fixture_id: fixtureId,
         team_a_score: dto.team_a_score,
         team_b_score: dto.team_b_score,
@@ -205,12 +240,13 @@ export class SportsTournamentsService {
 
     // Auto-award house points if winner is linked to a House and points specified
     if (dto.winner_team_id && dto.house_points_award && dto.house_points_award > 0) {
-      const winnerTeam = await this.prisma.sportsTournamentTeam.findUnique({
-        where: { tournament_team_id: dto.winner_team_id },
+      const winnerTeam = await this.prisma.sportsTournamentTeam.findFirst({
+        where: { tournament_team_id: dto.winner_team_id, institute_id },
       });
 
       if (winnerTeam && winnerTeam.house_id) {
         await this.housesService.awardPoints(
+          institute_id,
           winnerTeam.house_id,
           {
             points: dto.house_points_award,
@@ -228,12 +264,19 @@ export class SportsTournamentsService {
     return result;
   }
 
-  async recordPlayerStat(fixtureId: number, dto: RecordPlayerStatDto) {
-    const fixture = await this.prisma.sportsFixture.findUnique({ where: { fixture_id: fixtureId } });
+  async recordPlayerStat(instituteId: string, fixtureId: number, dto: RecordPlayerStatDto) {
+    const institute_id = requireInstituteId(instituteId);
+    const fixture = await this.prisma.sportsFixture.findFirst({ where: { fixture_id: fixtureId, institute_id } });
     if (!fixture) throw new NotFoundException(`Fixture #${fixtureId} not found`);
+
+    const participant = await this.prisma.sportsParticipant.findFirst({
+      where: { participant_id: dto.participant_id, institute_id },
+    });
+    if (!participant) throw new NotFoundException(`Participant #${dto.participant_id} not found`);
 
     return this.prisma.sportsPlayerMatchStat.create({
       data: {
+        institute_id,
         fixture_id: fixtureId,
         participant_id: dto.participant_id,
         stat_type: dto.stat_type,

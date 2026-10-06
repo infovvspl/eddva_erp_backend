@@ -45,7 +45,11 @@ export class FrontOfficeAuthController {
   @ApiResponse({ status: 200, description: 'Login successful. Returns front_office_token.' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async directLogin(@Body() dto: FrontOfficeDirectLoginDto) {
-    return this.authService.directLogin(dto.username, dto.password);
+    return this.authService.directLogin(
+      dto.username,
+      dto.password,
+      dto.institute_id,
+    );
   }
 
   @Get('me')

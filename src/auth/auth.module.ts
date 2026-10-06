@@ -4,14 +4,15 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { requireEnv } from '../common/utils/module-secret.util';
 
 @Module({
   imports: [
     PassportModule,
     JwtModule.registerAsync({
       useFactory: () => ({
-        secret: process.env.JWT_SECRET || 'eddva_erp_super_secret_jwt_key_2026',
-        signOptions: { expiresIn: '1d' },
+        secret: requireEnv('JWT_SECRET'),
+        signOptions: { expiresIn: '1d', algorithm: 'HS256' },
       }),
     }),
   ],

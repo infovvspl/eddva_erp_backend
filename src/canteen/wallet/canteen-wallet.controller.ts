@@ -42,21 +42,21 @@ export class CanteenWalletController {
     @Body() dto: CreateCanteenWalletDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.walletService.createWallet(memberId, dto, user.eddva_user_id);
+    return this.walletService.createWallet(user.institute_id, memberId, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Get wallet profile by member ID' })
   @RequirePermission({ resource: 'wallets', action: 'read' })
   @Get('members/:memberId/wallet')
-  async getWalletByMemberId(@Param('memberId') memberId: string) {
-    return this.walletService.getWalletByMemberId(memberId);
+  async getWalletByMemberId(@CanteenUser() user: CanteenPlatformUser, @Param('memberId') memberId: string) {
+    return this.walletService.getWalletByMemberId(user.institute_id, memberId);
   }
 
   @ApiOperation({ summary: 'Get wallet details by wallet ID' })
   @RequirePermission({ resource: 'wallets', action: 'read' })
   @Get('wallets/:walletId')
-  async getWalletById(@Param('walletId') walletId: string) {
-    return this.walletService.getWalletById(walletId);
+  async getWalletById(@CanteenUser() user: CanteenPlatformUser, @Param('walletId') walletId: string) {
+    return this.walletService.getWalletById(user.institute_id, walletId);
   }
 
   @ApiOperation({ summary: 'Update wallet parameters (e.g. daily limit)' })
@@ -67,14 +67,14 @@ export class CanteenWalletController {
     @Body() dto: UpdateCanteenWalletDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.walletService.updateWallet(walletId, dto, user.eddva_user_id);
+    return this.walletService.updateWallet(user.institute_id, walletId, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Delete empty wallet without transaction history' })
   @RequirePermission({ resource: 'wallets', action: 'delete' })
   @Delete('wallets/:walletId')
   async deleteWallet(@Param('walletId') walletId: string, @CanteenUser() user: CanteenPlatformUser) {
-    return this.walletService.deleteWallet(walletId, user.eddva_user_id);
+    return this.walletService.deleteWallet(user.institute_id, walletId, user.eddva_user_id);
   }
 
   // --- Top-ups ---
@@ -86,21 +86,21 @@ export class CanteenWalletController {
     @Body() dto: TopupCanteenWalletDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.walletService.processTopup(walletId, dto, user.eddva_user_id);
+    return this.walletService.processTopup(user.institute_id, walletId, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Get top-up history for wallet' })
   @RequirePermission({ resource: 'wallets', action: 'read' })
   @Get('wallets/:walletId/topups')
-  async getTopupsByWallet(@Param('walletId') walletId: string) {
-    return this.walletService.getTopupsByWallet(walletId);
+  async getTopupsByWallet(@CanteenUser() user: CanteenPlatformUser, @Param('walletId') walletId: string) {
+    return this.walletService.getTopupsByWallet(user.institute_id, walletId);
   }
 
   @ApiOperation({ summary: 'Get top-up detail by ID' })
   @RequirePermission({ resource: 'wallets', action: 'read' })
   @Get('wallet-topups/:topupId')
-  async getTopupById(@Param('topupId') topupId: string) {
-    return this.walletService.getTopupById(topupId);
+  async getTopupById(@CanteenUser() user: CanteenPlatformUser, @Param('topupId') topupId: string) {
+    return this.walletService.getTopupById(user.institute_id, topupId);
   }
 
   // --- Wallet Ledger / Transactions ---
@@ -110,18 +110,19 @@ export class CanteenWalletController {
   @RequirePermission({ resource: 'wallet_transactions', action: 'read' })
   @Get('wallets/:walletId/transactions')
   async getTransactionsByWallet(
+    @CanteenUser() user: CanteenPlatformUser,
     @Param('walletId') walletId: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.walletService.getTransactionsByWallet(walletId, page, limit);
+    return this.walletService.getTransactionsByWallet(user.institute_id, walletId, page, limit);
   }
 
   @ApiOperation({ summary: 'Get wallet ledger transaction detail' })
   @RequirePermission({ resource: 'wallet_transactions', action: 'read' })
   @Get('wallet-transactions/:transactionId')
-  async getTransactionById(@Param('transactionId') transactionId: string) {
-    return this.walletService.getTransactionById(transactionId);
+  async getTransactionById(@CanteenUser() user: CanteenPlatformUser, @Param('transactionId') transactionId: string) {
+    return this.walletService.getTransactionById(user.institute_id, transactionId);
   }
 
   // --- Block / Unblock ---
@@ -133,13 +134,13 @@ export class CanteenWalletController {
     @Body() dto: BlockWalletDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.walletService.blockWallet(walletId, dto, user.eddva_user_id);
+    return this.walletService.blockWallet(user.institute_id, walletId, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Unblock student wallet' })
   @RequirePermission({ resource: 'wallets', action: 'unblock' })
   @Post('wallets/:walletId/unblock')
   async unblockWallet(@Param('walletId') walletId: string, @CanteenUser() user: CanteenPlatformUser) {
-    return this.walletService.unblockWallet(walletId, user.eddva_user_id);
+    return this.walletService.unblockWallet(user.institute_id, walletId, user.eddva_user_id);
   }
 }

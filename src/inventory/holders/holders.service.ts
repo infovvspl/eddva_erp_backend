@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { InventoryAuditService } from '../common/inventory-audit.service';
 import { INV_ENTITY } from '../common/inventory-entities';
 import { CreateHolderDto } from './dto/create-holder.dto';
@@ -12,19 +13,25 @@ export class HoldersService {
     private readonly audit: InventoryAuditService,
   ) {}
 
-  async create(dto: CreateHolderDto, actorId?: string) {
+  async create(instituteId: string, dto: CreateHolderDto, actorId?: string) {
     const holder = await this.prisma.invHolder.create({
-      data: { holder_type: dto.holder_type as any, name: dto.name, external_ref_id: dto.external_ref_id, contact_phone: dto.contact_phone },
+      data: {
+        institute_id: requireInstituteId(instituteId),
+        holder_type: dto.holder_type as any,
+        name: dto.name,
+        external_ref_id: dto.external_ref_id,
+        contact_phone: dto.contact_phone,
+      },
     });
     await this.audit.log({ userId: actorId, entityType: INV_ENTITY.HOLDER, entityId: String(holder.holder_id), action: 'create' });
     return holder;
   }
 
-  async findAll(params: { search?: string; holder_type?: string; page?: number; limit?: number }) {
+  async findAll(instituteId: string, params: { search?: string; holder_type?: string; page?: number; limit?: number }) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const where: any = {};
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (params.holder_type) where.holder_type = params.holder_type;
     if (params.search) where.name = { contains: params.search, mode: 'insensitive' };
 
@@ -35,14 +42,14 @@ export class HoldersService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findOne(id: number) {
-    const holder = await this.prisma.invHolder.findUnique({ where: { holder_id: id } });
+  async findOne(instituteId: string, id: number) {
+    const holder = await this.prisma.invHolder.findFirst({ where: { holder_id: id, institute_id: requireInstituteId(instituteId) } });
     if (!holder) throw new NotFoundException(`Holder #${id} not found`);
     return holder;
   }
 
-  async update(id: number, dto: UpdateHolderDto, actorId?: string) {
-    const existing = await this.findOne(id);
+  async update(instituteId: string, id: number, dto: UpdateHolderDto, actorId?: string) {
+    const existing = await this.findOne(instituteId, id);
     const updated = await this.prisma.invHolder.update({
       where: { holder_id: id },
       data: { name: dto.name, external_ref_id: dto.external_ref_id, contact_phone: dto.contact_phone, status: dto.status as any },
@@ -51,10 +58,11 @@ export class HoldersService {
     return updated;
   }
 
-  async currentIssues(id: number) {
-    await this.findOne(id);
+  async currentIssues(instituteId: string, id: number) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.findOne(institute_id, id);
     return this.prisma.invAssetIssue.findMany({
-      where: { holder_id: id, status: { in: ['issued', 'partially_returned', 'overdue', 'pending_approval'] } },
+      where: { holder_id: id, institute_id, status: { in: ['issued', 'partially_returned', 'overdue', 'pending_approval'] } },
       include: {
         item: { select: { item_id: true, name: true, item_code: true, item_type: true } },
         asset_unit: { select: { asset_unit_id: true, asset_tag: true } },

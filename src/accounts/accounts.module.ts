@@ -17,6 +17,8 @@ import { VoucherAttachmentsController } from './attachments/attachments.controll
 import { AccountMappingsController } from './account-mappings/account-mappings.controller';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
+import { AccountsDashboardController } from './dashboard/accounts-dashboard.controller';
+import { AccountsDashboardService } from './dashboard/accounts-dashboard.service';
 
 /**
  * Sales/Purchase depend only on AccountsCoreModule (no controllers) for
@@ -37,8 +39,10 @@ import { DashboardService } from './dashboard/dashboard.service';
     VoucherAttachmentsController,
     AccountMappingsController,
     DashboardController,
+    AccountsDashboardController,
   ],
-  providers: [AccountGroupsService, CostCentersService, ClosingService, LedgerService, VoucherAttachmentsService, DashboardService],
+  providers: [AccountGroupsService, CostCentersService, ClosingService, LedgerService, VoucherAttachmentsService, DashboardService, AccountsDashboardService],
   exports: [DashboardService],
+  // ],
 })
 export class AccountsModule {}

@@ -22,31 +22,33 @@ export class LedgerService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Sum of posted debit/credit movement per account, strictly before `beforeDate` (used as the opening carry-in for a report window). */
-  private async movementsBefore(beforeDate: Date, instituteId?: string, accountIds?: string[]) {
+  private async movementsBefore(beforeDate: Date, instituteId: string, accountIds?: string[]) {
+    if (!instituteId) throw new Error('instituteId is required for ledger movement queries');
     const rows = await this.prisma.$queryRawUnsafe<MovementRow[]>(
       `SELECT ve."accountId" as "accountId", COALESCE(SUM(ve."debitAmount"),0) as debit, COALESCE(SUM(ve."creditAmount"),0) as credit
        FROM voucher_entries ve
        INNER JOIN vouchers v ON v.id = ve."voucherId"
        WHERE v.status = 'POSTED' AND ve."voucherDate" < $1
-       ${instituteId ? 'AND v."instituteId" = $2' : ''}
-       ${accountIds && accountIds.length ? `AND ve."accountId" = ANY($${instituteId ? 3 : 2})` : ''}
+       AND v."instituteId" = $2
+       ${accountIds && accountIds.length ? 'AND ve."accountId" = ANY($3)' : ''}
        GROUP BY ve."accountId"`,
-      ...[beforeDate, ...(instituteId ? [instituteId] : []), ...(accountIds && accountIds.length ? [accountIds] : [])],
+      ...[beforeDate, instituteId, ...(accountIds && accountIds.length ? [accountIds] : [])],
     );
     return new Map(rows.map((r) => [r.accountId, { debit: Number(r.debit), credit: Number(r.credit) }]));
   }
 
   /** Sum of posted debit/credit movement per account within [from, to] inclusive. */
-  private async movementsBetween(from: Date, to: Date, instituteId?: string, accountIds?: string[]) {
+  private async movementsBetween(from: Date, to: Date, instituteId: string, accountIds?: string[]) {
+    if (!instituteId) throw new Error('instituteId is required for ledger movement queries');
     const rows = await this.prisma.$queryRawUnsafe<MovementRow[]>(
       `SELECT ve."accountId" as "accountId", COALESCE(SUM(ve."debitAmount"),0) as debit, COALESCE(SUM(ve."creditAmount"),0) as credit
        FROM voucher_entries ve
        INNER JOIN vouchers v ON v.id = ve."voucherId"
        WHERE v.status = 'POSTED' AND ve."voucherDate" BETWEEN $1 AND $2
-       ${instituteId ? 'AND v."instituteId" = $3' : ''}
-       ${accountIds && accountIds.length ? `AND ve."accountId" = ANY($${instituteId ? 4 : 3})` : ''}
+       AND v."instituteId" = $3
+       ${accountIds && accountIds.length ? 'AND ve."accountId" = ANY($4)' : ''}
        GROUP BY ve."accountId"`,
-      ...[from, to, ...(instituteId ? [instituteId] : []), ...(accountIds && accountIds.length ? [accountIds] : [])],
+      ...[from, to, instituteId, ...(accountIds && accountIds.length ? [accountIds] : [])],
     );
     return new Map(rows.map((r) => [r.accountId, { debit: Number(r.debit), credit: Number(r.credit) }]));
   }

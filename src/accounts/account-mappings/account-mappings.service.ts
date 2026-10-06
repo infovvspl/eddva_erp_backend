@@ -31,9 +31,14 @@ export class AccountMappingsService {
     return this.prisma.accountMapping.findMany({ where: { instituteId: actor.institute_id }, include: { account: { select: { accountCode: true, accountName: true } } } });
   }
 
-  /** Resolves a logical role (AR/AP/CASH/...) to its configured ledger account id; throws a clear, actionable error if unconfigured. */
-  async resolve(mappingKey: string, instituteId?: string): Promise<string> {
-    const mapping = await this.prisma.accountMapping.findFirst({ where: { mappingKey, ...(instituteId ? { instituteId } : {}) } });
+  /**
+   * Resolves a logical role (AR/AP/CASH/...) to its configured ledger account id; throws a clear, actionable error if unconfigured.
+   * instituteId is mandatory: this used to drop the filter when it was undefined, which could
+   * hand back another institute's mapping to an auto-posting call.
+   */
+  async resolve(mappingKey: string, instituteId: string): Promise<string> {
+    if (!instituteId) throw new BadRequestException('instituteId is required to resolve an account mapping');
+    const mapping = await this.prisma.accountMapping.findFirst({ where: { mappingKey, instituteId } });
     if (!mapping) {
       throw new BadRequestException(`No ledger account is mapped to "${mappingKey}" for auto-posting — configure it via POST /api/accounts/account-mappings first`);
     }

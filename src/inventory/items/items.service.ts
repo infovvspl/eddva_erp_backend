@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { InventoryAuditService } from '../common/inventory-audit.service';
 import { INV_ENTITY } from '../common/inventory-entities';
 import { CreateItemDto } from './dto/create-item.dto';
@@ -13,18 +14,20 @@ export class ItemsService {
     private readonly audit: InventoryAuditService,
   ) {}
 
-  private async assertCategoryExists(categoryId: number) {
-    const category = await this.prisma.invCategory.findUnique({ where: { category_id: categoryId } });
+  private async assertCategoryExists(instituteId: string, categoryId: number) {
+    const category = await this.prisma.invCategory.findFirst({ where: { category_id: categoryId, institute_id: instituteId } });
     if (!category) throw new NotFoundException(`Category #${categoryId} not found`);
   }
 
-  async create(dto: CreateItemDto, actorId?: string) {
-    const existing = await this.prisma.invItem.findUnique({ where: { item_code: dto.item_code } });
+  async create(instituteId: string, dto: CreateItemDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.prisma.invItem.findFirst({ where: { item_code: dto.item_code, institute_id } });
     if (existing) throw new ConflictException(`Item code "${dto.item_code}" already exists`);
-    await this.assertCategoryExists(dto.category_id);
+    await this.assertCategoryExists(institute_id, dto.category_id);
 
     const item = await this.prisma.invItem.create({
       data: {
+        institute_id,
         item_code: dto.item_code,
         name: dto.name,
         category_id: dto.category_id,
@@ -39,11 +42,12 @@ export class ItemsService {
     return item;
   }
 
-  async findAll(params: { search?: string; category_id?: number; item_type?: string; low_stock?: boolean; page?: number; limit?: number }) {
+  async findAll(instituteId: string, params: { search?: string; category_id?: number; item_type?: string; low_stock?: boolean; page?: number; limit?: number }) {
+    const institute_id = requireInstituteId(instituteId);
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const where: any = {};
+    const where: any = { institute_id };
     if (params.category_id) where.category_id = params.category_id;
     if (params.item_type) where.item_type = params.item_type;
     if (params.search) {
@@ -54,7 +58,7 @@ export class ItemsService {
     }
 
     if (params.low_stock) {
-      const lowStockItemIds = await this.findLowStockItemIds();
+      const lowStockItemIds = await this.findLowStockItemIds(institute_id);
       where.item_id = { in: lowStockItemIds.length > 0 ? lowStockItemIds : [-1] };
     }
 
@@ -73,7 +77,7 @@ export class ItemsService {
   }
 
   /** Items whose total stock across all locations is at or below their reorder_level. */
-  private async findLowStockItemIds(): Promise<number[]> {
+  private async findLowStockItemIds(instituteId: string): Promise<number[]> {
     const rows = await this.prisma.$queryRawUnsafe<Array<{ item_id: number }>>(
       `SELECT i.item_id
        FROM inv_items i
@@ -82,14 +86,15 @@ export class ItemsService {
          FROM inv_stock_balances
          GROUP BY item_id
        ) b ON b.item_id = i.item_id
-       WHERE i.status = 'ACTIVE' AND COALESCE(b.total_qty, 0) <= i.reorder_level`,
+       WHERE i.status = 'ACTIVE' AND i.institute_id = $1 AND COALESCE(b.total_qty, 0) <= i.reorder_level`,
+      instituteId,
     );
     return rows.map((r) => r.item_id);
   }
 
-  async findOne(id: number) {
-    const item = await this.prisma.invItem.findUnique({
-      where: { item_id: id },
+  async findOne(instituteId: string, id: number) {
+    const item = await this.prisma.invItem.findFirst({
+      where: { item_id: id, institute_id: requireInstituteId(instituteId) },
       include: {
         category: true,
         item_vendors: { include: { vendor: { select: { vendor_id: true, name: true } } } },
@@ -100,20 +105,21 @@ export class ItemsService {
     return item;
   }
 
-  private async assertExists(id: number) {
-    const item = await this.prisma.invItem.findUnique({ where: { item_id: id } });
+  private async assertExists(instituteId: string, id: number) {
+    const item = await this.prisma.invItem.findFirst({ where: { item_id: id, institute_id: instituteId } });
     if (!item) throw new NotFoundException(`Item #${id} not found`);
     return item;
   }
 
-  async update(id: number, dto: UpdateItemDto, actorId?: string) {
-    const existing = await this.assertExists(id);
+  async update(instituteId: string, id: number, dto: UpdateItemDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.assertExists(institute_id, id);
 
     if (dto.item_code && dto.item_code !== existing.item_code) {
-      const clash = await this.prisma.invItem.findUnique({ where: { item_code: dto.item_code } });
+      const clash = await this.prisma.invItem.findFirst({ where: { item_code: dto.item_code, institute_id } });
       if (clash) throw new ConflictException(`Item code "${dto.item_code}" already exists`);
     }
-    if (dto.category_id) await this.assertCategoryExists(dto.category_id);
+    if (dto.category_id) await this.assertCategoryExists(institute_id, dto.category_id);
 
     const updated = await this.prisma.invItem.update({
       where: { item_id: id },
@@ -132,22 +138,24 @@ export class ItemsService {
     return updated;
   }
 
-  async upsertVendor(itemId: number, dto: UpsertItemVendorDto, actorId?: string) {
-    await this.assertExists(itemId);
-    const vendor = await this.prisma.invVendor.findUnique({ where: { vendor_id: dto.vendor_id } });
+  async upsertVendor(instituteId: string, itemId: number, dto: UpsertItemVendorDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertExists(institute_id, itemId);
+    const vendor = await this.prisma.invVendor.findFirst({ where: { vendor_id: dto.vendor_id, institute_id } });
     if (!vendor) throw new NotFoundException(`Vendor #${dto.vendor_id} not found`);
 
     const result = await this.prisma.invItemVendor.upsert({
       where: { item_id_vendor_id: { item_id: itemId, vendor_id: dto.vendor_id } },
       update: { last_purchase_price: dto.last_purchase_price },
-      create: { item_id: itemId, vendor_id: dto.vendor_id, last_purchase_price: dto.last_purchase_price },
+      create: { item_id: itemId, vendor_id: dto.vendor_id, last_purchase_price: dto.last_purchase_price, institute_id },
     });
     await this.audit.log({ userId: actorId, entityType: INV_ENTITY.ITEM, entityId: String(itemId), action: 'vendor_associate', metadata: { vendor_id: dto.vendor_id } });
     return result;
   }
 
-  async listVendors(itemId: number) {
-    await this.assertExists(itemId);
+  async listVendors(instituteId: string, itemId: number) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertExists(institute_id, itemId);
     return this.prisma.invItemVendor.findMany({
       where: { item_id: itemId },
       include: { vendor: true },

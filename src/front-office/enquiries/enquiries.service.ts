@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { FrontOfficeAuditService } from '../common/front-office-audit.service';
 import { FrontOfficeNotificationService } from '../notifications/front-office-notification.service';
 import { FO_ENTITY } from '../common/front-office-entities';
@@ -23,17 +24,19 @@ export class EnquiriesService {
     private readonly notifications: FrontOfficeNotificationService,
   ) {}
 
-  private async assertEmployeeExists(employeeId: number) {
-    const employee = await this.prisma.frontOfficeEmployee.findUnique({ where: { employee_id: employeeId } });
+  private async assertEmployeeExists(instituteId: string, employeeId: number) {
+    const employee = await this.prisma.frontOfficeEmployee.findFirst({ where: { employee_id: employeeId, institute_id: instituteId } });
     if (!employee) throw new NotFoundException(`Employee #${employeeId} not found`);
     return employee;
   }
 
-  async create(dto: CreateEnquiryDto, actorId?: string) {
-    if (dto.assigned_to) await this.assertEmployeeExists(dto.assigned_to);
+  async create(instituteId: string, dto: CreateEnquiryDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    if (dto.assigned_to) await this.assertEmployeeExists(institute_id, dto.assigned_to);
 
     const enquiry = await this.prisma.frontOfficeEnquiry.create({
       data: {
+        institute_id,
         enquirer_name: dto.enquirer_name,
         phone: dto.phone,
         email: dto.email,
@@ -49,6 +52,7 @@ export class EnquiriesService {
 
     if (dto.assigned_to) {
       await this.notifications.send({
+        instituteId: institute_id,
         entityType: 'enquiry',
         entityId: enquiry.enquiry_id,
         eventType: 'enquiry_assigned',
@@ -61,6 +65,7 @@ export class EnquiriesService {
   }
 
   async findAll(
+    instituteId: string,
     params: {
       source?: string;
       category?: string;
@@ -78,7 +83,7 @@ export class EnquiriesService {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const filters: any = {};
+    const filters: any = { institute_id: requireInstituteId(instituteId) };
     if (params.source) filters.source = params.source;
     if (params.category) filters.category = params.category;
     if (params.status) filters.status = params.status;
@@ -114,23 +119,24 @@ export class EnquiriesService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findOne(id: number) {
-    const enquiry = await this.prisma.frontOfficeEnquiry.findUnique({
-      where: { enquiry_id: id },
+  async findOne(instituteId: string, id: number) {
+    const enquiry = await this.prisma.frontOfficeEnquiry.findFirst({
+      where: { enquiry_id: id, institute_id: requireInstituteId(instituteId) },
       include: { assignee: true, followups: { orderBy: { followup_date: 'desc' } } },
     });
     if (!enquiry) throw new NotFoundException(`Enquiry #${id} not found`);
     return enquiry;
   }
 
-  private async assertExists(id: number) {
-    const enquiry = await this.prisma.frontOfficeEnquiry.findUnique({ where: { enquiry_id: id } });
+  private async assertExists(instituteId: string, id: number) {
+    const enquiry = await this.prisma.frontOfficeEnquiry.findFirst({ where: { enquiry_id: id, institute_id: instituteId } });
     if (!enquiry) throw new NotFoundException(`Enquiry #${id} not found`);
     return enquiry;
   }
 
-  async update(id: number, dto: UpdateEnquiryDto, actorId?: string) {
-    await this.assertExists(id);
+  async update(instituteId: string, id: number, dto: UpdateEnquiryDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertExists(institute_id, id);
     const updated = await this.prisma.frontOfficeEnquiry.update({
       where: { enquiry_id: id },
       data: {
@@ -146,9 +152,10 @@ export class EnquiriesService {
     return updated;
   }
 
-  async assign(id: number, dto: AssignEnquiryDto, actorId?: string) {
-    const existing = await this.assertExists(id);
-    await this.assertEmployeeExists(dto.assigned_to);
+  async assign(instituteId: string, id: number, dto: AssignEnquiryDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.assertExists(institute_id, id);
+    await this.assertEmployeeExists(institute_id, dto.assigned_to);
 
     const updated = await this.prisma.frontOfficeEnquiry.update({
       where: { enquiry_id: id },
@@ -166,6 +173,7 @@ export class EnquiriesService {
     });
 
     await this.notifications.send({
+      instituteId: institute_id,
       entityType: 'enquiry',
       entityId: id,
       eventType: existing.assigned_to ? 'enquiry_reassigned' : 'enquiry_assigned',
@@ -176,8 +184,9 @@ export class EnquiriesService {
     return updated;
   }
 
-  async changeStatus(id: number, dto: ChangeEnquiryStatusDto, actorId?: string) {
-    const existing = await this.assertExists(id);
+  async changeStatus(instituteId: string, id: number, dto: ChangeEnquiryStatusDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.assertExists(institute_id, id);
     const allowed = ALLOWED_TRANSITIONS[existing.status] || [];
     if (!allowed.includes(dto.status)) {
       throw new ConflictException(`Cannot transition enquiry from "${existing.status}" to "${dto.status}"`);
@@ -200,6 +209,7 @@ export class EnquiriesService {
 
     if (dto.status === 'closed' && existing.assigned_to) {
       await this.notifications.send({
+        instituteId: institute_id,
         entityType: 'enquiry',
         entityId: id,
         eventType: 'enquiry_closed',
@@ -211,8 +221,9 @@ export class EnquiriesService {
     return updated;
   }
 
-  async createFollowup(enquiryId: number, dto: CreateFollowupDto, actorId?: string) {
-    const enquiry = await this.assertExists(enquiryId);
+  async createFollowup(instituteId: string, enquiryId: number, dto: CreateFollowupDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const enquiry = await this.assertExists(institute_id, enquiryId);
     if (enquiry.status === 'closed') {
       throw new ConflictException('Cannot add a follow-up to a closed enquiry — reopen it via a status change first');
     }
@@ -222,6 +233,7 @@ export class EnquiriesService {
 
     const followup = await this.prisma.frontOfficeEnquiryFollowup.create({
       data: {
+        institute_id,
         enquiry_id: enquiryId,
         notes: dto.notes,
         followup_date: dto.followup_date ? new Date(dto.followup_date) : new Date(),
@@ -245,33 +257,35 @@ export class EnquiriesService {
     return followup;
   }
 
-  async listFollowups(enquiryId: number) {
-    await this.assertExists(enquiryId);
-    return this.prisma.frontOfficeEnquiryFollowup.findMany({ where: { enquiry_id: enquiryId }, orderBy: { followup_date: 'desc' } });
+  async listFollowups(instituteId: string, enquiryId: number) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertExists(institute_id, enquiryId);
+    return this.prisma.frontOfficeEnquiryFollowup.findMany({ where: { enquiry_id: enquiryId, institute_id }, orderBy: { followup_date: 'desc' } });
   }
 
-  async upcomingFollowups(withinDays = 7) {
+  async upcomingFollowups(instituteId: string, withinDays = 7) {
     const now = new Date();
     const until = new Date(now);
     until.setDate(until.getDate() + withinDays);
     return this.prisma.frontOfficeEnquiryFollowup.findMany({
-      where: { next_followup_date: { gte: now, lte: until } },
+      where: { institute_id: requireInstituteId(instituteId), next_followup_date: { gte: now, lte: until } },
       include: { enquiry: { select: { enquiry_id: true, enquirer_name: true, status: true, assigned_to: true } } },
       orderBy: { next_followup_date: 'asc' },
     });
   }
 
-  async overdueFollowups() {
+  async overdueFollowups(instituteId: string) {
     const now = new Date();
     return this.prisma.frontOfficeEnquiryFollowup.findMany({
-      where: { next_followup_date: { lt: now }, enquiry: { status: { not: 'closed' } } },
+      where: { institute_id: requireInstituteId(instituteId), next_followup_date: { lt: now }, enquiry: { status: { not: 'closed' } } },
       include: { enquiry: { select: { enquiry_id: true, enquirer_name: true, status: true, assigned_to: true } } },
       orderBy: { next_followup_date: 'asc' },
     });
   }
 
-  async history(id: number) {
-    await this.assertExists(id);
+  async history(instituteId: string, id: number) {
+    const institute_id = requireInstituteId(instituteId);
+    await this.assertExists(institute_id, id);
     return this.audit.getLogsForEntity(FO_ENTITY.ENQUIRY, String(id));
   }
 }

@@ -3,7 +3,7 @@ import { VouchersService } from '../vouchers/vouchers.service';
 import { AccountMappingsService } from '../account-mappings/account-mappings.service';
 
 interface SourceInvoiceParams {
-  instituteId?: string;
+  instituteId: string;
   invoiceId: string;
   invoiceNumber: string;
   invoiceDate: Date;

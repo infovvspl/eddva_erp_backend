@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { LibMembershipRulesService } from '../membership-rules/lib-membership-rules.service';
 import { CreateIssueDto } from './dto/create-issue.dto';
 import { RenewIssueDto } from './dto/renew-issue.dto';
@@ -16,7 +17,9 @@ const FINE_BLOCK_THRESHOLD = parseFloat(process.env.LIBRARY_FINE_BLOCK_THRESHOLD
 
 /**
  * IssueService — architecture-named distinct service.
- * Handles new book issues and loan renewals.
+ * Handles new book issues and loan renewals. Every lookup is scoped to the
+ * caller's institute, so a copy, member or issue from another school is
+ * reported as not found.
  */
 @Injectable()
 export class IssueService {
@@ -25,11 +28,12 @@ export class IssueService {
     private readonly rulesService: LibMembershipRulesService,
   ) {}
 
-  async issueBook(dto: CreateIssueDto) {
+  async issueBook(instituteId: string, dto: CreateIssueDto) {
+    const institute_id = requireInstituteId(instituteId);
     const { copy_id, member_id, issued_by } = dto;
 
     // 1. Verify copy is available
-    const copy = await this.prisma.libBookCopy.findUnique({ where: { copy_id } });
+    const copy = await this.prisma.libBookCopy.findFirst({ where: { copy_id, institute_id } });
     if (!copy) throw new NotFoundException(`Copy #${copy_id} not found. Please add a copy via POST /api/v1/library/books/:id/copies first.`);
     if (copy.status !== 'available') {
       throw new ConflictException(`Copy #${copy_id} is not available (status: ${copy.status})`);
@@ -44,7 +48,7 @@ export class IssueService {
     }
 
     // 2. Verify member is active
-    const member = await this.prisma.libMember.findUnique({ where: { member_id } });
+    const member = await this.prisma.libMember.findFirst({ where: { member_id, institute_id } });
     if (!member) throw new NotFoundException(`Member #${member_id} not found`);
     if (member.status !== 'active') {
       throw new ForbiddenException(`Member #${member_id} is not active (status: ${member.status})`);
@@ -54,6 +58,7 @@ export class IssueService {
     const pendingFinesSum = await this.prisma.libFine.aggregate({
       where: {
         member_id,
+        institute_id,
         status: { in: ['pending', 'partially_paid'] },
       },
       _sum: { amount: true },
@@ -66,9 +71,9 @@ export class IssueService {
     }
 
     // 4. Check borrow limit
-    const rule = await this.rulesService.findByMemberType(member.member_type);
+    const rule = await this.rulesService.findByMemberType(institute_id, member.member_type);
     const activeCount = await this.prisma.libIssueRecord.count({
-      where: { member_id, status: { in: ['issued', 'overdue'] } },
+      where: { member_id, institute_id, status: { in: ['issued', 'overdue'] } },
     });
     if (activeCount >= rule.max_books_allowed) {
       throw new UnprocessableEntityException(
@@ -83,6 +88,7 @@ export class IssueService {
     // 6. Check if member has a reservation for this title and fulfill it
     const reservationToFulfill = await this.prisma.libReservation.findFirst({
       where: {
+        institute_id,
         member_id,
         book_id: copy.book_id,
         status: { in: ['pending', 'ready_for_pickup'] },
@@ -93,6 +99,7 @@ export class IssueService {
     const ops: any[] = [
       this.prisma.libIssueRecord.create({
         data: {
+          institute_id,
           copy_id,
           member_id,
           issued_by,
@@ -123,9 +130,10 @@ export class IssueService {
     return issueRecord;
   }
 
-  async renewIssue(issueId: number, dto: RenewIssueDto) {
-    const issue = await this.prisma.libIssueRecord.findUnique({
-      where: { issue_id: issueId },
+  async renewIssue(instituteId: string, issueId: number, dto: RenewIssueDto) {
+    const institute_id = requireInstituteId(instituteId);
+    const issue = await this.prisma.libIssueRecord.findFirst({
+      where: { issue_id: issueId, institute_id },
       include: { copy: { include: { book: true } }, member: true },
     });
     if (!issue) throw new NotFoundException(`Issue record #${issueId} not found`);
@@ -139,6 +147,7 @@ export class IssueService {
     // Check if this book has a pending reservation by another member
     const reservation = await this.prisma.libReservation.findFirst({
       where: {
+        institute_id,
         book_id: issue.copy.book_id,
         status: 'pending',
         member_id: { not: issue.member_id },
@@ -150,7 +159,7 @@ export class IssueService {
       );
     }
 
-    const rule = await this.rulesService.findByMemberType(issue.member.member_type);
+    const rule = await this.rulesService.findByMemberType(institute_id, issue.member.member_type);
     const new_due_date = addDays(issue.due_date, rule.loan_period_days);
 
     return this.prisma.libIssueRecord.update({
@@ -163,9 +172,9 @@ export class IssueService {
     });
   }
 
-  async findOne(issueId: number) {
-    const issue = await this.prisma.libIssueRecord.findUnique({
-      where: { issue_id: issueId },
+  async findOne(instituteId: string, issueId: number) {
+    const issue = await this.prisma.libIssueRecord.findFirst({
+      where: { issue_id: issueId, institute_id: requireInstituteId(instituteId) },
       include: {
         copy: { include: { book: true } },
         member: true,
@@ -176,9 +185,9 @@ export class IssueService {
     return issue;
   }
 
-  async findOverdue() {
+  async findOverdue(instituteId: string) {
     return this.prisma.libIssueRecord.findMany({
-      where: { status: 'overdue' },
+      where: { institute_id: requireInstituteId(instituteId), status: 'overdue' },
       include: {
         copy: { include: { book: { select: { title: true, author: true } } } },
         member: { select: { name: true, library_card_number: true, member_type: true } },
@@ -188,8 +197,8 @@ export class IssueService {
     });
   }
 
-  async findAll(status?: string) {
-    const where: any = {};
+  async findAll(instituteId: string, status?: string) {
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (status) where.status = status;
     return this.prisma.libIssueRecord.findMany({
       where,

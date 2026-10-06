@@ -25,6 +25,9 @@ export class KioskController {
 
   private async loadAndVerify(appointmentId: number, phone: string) {
     if (!phone) throw new BadRequestException('phone is required to identify the appointment');
+    // The kiosk has no login and so no institute of its own — appointment_id is a
+    // globally unique key, and the phone match below is what actually authorizes the
+    // caller. The appointment's own institute_id is what any resulting check-in uses.
     const appointment = await this.prisma.frontOfficeAppointment.findUnique({
       where: { appointment_id: appointmentId },
       include: { host_employee: { select: { name: true, department: { select: { name: true } } } } },
@@ -60,8 +63,10 @@ export class KioskController {
   @ApiOperation({ summary: 'Kiosk: self check-in against a validated appointment' })
   @ApiParam({ name: 'id', example: 1 })
   async selfCheckIn(@Param('id', ParseIntPipe) id: number, @Body('phone') phone: string) {
-    await this.loadAndVerify(id, phone);
-    const log = await this.visitorLogsService.checkIn({ appointment_id: id });
+    const appointment = await this.loadAndVerify(id, phone);
+    // An appointment with no institute yet (pre-backfill) has nothing valid to pass;
+    // checkIn's own institute check turns that into a clear failure rather than a crash.
+    const log = await this.visitorLogsService.checkIn(appointment.institute_id ?? '', { appointment_id: id });
     return {
       badge_number: log.badge_number,
       host_name: log.host_employee.name,

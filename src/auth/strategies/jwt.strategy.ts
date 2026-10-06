@@ -16,39 +16,59 @@ export interface JwtPayload {
   [key: string]: any;
 }
 
+const JWT_ALGORITHMS: jwt.Algorithm[] = ['HS256'];
+
+/**
+ * Secrets the core ERP guard accepts: the LMS-issued SSO secret and this
+ * service's own login secret. Both come from the environment only. There are
+ * deliberately no literal or derived fallbacks: a committed default lets anyone
+ * mint a token the guard accepts, so a missing secret fails closed.
+ */
+export function resolveCoreJwtSecrets(env: NodeJS.ProcessEnv = process.env): string[] {
+  const missing = ['SCHOOL_JWT_SECRET', 'JWT_SECRET'].filter((name) => !env[name]);
+  if (missing.length > 0) {
+    throw new Error(`${missing.join(' and ')} must be set`);
+  }
+  return [...new Set([env.SCHOOL_JWT_SECRET as string, env.JWT_SECRET as string])];
+}
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private prisma: PrismaService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKeyProvider: (
-        request: any,
-        rawJwtToken: string,
-        done: (err: any, secret?: string) => void,
-      ) => {
-        const candidateSecrets = [
-          process.env.SCHOOL_JWT_SECRET,
-          process.env.JWT_SECRET ? `school:${process.env.JWT_SECRET}` : undefined,
-          'school:your-super-secret-jwt-key-change-in-production',
-          'dev_school_secret_change_in_prod',
-          process.env.JWT_SECRET,
-          'eddva_erp_super_secret_jwt_key_2026',
-          'your-super-secret-jwt-key-change-in-production',
-        ].filter(Boolean) as string[];
-
-        for (const secret of candidateSecrets) {
-          try {
-            jwt.verify(rawJwtToken, secret);
-            return done(null, secret);
-          } catch (err) {}
-        }
-
-        return done(null, candidateSecrets[0]);
-      },
+      algorithms: JWT_ALGORITHMS,
+      secretOrKeyProvider: JwtStrategy.buildSecretProvider(resolveCoreJwtSecrets()),
     });
   }
 
+  private static buildSecretProvider(secrets: string[]) {
+    return (
+      _request: unknown,
+      rawJwtToken: string,
+      done: (err: any, secret?: string) => void,
+    ) => {
+      for (const secret of secrets) {
+        try {
+          jwt.verify(rawJwtToken, secret, { algorithms: JWT_ALGORITHMS });
+          return done(null, secret);
+        } catch {
+          // Try the next configured secret.
+        }
+      }
+      // No configured secret verifies this token: reject it outright rather
+      // than handing passport a key to fail against.
+      return done(new UnauthorizedException('Invalid or expired token'));
+    };
+  }
+
+  /**
+   * Identity, role, permissions and institute all come from the database row,
+   * never from token claims: a token proves who the caller is, not what they
+   * may do. A token whose user has no ERP account is rejected — there is no
+   * on-the-fly provisioning and no email-based lookup.
+   */
   async validate(payload: JwtPayload) {
     const userId = payload.id ?? payload.sub;
 
@@ -56,8 +76,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Invalid token payload: missing user ID.');
     }
 
-    // 1. Try finding user by ID
-    let user = await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
         role: {
@@ -72,82 +91,29 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       },
     });
 
-    // 2. If not found by ID, try finding by email
-    if (!user && payload.email) {
-      user = await this.prisma.user.findUnique({
-        where: { email: payload.email },
-        include: {
-          role: {
-            include: {
-              rolePermissions: {
-                include: {
-                  permission: true,
-                },
-              },
-            },
-          },
-        },
-      });
-    }
-
-    if (user && user.status !== 'ACTIVE') {
+    if (!user || user.status !== 'ACTIVE') {
       throw new UnauthorizedException('User account inactive or invalid.');
     }
 
-    // 3. If still not found, safely provision user placeholder
-    if (!user) {
-      let role = await this.prisma.role.findFirst({
-        where: { roleName: payload.role || 'INSTITUTE_ADMIN' },
-      });
-      if (!role) {
-        role = await this.prisma.role.findFirst();
-      }
-      if (role) {
-        const userEmail = payload.email || `${userId}@institute.com`;
-        user = await this.prisma.user.upsert({
-          where: { email: userEmail },
-          update: {
-            name: payload.name || payload.email || 'Institute Admin',
-          },
-          create: {
-            id: userId,
-            email: userEmail,
-            name: payload.name || payload.email || 'Institute Admin',
-            passwordHash: '',
-            roleId: role.id,
-            status: 'ACTIVE',
-          },
-          include: {
-            role: {
-              include: {
-                rolePermissions: {
-                  include: { permission: true },
-                },
-              },
-            },
-          },
-        });
-      }
+    if (!user.role || user.role.status !== 'ACTIVE') {
+      throw new UnauthorizedException('User role is inactive or invalid.');
     }
 
-    const permissions =
-      user?.role?.rolePermissions?.map(
-        (rp) => rp.permission.permissionKey,
-      ) || [];
-
-    const roleName = payload.role || user?.role?.roleName || 'INSTITUTE_ADMIN';
+    const permissions = user.role.rolePermissions.map(
+      (rp) => rp.permission.permissionKey,
+    );
 
     return {
-      id: userId,
-      userId: userId,
-      email: payload.email || user?.email || '',
-      name: user?.name || payload.name || payload.email || 'Institute Admin',
-      role: roleName,
-      roleId: user?.roleId || null,
-      roleName: roleName,
+      id: user.id,
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role.roleName,
+      roleId: user.roleId,
+      roleName: user.role.roleName,
       permissions,
       tenantType: payload.tenantType || null,
-      instituteId: payload.instituteId || null,
+      instituteId: user.instituteId ?? null,
       sessionId: payload.sessionId || null,
     };
   }

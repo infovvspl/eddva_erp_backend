@@ -1,16 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ComplaintsService } from './complaints.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FrontOfficeAuditService } from '../common/front-office-audit.service';
 import { FrontOfficeNotificationService } from '../notifications/front-office-notification.service';
 
+const INST = 'inst-1';
+
 describe('ComplaintsService', () => {
   let service: ComplaintsService;
 
   const mockPrisma = {
-    frontOfficeEmployee: { findUnique: jest.fn() },
-    frontOfficeComplaint: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
+    frontOfficeEmployee: { findFirst: jest.fn() },
+    frontOfficeComplaint: { findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
     frontOfficeComplaintUpdate: { create: jest.fn() },
   };
   const mockAudit = { log: jest.fn() };
@@ -31,13 +33,31 @@ describe('ComplaintsService', () => {
     service = module.get(ComplaintsService);
   });
 
+  it('refuses a missing institute instead of running an unfiltered query', async () => {
+    await expect(service.changeStatus('', 1, { status: 'resolved' as any }, 'user-1')).rejects.toThrow(ForbiddenException);
+    expect(mockPrisma.frontOfficeComplaint.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('cannot escalate or change status on another institute\'s complaint', async () => {
+    mockPrisma.frontOfficeComplaint.findFirst.mockResolvedValue(null);
+    await expect(service.escalate(INST, 1, { to_employee_id: 5 }, 'user-1')).rejects.toThrow(NotFoundException);
+    await expect(service.changeStatus(INST, 1, { status: 'resolved' as any }, 'user-1')).rejects.toThrow(NotFoundException);
+  });
+
   describe('escalate', () => {
+    it('cannot escalate to another institute\'s employee', async () => {
+      mockPrisma.frontOfficeComplaint.findFirst.mockResolvedValue({ complaint_id: 1, priority: 'low', assigned_to: 2 });
+      mockPrisma.frontOfficeEmployee.findFirst.mockResolvedValue(null);
+      await expect(service.escalate(INST, 1, { to_employee_id: 5 }, 'user-1')).rejects.toThrow(NotFoundException);
+      expect(mockPrisma.frontOfficeEmployee.findFirst).toHaveBeenCalledWith({ where: { employee_id: 5, institute_id: INST } });
+    });
+
     it('raises a low-priority complaint to high and reassigns it to the manager', async () => {
-      mockPrisma.frontOfficeComplaint.findUnique.mockResolvedValue({ complaint_id: 1, priority: 'low', assigned_to: 2 });
-      mockPrisma.frontOfficeEmployee.findUnique.mockResolvedValue({ employee_id: 5, name: 'Manager Ravi' });
+      mockPrisma.frontOfficeComplaint.findFirst.mockResolvedValue({ complaint_id: 1, priority: 'low', assigned_to: 2 });
+      mockPrisma.frontOfficeEmployee.findFirst.mockResolvedValue({ employee_id: 5, name: 'Manager Ravi' });
       mockPrisma.frontOfficeComplaint.update.mockResolvedValue({ complaint_id: 1, priority: 'high', assigned_to: 5 });
 
-      const result = await service.escalate(1, { to_employee_id: 5, reason: 'no response' }, 'user-1');
+      const result = await service.escalate(INST, 1, { to_employee_id: 5, reason: 'no response' }, 'user-1');
 
       expect(result.priority).toBe('high');
       expect(mockPrisma.frontOfficeComplaint.update).toHaveBeenCalledWith({
@@ -48,11 +68,11 @@ describe('ComplaintsService', () => {
     });
 
     it('never lowers priority when escalating an already-critical complaint', async () => {
-      mockPrisma.frontOfficeComplaint.findUnique.mockResolvedValue({ complaint_id: 1, priority: 'critical', assigned_to: 2 });
-      mockPrisma.frontOfficeEmployee.findUnique.mockResolvedValue({ employee_id: 5, name: 'Manager Ravi' });
+      mockPrisma.frontOfficeComplaint.findFirst.mockResolvedValue({ complaint_id: 1, priority: 'critical', assigned_to: 2 });
+      mockPrisma.frontOfficeEmployee.findFirst.mockResolvedValue({ employee_id: 5, name: 'Manager Ravi' });
       mockPrisma.frontOfficeComplaint.update.mockResolvedValue({ complaint_id: 1, priority: 'critical', assigned_to: 5 });
 
-      await service.escalate(1, { to_employee_id: 5 }, 'user-1');
+      await service.escalate(INST, 1, { to_employee_id: 5 }, 'user-1');
 
       expect(mockPrisma.frontOfficeComplaint.update).toHaveBeenCalledWith({
         where: { complaint_id: 1 },
@@ -61,11 +81,11 @@ describe('ComplaintsService', () => {
     });
 
     it('always writes a timeline entry for the escalation', async () => {
-      mockPrisma.frontOfficeComplaint.findUnique.mockResolvedValue({ complaint_id: 1, priority: 'medium', assigned_to: 2 });
-      mockPrisma.frontOfficeEmployee.findUnique.mockResolvedValue({ employee_id: 5, name: 'Manager Ravi' });
+      mockPrisma.frontOfficeComplaint.findFirst.mockResolvedValue({ complaint_id: 1, priority: 'medium', assigned_to: 2 });
+      mockPrisma.frontOfficeEmployee.findFirst.mockResolvedValue({ employee_id: 5, name: 'Manager Ravi' });
       mockPrisma.frontOfficeComplaint.update.mockResolvedValue({ complaint_id: 1 });
 
-      await service.escalate(1, { to_employee_id: 5 }, 'user-1');
+      await service.escalate(INST, 1, { to_employee_id: 5 }, 'user-1');
 
       expect(mockPrisma.frontOfficeComplaintUpdate.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ complaint_id: 1, status_change: 'escalated' }) }),
@@ -75,25 +95,25 @@ describe('ComplaintsService', () => {
 
   describe('status workflow', () => {
     it('allows open -> resolved directly and stamps resolved_at', async () => {
-      mockPrisma.frontOfficeComplaint.findUnique.mockResolvedValue({ complaint_id: 1, status: 'open', resolved_at: null });
+      mockPrisma.frontOfficeComplaint.findFirst.mockResolvedValue({ complaint_id: 1, status: 'open', resolved_at: null });
       mockPrisma.frontOfficeComplaint.update.mockImplementation(({ data }: any) => Promise.resolve({ complaint_id: 1, ...data }));
 
-      const result = await service.changeStatus(1, { status: 'resolved' as any }, 'user-1');
+      const result = await service.changeStatus(INST, 1, { status: 'resolved' as any }, 'user-1');
       expect(result.status).toBe('resolved');
       expect(result.resolved_at).toBeInstanceOf(Date);
     });
 
     it('rejects transitioning a closed complaint straight to resolved (must reopen first)', async () => {
-      mockPrisma.frontOfficeComplaint.findUnique.mockResolvedValue({ complaint_id: 1, status: 'closed' });
+      mockPrisma.frontOfficeComplaint.findFirst.mockResolvedValue({ complaint_id: 1, status: 'closed' });
 
-      await expect(service.changeStatus(1, { status: 'resolved' as any }, 'user-1')).rejects.toThrow(ConflictException);
+      await expect(service.changeStatus(INST, 1, { status: 'resolved' as any }, 'user-1')).rejects.toThrow(ConflictException);
     });
 
     it('supports reopening a closed complaint', async () => {
-      mockPrisma.frontOfficeComplaint.findUnique.mockResolvedValue({ complaint_id: 1, status: 'closed' });
+      mockPrisma.frontOfficeComplaint.findFirst.mockResolvedValue({ complaint_id: 1, status: 'closed' });
       mockPrisma.frontOfficeComplaint.update.mockResolvedValue({ complaint_id: 1, status: 'open' });
 
-      const result = await service.changeStatus(1, { status: 'open' as any }, 'user-1');
+      const result = await service.changeStatus(INST, 1, { status: 'open' as any }, 'user-1');
       expect(result.status).toBe('open');
     });
   });

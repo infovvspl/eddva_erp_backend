@@ -5,6 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CanteenAuditService } from '../common/canteen-audit.service';
 import { NumberingService } from '../../numbering/numbering.service';
 import { CreateCanteenOrderDto } from './dto/create-canteen-order.dto';
@@ -21,14 +22,15 @@ export class CanteenOrdersService {
     private readonly numberingService: NumberingService,
   ) {}
 
-  async createOrder(dto: CreateCanteenOrderDto, staffUserId: string) {
+  async createOrder(instituteId: string, dto: CreateCanteenOrderDto, staffUserId: string) {
+    const instId = requireInstituteId(instituteId);
     if (!dto.items || dto.items.length === 0) {
       throw new BadRequestException('Order must contain at least one item.');
     }
 
     if (dto.terminalId) {
-      const terminal = await this.prisma.canteenPosTerminal.findUnique({
-        where: { id: dto.terminalId },
+      const terminal = await this.prisma.canteenPosTerminal.findFirst({
+        where: { id: dto.terminalId, instituteId: instId },
       });
       if (!terminal) {
         throw new NotFoundException('POS terminal not found.');
@@ -36,8 +38,8 @@ export class CanteenOrdersService {
     }
 
     if (dto.memberId) {
-      const member = await this.prisma.canteenMember.findUnique({
-        where: { id: dto.memberId },
+      const member = await this.prisma.canteenMember.findFirst({
+        where: { id: dto.memberId, instituteId: instId },
       });
       if (!member) {
         throw new NotFoundException('Member profile not found.');
@@ -46,7 +48,7 @@ export class CanteenOrdersService {
 
     const itemIds = dto.items.map((i) => i.itemId);
     const dbItems = await this.prisma.canteenMenuItem.findMany({
-      where: { id: { in: itemIds } },
+      where: { id: { in: itemIds }, instituteId: instId },
     });
 
     if (dbItems.length !== itemIds.length) {
@@ -98,7 +100,10 @@ export class CanteenOrdersService {
     const totalAmount = Math.max(0, subtotal + taxAmount - discountAmount);
 
     return this.prisma.$transaction(async (tx) => {
-      // Generate unique order number
+      // Generate unique order number. The counter itself is shared across every institute
+      // (see NumberingService), but it is atomic and strictly increasing, so two institutes
+      // never collide even though the per-institute uniqueness this column now enforces
+      // isn't the thing preventing the collision.
       const orderNumber = await this.numberingService.generateNextNumber(
         DocumentType.CANTEEN_ORDER,
         new Date(),
@@ -108,6 +113,7 @@ export class CanteenOrdersService {
 
       const order = await tx.canteenOrder.create({
         data: {
+          instituteId: instId,
           orderNumber: uniqueOrderNo,
           memberId: dto.memberId || null,
           terminalId: dto.terminalId || null,
@@ -120,6 +126,7 @@ export class CanteenOrdersService {
           createdBy: staffUserId,
           items: {
             create: processedItems.map((pi) => ({
+              instituteId: instId,
               itemId: pi.itemId,
               quantity: pi.quantity,
               unitPrice: pi.unitPrice,
@@ -147,7 +154,7 @@ export class CanteenOrdersService {
     });
   }
 
-  async getOrders(params: {
+  async getOrders(instituteId: string, params: {
     page?: number;
     limit?: number;
     search?: string;
@@ -163,7 +170,7 @@ export class CanteenOrdersService {
     const limit = Number(params.limit) || 25;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = { instituteId: requireInstituteId(instituteId) };
 
     if (params.search) {
       where.OR = [
@@ -218,9 +225,9 @@ export class CanteenOrdersService {
     };
   }
 
-  async getOrderById(id: string) {
-    const order = await this.prisma.canteenOrder.findUnique({
-      where: { id },
+  async getOrderById(instituteId: string, id: string) {
+    const order = await this.prisma.canteenOrder.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: {
         items: { include: { item: true } },
         member: true,
@@ -234,8 +241,9 @@ export class CanteenOrdersService {
     return order;
   }
 
-  async updateOrder(id: string, dto: UpdateCanteenOrderDto, actorUserId?: string) {
-    const order = await this.getOrderById(id);
+  async updateOrder(instituteId: string, id: string, dto: UpdateCanteenOrderDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const order = await this.getOrderById(instId, id);
 
     if (order.paymentStatus === CanteenPaymentStatus.PAID || order.status === CanteenOrderStatus.COMPLETED) {
       throw new BadRequestException('Paid or completed orders cannot be modified.');
@@ -247,8 +255,8 @@ export class CanteenOrdersService {
 
     // Validate member if provided
     if (dto.memberId) {
-      const member = await this.prisma.canteenMember.findUnique({
-        where: { id: dto.memberId },
+      const member = await this.prisma.canteenMember.findFirst({
+        where: { id: dto.memberId, instituteId: instId },
       });
       if (!member) {
         throw new NotFoundException('Member profile not found.');
@@ -257,8 +265,8 @@ export class CanteenOrdersService {
 
     // Validate terminal if provided
     if (dto.terminalId) {
-      const terminal = await this.prisma.canteenPosTerminal.findUnique({
-        where: { id: dto.terminalId },
+      const terminal = await this.prisma.canteenPosTerminal.findFirst({
+        where: { id: dto.terminalId, instituteId: instId },
       });
       if (!terminal) {
         throw new NotFoundException('POS terminal not found.');
@@ -278,7 +286,7 @@ export class CanteenOrdersService {
     if (dto.items && dto.items.length > 0) {
       const itemIds = dto.items.map((i) => i.itemId);
       const dbItems = await this.prisma.canteenMenuItem.findMany({
-        where: { id: { in: itemIds } },
+        where: { id: { in: itemIds }, instituteId: instId },
       });
 
       if (dbItems.length !== itemIds.length) {
@@ -338,6 +346,7 @@ export class CanteenOrdersService {
           ...(processedItems && {
             items: {
               create: processedItems.map((pi) => ({
+                instituteId: instId,
                 itemId: pi.itemId,
                 quantity: pi.quantity,
                 unitPrice: pi.unitPrice,
@@ -366,8 +375,8 @@ export class CanteenOrdersService {
     });
   }
 
-  async updateOrderStatus(id: string, dto: UpdateOrderStatusDto, actorUserId?: string) {
-    const order = await this.getOrderById(id);
+  async updateOrderStatus(instituteId: string, id: string, dto: UpdateOrderStatusDto, actorUserId?: string) {
+    const order = await this.getOrderById(instituteId, id);
 
     if (order.status === CanteenOrderStatus.CANCELLED) {
       throw new BadRequestException('Cancelled orders cannot be modified.');
@@ -401,8 +410,8 @@ export class CanteenOrdersService {
     return updated;
   }
 
-  async cancelOrder(id: string, actorUserId?: string) {
-    const order = await this.getOrderById(id);
+  async cancelOrder(instituteId: string, id: string, actorUserId?: string) {
+    const order = await this.getOrderById(instituteId, id);
 
     if (order.status === CanteenOrderStatus.CANCELLED) {
       throw new BadRequestException('Order is already cancelled.');
@@ -437,23 +446,24 @@ export class CanteenOrdersService {
   }
 
   // --- Order Items Management ---
-  async getOrderItems(orderId: string) {
-    await this.getOrderById(orderId);
+  async getOrderItems(instituteId: string, orderId: string) {
+    await this.getOrderById(instituteId, orderId);
     return this.prisma.canteenOrderItem.findMany({
       where: { orderId },
       include: { item: true },
     });
   }
 
-  async addOrderItem(orderId: string, dto: CanteenOrderItemDto, actorUserId?: string) {
-    const order = await this.getOrderById(orderId);
+  async addOrderItem(instituteId: string, orderId: string, dto: CanteenOrderItemDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const order = await this.getOrderById(instId, orderId);
 
     if (order.paymentStatus === CanteenPaymentStatus.PAID || order.status === CanteenOrderStatus.COMPLETED) {
       throw new BadRequestException('Historical paid/completed orders cannot be modified.');
     }
 
-    const menuItem = await this.prisma.canteenMenuItem.findUnique({
-      where: { id: dto.itemId },
+    const menuItem = await this.prisma.canteenMenuItem.findFirst({
+      where: { id: dto.itemId, instituteId: instId },
     });
 
     if (!menuItem || !menuItem.isAvailable) {
@@ -466,6 +476,7 @@ export class CanteenOrdersService {
     const newItem = await this.prisma.$transaction(async (tx) => {
       const added = await tx.canteenOrderItem.create({
         data: {
+          instituteId: instId,
           orderId,
           itemId: dto.itemId,
           quantity: dto.quantity,
@@ -504,8 +515,9 @@ export class CanteenOrdersService {
     return newItem;
   }
 
-  async updateOrderItem(orderId: string, orderItemId: string, quantity: number, actorUserId?: string) {
-    const order = await this.getOrderById(orderId);
+  async updateOrderItem(instituteId: string, orderId: string, orderItemId: string, quantity: number, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const order = await this.getOrderById(instId, orderId);
 
     if (order.paymentStatus === CanteenPaymentStatus.PAID || order.status === CanteenOrderStatus.COMPLETED) {
       throw new BadRequestException('Historical paid/completed orders cannot be modified.');
@@ -566,8 +578,9 @@ export class CanteenOrdersService {
     });
   }
 
-  async removeOrderItem(orderId: string, orderItemId: string, actorUserId?: string) {
-    const order = await this.getOrderById(orderId);
+  async removeOrderItem(instituteId: string, orderId: string, orderItemId: string, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const order = await this.getOrderById(instId, orderId);
 
     if (order.paymentStatus === CanteenPaymentStatus.PAID || order.status === CanteenOrderStatus.COMPLETED) {
       throw new BadRequestException('Historical paid/completed orders cannot be modified.');

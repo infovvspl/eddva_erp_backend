@@ -19,6 +19,8 @@ import { SportsJwtGuard } from '../auth/sports-jwt.guard';
 import { SportsInstituteAdminViewOnlyGuard } from '../auth/sports-institute-admin-view-only.guard';
 import { SportsPermissionsGuard } from '../auth/sports-permissions.guard';
 import { RequirePermission } from '../auth/require-permissions.decorator';
+import { SportsUser } from '../auth/sports-user.decorator';
+import type { SportsPlatformUser } from '../auth/sports-auth.service';
 
 @ApiTags('Sports / Tournament Management')
 @ApiBearerAuth()
@@ -31,31 +33,31 @@ export class SportsTournamentsController {
   @Post('tournaments')
   @RequirePermission({ resource: 'tournaments', action: 'create' })
   @ApiOperation({ summary: 'Create a tournament (inter-house / inter-school / inter-district)' })
-  createTournament(@Body() dto: CreateTournamentDto) {
-    return this.svc.createTournament(dto);
+  createTournament(@SportsUser() user: SportsPlatformUser, @Body() dto: CreateTournamentDto) {
+    return this.svc.createTournament(user.institute_id, dto);
   }
 
   @Get('tournaments')
   @RequirePermission({ resource: 'tournaments', action: 'read' })
   @ApiOperation({ summary: 'List all tournaments' })
-  listTournaments() {
-    return this.svc.listTournaments();
+  listTournaments(@SportsUser() user: SportsPlatformUser) {
+    return this.svc.listTournaments(user.institute_id);
   }
 
   @Get('tournaments/:id')
   @RequirePermission({ resource: 'tournaments', action: 'read' })
   @ApiOperation({ summary: 'Get tournament details with registered teams and fixtures' })
   @ApiParam({ name: 'id', description: 'tournament_id of the Tournament (e.g. 1)' })
-  getTournament(@Param('id', ParseIntPipe) id: number) {
-    return this.svc.getTournament(id);
+  getTournament(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.svc.getTournament(user.institute_id, id);
   }
 
   @Patch('tournaments/:id')
   @RequirePermission({ resource: 'tournaments', action: 'update' })
   @ApiOperation({ summary: 'Update tournament status or details' })
   @ApiParam({ name: 'id', description: 'tournament_id of the Tournament to update' })
-  updateTournament(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTournamentDto) {
-    return this.svc.updateTournament(id, dto);
+  updateTournament(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTournamentDto) {
+    return this.svc.updateTournament(user.institute_id, id, dto);
   }
 
   // ─── Teams ─────────────────────────────────────────────────────────────────
@@ -63,16 +65,16 @@ export class SportsTournamentsController {
   @RequirePermission({ resource: 'tournaments', action: 'update' })
   @ApiOperation({ summary: 'Register a team / house entry for a tournament' })
   @ApiParam({ name: 'id', description: 'tournament_id of target Tournament (e.g. 1)' })
-  createTeam(@Param('id', ParseIntPipe) tournamentId: number, @Body() dto: CreateTeamDto) {
-    return this.svc.createTeam(tournamentId, dto);
+  createTeam(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) tournamentId: number, @Body() dto: CreateTeamDto) {
+    return this.svc.createTeam(user.institute_id, tournamentId, dto);
   }
 
   @Get('tournaments/:id/teams')
   @RequirePermission({ resource: 'tournaments', action: 'read' })
   @ApiOperation({ summary: 'List registered teams for a tournament' })
   @ApiParam({ name: 'id', description: 'tournament_id of target Tournament (e.g. 1)' })
-  getTeams(@Param('id', ParseIntPipe) tournamentId: number) {
-    return this.svc.getTeams(tournamentId);
+  getTeams(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) tournamentId: number) {
+    return this.svc.getTeams(user.institute_id, tournamentId);
   }
 
   // ─── Fixtures & Results ─────────────────────────────────────────────────────
@@ -80,31 +82,31 @@ export class SportsTournamentsController {
   @RequirePermission({ resource: 'fixtures', action: 'create' })
   @ApiOperation({ summary: 'Create / schedule a match fixture in a tournament' })
   @ApiParam({ name: 'id', description: 'tournament_id of target Tournament (e.g. 1)' })
-  createFixture(@Param('id', ParseIntPipe) tournamentId: number, @Body() dto: CreateFixtureDto) {
-    return this.svc.createFixture(tournamentId, dto);
+  createFixture(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) tournamentId: number, @Body() dto: CreateFixtureDto) {
+    return this.svc.createFixture(user.institute_id, tournamentId, dto);
   }
 
   @Get('tournaments/:id/fixtures')
   @RequirePermission({ resource: 'fixtures', action: 'read' })
   @ApiOperation({ summary: 'List fixtures for a tournament' })
   @ApiParam({ name: 'id', description: 'tournament_id of target Tournament (e.g. 1)' })
-  getFixtures(@Param('id', ParseIntPipe) tournamentId: number) {
-    return this.svc.getFixtures(tournamentId);
+  getFixtures(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) tournamentId: number) {
+    return this.svc.getFixtures(user.institute_id, tournamentId);
   }
 
   @Post('fixtures/:id/result')
   @RequirePermission({ resource: 'fixtures', action: 'record_result' })
   @ApiOperation({ summary: 'Record match result (scores, winner, notes) & auto-update house points' })
   @ApiParam({ name: 'id', description: 'fixture_id of target Fixture (e.g. 1)' })
-  recordResult(@Param('id', ParseIntPipe) fixtureId: number, @Body() dto: RecordResultDto) {
-    return this.svc.recordResult(fixtureId, dto);
+  recordResult(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) fixtureId: number, @Body() dto: RecordResultDto) {
+    return this.svc.recordResult(user.institute_id, fixtureId, dto);
   }
 
   @Post('fixtures/:id/stats')
   @RequirePermission({ resource: 'fixtures', action: 'record_result' })
   @ApiOperation({ summary: 'Record individual player match statistics (goals, runs, points)' })
   @ApiParam({ name: 'id', description: 'fixture_id of target Fixture (e.g. 1)' })
-  recordPlayerStat(@Param('id', ParseIntPipe) fixtureId: number, @Body() dto: RecordPlayerStatDto) {
-    return this.svc.recordPlayerStat(fixtureId, dto);
+  recordPlayerStat(@SportsUser() user: SportsPlatformUser, @Param('id', ParseIntPipe) fixtureId: number, @Body() dto: RecordPlayerStatDto) {
+    return this.svc.recordPlayerStat(user.institute_id, fixtureId, dto);
   }
 }

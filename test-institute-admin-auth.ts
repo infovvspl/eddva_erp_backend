@@ -16,7 +16,8 @@ async function runTests() {
 
   const jwtService = app.get(JwtService);
   const prisma = app.get(PrismaService);
-  const jwtSecret = process.env.JWT_SECRET || 'eddva_erp_super_secret_jwt_key_2026';
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) throw new Error('JWT_SECRET must be set');
 
   // 1. Generate Institute Admin A Token
   const payloadAdminA = {

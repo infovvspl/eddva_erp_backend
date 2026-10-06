@@ -1,15 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 
 @Injectable()
 export class StockBalancesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getBalances(params: { item_id?: number; location_id?: number; page?: number; limit?: number }) {
+  async getBalances(instituteId: string, params: { item_id?: number; location_id?: number; page?: number; limit?: number }) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 200) : 50;
 
-    const where: any = {};
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (params.item_id) where.item_id = params.item_id;
     if (params.location_id) where.location_id = params.location_id;
 
@@ -30,20 +31,23 @@ export class StockBalancesService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async getLedger(params: {
-    item_id?: number;
-    location_id?: number;
-    transaction_type?: string;
-    reference_type?: string;
-    date_from?: string;
-    date_to?: string;
-    page?: number;
-    limit?: number;
-  }) {
+  async getLedger(
+    instituteId: string,
+    params: {
+      item_id?: number;
+      location_id?: number;
+      transaction_type?: string;
+      reference_type?: string;
+      date_from?: string;
+      date_to?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 200) : 50;
 
-    const where: any = {};
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (params.item_id) where.item_id = params.item_id;
     if (params.location_id) where.location_id = params.location_id;
     if (params.transaction_type) where.transaction_type = params.transaction_type;
@@ -75,9 +79,11 @@ export class StockBalancesService {
    * Recalculates stock_balances purely from stock_ledger — the ledger is
    * authoritative, so if a balance row ever drifted (it shouldn't, given
    * every write goes through InventoryStockLedgerService's atomic upserts),
-   * this rebuilds the cache to match it exactly.
+   * this rebuilds the cache to match it exactly. Scoped to the caller's
+   * institute so one school can never rebuild another's balances.
    */
-  async reconcile(itemId?: number) {
+  async reconcile(instituteId: string, itemId?: number) {
+    const institute_id = requireInstituteId(instituteId);
     const rows = await this.prisma.$queryRawUnsafe<Array<{ item_id: number; location_id: number; balance: bigint }>>(
       `SELECT item_id, location_id, SUM(
          CASE
@@ -87,9 +93,9 @@ export class StockBalancesService {
          END
        ) AS balance
        FROM inv_stock_ledger
-       ${itemId ? 'WHERE item_id = $1' : ''}
+       WHERE institute_id = $1 ${itemId ? 'AND item_id = $2' : ''}
        GROUP BY item_id, location_id`,
-      ...(itemId ? [itemId] : []),
+      ...(itemId ? [institute_id, itemId] : [institute_id]),
     );
 
     const results: Array<{ item_id: number; location_id: number; quantity: number; updated_at: Date }> = [];
@@ -98,7 +104,7 @@ export class StockBalancesService {
       const updated = await this.prisma.invStockBalance.upsert({
         where: { item_id_location_id: { item_id: row.item_id, location_id: row.location_id } },
         update: { quantity },
-        create: { item_id: row.item_id, location_id: row.location_id, quantity },
+        create: { item_id: row.item_id, location_id: row.location_id, quantity, institute_id },
       });
       results.push(updated);
     }

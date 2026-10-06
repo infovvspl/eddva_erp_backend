@@ -2,6 +2,7 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { InvReferenceType, InvStockTxnType, Prisma } from '@prisma/client';
 
 export interface StockMovementParams {
+  institute_id: string;
   item_id: number;
   location_id: number;
   quantity: number; // always a positive magnitude — direction comes from transaction_type
@@ -32,6 +33,11 @@ type TxClient = Prisma.TransactionClient;
  * lock implicit in the UPDATE, and only one can satisfy `quantity >= n` if
  * that was the last unit.
  *
+ * (item_id, location_id) stays the balance table's key — both already belong to one
+ * institute (their own unique keys are per-institute, and every caller resolves them
+ * from the same institute before calling in), so cross-tenant mixing can't happen here.
+ * institute_id is still stamped on every row for direct filtering and reporting.
+ *
  * Ledger rows are never updated or deleted after creation (append-only) —
  * corrections happen through new adjustment transactions.
  */
@@ -44,13 +50,14 @@ export class InventoryStockLedgerService {
     }
 
     const rows = await tx.$queryRawUnsafe<Array<{ quantity: number }>>(
-      `INSERT INTO inv_stock_balances (item_id, location_id, quantity, updated_at)
-       VALUES ($1, $2, $3, NOW())
+      `INSERT INTO inv_stock_balances (item_id, location_id, institute_id, quantity, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
        ON CONFLICT (item_id, location_id)
-       DO UPDATE SET quantity = inv_stock_balances.quantity + $3, updated_at = NOW()
+       DO UPDATE SET quantity = inv_stock_balances.quantity + $4, updated_at = NOW()
        RETURNING quantity`,
       params.item_id,
       params.location_id,
+      params.institute_id,
       params.quantity,
     );
 
@@ -94,6 +101,7 @@ export class InventoryStockLedgerService {
   private async writeLedger(tx: TxClient, transactionType: InvStockTxnType, balance_after: number, params: StockMovementParams) {
     await tx.invStockLedger.create({
       data: {
+        institute_id: params.institute_id,
         item_id: params.item_id,
         location_id: params.location_id,
         transaction_type: transactionType,

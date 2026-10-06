@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CanteenReportQueryDto } from './dto/canteen-report-query.dto';
 import { CanteenOrderStatus, CanteenPaymentMode } from '@prisma/client';
 
@@ -7,8 +8,9 @@ import { CanteenOrderStatus, CanteenPaymentMode } from '@prisma/client';
 export class CanteenReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getSalesReport(query: CanteenReportQueryDto) {
-    const where: any = {};
+  async getSalesReport(instituteId: string, query: CanteenReportQueryDto) {
+    const instId = requireInstituteId(instituteId);
+    const where: any = { instituteId: instId };
     if (query.terminalId) where.terminalId = query.terminalId;
     if (query.dateFrom || query.dateTo) {
       where.orderDate = {};
@@ -32,7 +34,7 @@ export class CanteenReportsService {
     ]);
 
     // Aggregate payments by mode
-    const paymentWhere: any = { status: 'success' };
+    const paymentWhere: any = { status: 'success', instituteId: instId };
     if (query.dateFrom || query.dateTo) {
       paymentWhere.paidAt = {};
       if (query.dateFrom) paymentWhere.paidAt.gte = new Date(query.dateFrom);
@@ -79,8 +81,9 @@ export class CanteenReportsService {
     };
   }
 
-  async getItemSalesReport(query: CanteenReportQueryDto) {
-    const itemWhere: any = {};
+  async getItemSalesReport(instituteId: string, query: CanteenReportQueryDto) {
+    const instId = requireInstituteId(instituteId);
+    const itemWhere: any = { instituteId: instId };
     if (query.itemId) itemWhere.itemId = query.itemId;
     if (query.categoryId) itemWhere.item = { categoryId: query.categoryId };
 
@@ -103,25 +106,27 @@ export class CanteenReportsService {
     });
 
     const dbItems = await this.prisma.canteenMenuItem.findMany({
-      where: { id: { in: itemSales.map((i) => i.itemId) } },
+      where: { id: { in: itemSales.map((i) => i.itemId) }, instituteId: instId },
       include: { category: true },
     });
     const itemMap = new Map(dbItems.map((i) => [i.id, i]));
 
-    return itemSales.map((is) => {
-      const item = itemMap.get(is.itemId);
-      return {
-        itemId: is.itemId,
-        itemName: item?.name || 'Unknown Item',
-        categoryName: item?.category?.name || 'Uncategorized',
-        quantitySold: Number(is._sum.quantity || 0),
-        totalSales: Number(is._sum.subtotal || 0),
-      };
-    });
+    return itemSales
+      .filter((is) => itemMap.has(is.itemId))
+      .map((is) => {
+        const item = itemMap.get(is.itemId);
+        return {
+          itemId: is.itemId,
+          itemName: item?.name || 'Unknown Item',
+          categoryName: item?.category?.name || 'Uncategorized',
+          quantitySold: Number(is._sum.quantity || 0),
+          totalSales: Number(is._sum.subtotal || 0),
+        };
+      });
   }
 
-  async getCategorySalesReport(query: CanteenReportQueryDto) {
-    const itemSales = await this.getItemSalesReport(query);
+  async getCategorySalesReport(instituteId: string, query: CanteenReportQueryDto) {
+    const itemSales = await this.getItemSalesReport(instituteId, query);
 
     const categoryMap = new Map<string, { categoryName: string; totalItemsSold: number; totalSales: number }>();
 
@@ -139,8 +144,8 @@ export class CanteenReportsService {
     return Array.from(categoryMap.values());
   }
 
-  async getPaymentSummaryReport(query: CanteenReportQueryDto) {
-    const paymentWhere: any = {};
+  async getPaymentSummaryReport(instituteId: string, query: CanteenReportQueryDto) {
+    const paymentWhere: any = { instituteId: requireInstituteId(instituteId) };
     if (query.paymentMode) paymentWhere.paymentMode = query.paymentMode;
     if (query.dateFrom || query.dateTo) {
       paymentWhere.paidAt = {};
@@ -163,8 +168,8 @@ export class CanteenReportsService {
     }));
   }
 
-  async getShiftReport(query: CanteenReportQueryDto) {
-    const where: any = {};
+  async getShiftReport(instituteId: string, query: CanteenReportQueryDto) {
+    const where: any = { instituteId: requireInstituteId(instituteId) };
     if (query.terminalId) where.terminalId = query.terminalId;
     if (query.dateFrom || query.dateTo) {
       where.shiftStart = {};

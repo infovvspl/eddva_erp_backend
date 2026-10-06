@@ -45,7 +45,7 @@ export class AttachmentsController {
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' }, entity_type: { type: 'string' }, entity_id: { type: 'number' } } } })
   @ApiOperation({ summary: 'Upload an attachment for a visitor, enquiry, or complaint' })
   upload(@UploadedFile() file: Express.Multer.File, @Body() dto: CreateAttachmentDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.attachmentsService.upload(file, dto, user.eddva_user_id);
+    return this.attachmentsService.upload(user.institute_id, file, dto, user.eddva_user_id);
   }
 
   @Get()
@@ -61,14 +61,14 @@ export class AttachmentsController {
         throw new ForbiddenException('Filter by entity_type, or hold the attachments:manage permission to list across all entities');
       }
     }
-    return this.attachmentsService.findAll(entityType, entityId ? Number(entityId) : undefined);
+    return this.attachmentsService.findAll(user.institute_id, entityType, entityId ? Number(entityId) : undefined);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get attachment metadata' })
   @ApiParam({ name: 'id', example: 1 })
   async findOne(@Param('id', ParseIntPipe) id: number, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    const attachment = await this.attachmentsService.findOne(id);
+    const attachment = await this.attachmentsService.findOne(user.institute_id, id);
     await this.assertCanAccessEntity(user, attachment.entity_type);
     return attachment;
   }
@@ -77,7 +77,7 @@ export class AttachmentsController {
   @ApiOperation({ summary: 'Download an attachment file' })
   @ApiParam({ name: 'id', example: 1 })
   async download(@Param('id', ParseIntPipe) id: number, @FrontOfficeUser() user: FrontOfficePlatformUser, @Res() res: Response) {
-    const { attachment, absolutePath } = await this.attachmentsService.getFileForDownload(id);
+    const { attachment, absolutePath } = await this.attachmentsService.getFileForDownload(user.institute_id, id);
     await this.assertCanAccessEntity(user, attachment.entity_type);
     res.download(absolutePath, attachment.file_name);
   }
@@ -87,6 +87,6 @@ export class AttachmentsController {
   @ApiOperation({ summary: 'Delete an attachment' })
   @ApiParam({ name: 'id', example: 1 })
   remove(@Param('id', ParseIntPipe) id: number, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.attachmentsService.remove(id, user.eddva_user_id);
+    return this.attachmentsService.remove(user.institute_id, id, user.eddva_user_id);
   }
 }

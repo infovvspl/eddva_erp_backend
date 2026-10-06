@@ -4,8 +4,16 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { checkAuthEnv } from './common/utils/module-secret.util';
 
 async function bootstrap() {
+  const authEnv = checkAuthEnv();
+  authEnv.warnings.forEach((warning) => console.warn(`Auth config warning: ${warning}`));
+  if (authEnv.fatal.length > 0) {
+    console.error(`Auth config invalid, refusing to start:\n - ${authEnv.fatal.join('\n - ')}`);
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule);
 
   app.enableCors();

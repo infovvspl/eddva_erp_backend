@@ -4,6 +4,8 @@ import { InventoryJwtGuard } from '../auth/inventory-jwt.guard';
 import { InventoryInstituteAdminViewOnlyGuard } from '../auth/inventory-institute-admin-view-only.guard';
 import { InventoryPermissionsGuard } from '../auth/inventory-permissions.guard';
 import { RequirePermission } from '../auth/require-permissions.decorator';
+import { InventoryUser } from '../auth/inventory-user.decorator';
+import type { InventoryPlatformUser } from '../auth/inventory-auth.service';
 import { AlertsService } from './alerts.service';
 
 @ApiTags('Inventory / Alerts')
@@ -16,14 +18,14 @@ export class AlertsController {
   @Get('low-stock')
   @RequirePermission({ resource: 'dashboard', action: 'read' })
   @ApiOperation({ summary: 'Items at or below their configured reorder level, with a per-location breakdown' })
-  lowStock() {
-    return this.alertsService.lowStock();
+  lowStock(@InventoryUser() user: InventoryPlatformUser) {
+    return this.alertsService.lowStock(user.institute_id);
   }
 
   @Get('overdue-returns')
   @RequirePermission({ resource: 'dashboard', action: 'read' })
   @ApiOperation({ summary: 'Issues whose expected return date has passed without a complete return' })
-  overdueReturns() {
-    return this.alertsService.overdueReturns();
+  overdueReturns(@InventoryUser() user: InventoryPlatformUser) {
+    return this.alertsService.overdueReturns(user.institute_id);
   }
 }

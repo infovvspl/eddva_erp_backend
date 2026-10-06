@@ -22,7 +22,7 @@ export class ItemsController {
   @RequirePermission({ resource: 'items', action: 'create' })
   @ApiOperation({ summary: 'Create an item master record' })
   create(@Body() dto: CreateItemDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.itemsService.create(dto, user.eddva_user_id);
+    return this.itemsService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get()
@@ -35,6 +35,7 @@ export class ItemsController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   findAll(
+    @InventoryUser() user: InventoryPlatformUser,
     @Query('search') search?: string,
     @Query('category_id') categoryId?: string,
     @Query('item_type') itemType?: string,
@@ -42,7 +43,7 @@ export class ItemsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.itemsService.findAll({
+    return this.itemsService.findAll(user.institute_id, {
       search,
       category_id: categoryId ? Number(categoryId) : undefined,
       item_type: itemType,
@@ -56,8 +57,8 @@ export class ItemsController {
   @RequirePermission({ resource: 'items', action: 'read' })
   @ApiOperation({ summary: 'Get item details, vendor associations, and per-location balances' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.itemsService.findOne(id);
+  findOne(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.itemsService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -65,7 +66,7 @@ export class ItemsController {
   @ApiOperation({ summary: 'Update an item master record' })
   @ApiParam({ name: 'id', example: 1 })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateItemDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.itemsService.update(id, dto, user.eddva_user_id);
+    return this.itemsService.update(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Post(':id/vendors')
@@ -73,14 +74,14 @@ export class ItemsController {
   @ApiOperation({ summary: 'Associate a vendor with an item (and its last purchase price)' })
   @ApiParam({ name: 'id', example: 1 })
   upsertVendor(@Param('id', ParseIntPipe) id: number, @Body() dto: UpsertItemVendorDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.itemsService.upsertVendor(id, dto, user.eddva_user_id);
+    return this.itemsService.upsertVendor(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Get(':id/vendors')
   @RequirePermission({ resource: 'items', action: 'read' })
   @ApiOperation({ summary: 'List vendors associated with an item, cheapest last-purchase-price first' })
   @ApiParam({ name: 'id', example: 1 })
-  listVendors(@Param('id', ParseIntPipe) id: number) {
-    return this.itemsService.listVendors(id);
+  listVendors(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.itemsService.listVendors(user.institute_id, id);
   }
 }

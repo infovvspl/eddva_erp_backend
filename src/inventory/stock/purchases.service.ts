@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { InventoryAuditService } from '../common/inventory-audit.service';
 import { InventoryStockLedgerService } from '../common/inventory-stock-ledger.service';
 import { INV_ENTITY } from '../common/inventory-entities';
@@ -13,14 +14,15 @@ export class PurchasesService {
     private readonly ledger: InventoryStockLedgerService,
   ) {}
 
-  async create(dto: CreatePurchaseDto, actorId?: string) {
-    const item = await this.prisma.invItem.findUnique({ where: { item_id: dto.item_id } });
+  async create(instituteId: string, dto: CreatePurchaseDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const item = await this.prisma.invItem.findFirst({ where: { item_id: dto.item_id, institute_id } });
     if (!item) throw new NotFoundException(`Item #${dto.item_id} not found`);
 
-    const vendor = await this.prisma.invVendor.findUnique({ where: { vendor_id: dto.vendor_id } });
+    const vendor = await this.prisma.invVendor.findFirst({ where: { vendor_id: dto.vendor_id, institute_id } });
     if (!vendor) throw new NotFoundException(`Vendor #${dto.vendor_id} not found`);
 
-    const location = await this.prisma.invLocation.findUnique({ where: { location_id: dto.location_id } });
+    const location = await this.prisma.invLocation.findFirst({ where: { location_id: dto.location_id, institute_id } });
     if (!location) throw new NotFoundException(`Location #${dto.location_id} not found`);
 
     if (item.item_type === 'asset') {
@@ -28,7 +30,7 @@ export class PurchasesService {
         throw new BadRequestException(`asset_tags must contain exactly ${dto.quantity} tag(s) to match quantity`);
       }
       if (dto.asset_tags) {
-        const duplicates = await this.prisma.invAssetUnit.findMany({ where: { asset_tag: { in: dto.asset_tags } } });
+        const duplicates = await this.prisma.invAssetUnit.findMany({ where: { asset_tag: { in: dto.asset_tags }, institute_id } });
         if (duplicates.length > 0) {
           throw new ConflictException(`Asset tag(s) already in use: ${duplicates.map((d) => d.asset_tag).join(', ')}`);
         }
@@ -40,6 +42,7 @@ export class PurchasesService {
     const result = await this.prisma.$transaction(async (tx) => {
       const purchase = await tx.invStockPurchase.create({
         data: {
+          institute_id,
           item_id: dto.item_id,
           vendor_id: dto.vendor_id,
           location_id: dto.location_id,
@@ -53,6 +56,7 @@ export class PurchasesService {
       });
 
       await this.ledger.increment(tx, 'purchase_in', {
+        institute_id,
         item_id: dto.item_id,
         location_id: dto.location_id,
         quantity: dto.quantity,
@@ -65,12 +69,12 @@ export class PurchasesService {
       await tx.invItemVendor.upsert({
         where: { item_id_vendor_id: { item_id: dto.item_id, vendor_id: dto.vendor_id } },
         update: { last_purchase_price: dto.unit_price },
-        create: { item_id: dto.item_id, vendor_id: dto.vendor_id, last_purchase_price: dto.unit_price },
+        create: { item_id: dto.item_id, vendor_id: dto.vendor_id, last_purchase_price: dto.unit_price, institute_id },
       });
 
       let assetUnits: any[] = [];
       if (item.item_type === 'asset') {
-        const existingCount = await tx.invAssetUnit.count({ where: { item_id: dto.item_id } });
+        const existingCount = await tx.invAssetUnit.count({ where: { item_id: dto.item_id, institute_id } });
         const tags = dto.asset_tags ?? Array.from({ length: dto.quantity }, (_, i) =>
           `${item.item_code}-${String(existingCount + i + 1).padStart(4, '0')}`,
         );
@@ -78,6 +82,7 @@ export class PurchasesService {
           tags.map((asset_tag) =>
             tx.invAssetUnit.create({
               data: {
+                institute_id,
                 item_id: dto.item_id,
                 asset_tag,
                 purchase_id: purchase.purchase_id,
@@ -104,11 +109,11 @@ export class PurchasesService {
     return { ...result.purchase, asset_units: result.assetUnits };
   }
 
-  async findAll(params: { vendor_id?: number; item_id?: number; location_id?: number; date_from?: string; date_to?: string; page?: number; limit?: number }) {
+  async findAll(instituteId: string, params: { vendor_id?: number; item_id?: number; location_id?: number; date_from?: string; date_to?: string; page?: number; limit?: number }) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const where: any = {};
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (params.vendor_id) where.vendor_id = params.vendor_id;
     if (params.item_id) where.item_id = params.item_id;
     if (params.location_id) where.location_id = params.location_id;
@@ -136,9 +141,9 @@ export class PurchasesService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findOne(id: number) {
-    const purchase = await this.prisma.invStockPurchase.findUnique({
-      where: { purchase_id: id },
+  async findOne(instituteId: string, id: number) {
+    const purchase = await this.prisma.invStockPurchase.findFirst({
+      where: { purchase_id: id, institute_id: requireInstituteId(instituteId) },
       include: { item: true, vendor: true, location: true, asset_units: true },
     });
     if (!purchase) throw new NotFoundException(`Purchase #${id} not found`);

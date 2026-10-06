@@ -1,7 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireModuleSecret } from '../../common/utils/module-secret.util';
 
 export interface InventoryPlatformUser {
   eddva_user_id: string;
@@ -48,11 +49,7 @@ export class InventoryAuthService {
   }
 
   private get inventoryJwtSecret(): string {
-    return (
-      process.env.INVENTORY_JWT_SECRET ||
-      process.env.JWT_SECRET ||
-      'inventory_dev_secret'
-    );
+    return requireModuleSecret('INVENTORY_JWT_SECRET');
   }
 
   /**
@@ -123,20 +120,32 @@ export class InventoryAuthService {
   /**
    * Direct login for assigned role users (Admin, Store Keeper, Approver).
    */
-  async directLogin(usernameOrEmail: string, rawPassword: string): Promise<{
+  async directLogin(
+    usernameOrEmail: string,
+    rawPassword: string,
+    instituteId?: string,
+  ): Promise<{
     inventory_token: string;
     user: InventoryPlatformUser & { role_name: string; permissions: any };
   }> {
-    const assignment = await this.prisma.inventoryUserDynamicRole.findFirst({
+    // (institute_id, username) is the unique key, so the same username can exist in two
+    // institutes. Refuse to guess between them; the caller can pass institute_id.
+    const matches = await this.prisma.inventoryUserDynamicRole.findMany({
       where: {
-        OR: [
-          { username: usernameOrEmail },
-          { user_email: usernameOrEmail },
-        ],
+        OR: [{ username: usernameOrEmail }, { user_email: usernameOrEmail }],
         is_active: true,
+        ...(instituteId ? { institute_id: instituteId } : {}),
       },
       include: { role: true },
+      take: 2,
     });
+
+    if (matches.length > 1) {
+      throw new BadRequestException(
+        'More than one account matches these credentials. Provide institute_id to log in.',
+      );
+    }
+    const assignment = matches[0];
 
     if (!assignment) {
       throw new UnauthorizedException('Invalid credentials or inactive account');

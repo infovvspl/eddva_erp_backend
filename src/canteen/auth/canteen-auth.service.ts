@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -140,17 +140,29 @@ export class CanteenAuthService {
   async directLogin(
     usernameOrEmail: string,
     rawPassword: string,
+    instituteId?: string,
   ): Promise<{
     canteen_token: string;
     user: CanteenPlatformUser & { role_name: string; permissions: any };
   }> {
-    const assignment = await this.prisma.canteenUserDynamicRole.findFirst({
+    // (institute_id, username) is the unique key, so the same username can exist in two
+    // institutes. Refuse to guess between them; the caller can pass institute_id.
+    const matches = await this.prisma.canteenUserDynamicRole.findMany({
       where: {
         OR: [{ username: usernameOrEmail }, { user_email: usernameOrEmail }],
         is_active: true,
+        ...(instituteId ? { institute_id: instituteId } : {}),
       },
       include: { role: true },
+      take: 2,
     });
+
+    if (matches.length > 1) {
+      throw new BadRequestException(
+        'More than one account matches these credentials. Provide institute_id to log in.',
+      );
+    }
+    const assignment = matches[0];
 
     if (!assignment) {
       throw new UnauthorizedException(

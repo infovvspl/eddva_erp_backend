@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CreateSportsRecordDto } from './dto/create-record.dto';
 import { IssueAwardDto } from './dto/issue-award.dto';
 
@@ -9,9 +10,14 @@ export class SportsRecordsService {
 
   // ─── Sports Records ────────────────────────────────────────────────────────
 
-  async createRecord(dto: CreateSportsRecordDto, userId?: number) {
+  async createRecord(instituteId: string, dto: CreateSportsRecordDto, userId?: number) {
+    const institute_id = requireInstituteId(instituteId);
+    const sport = await this.prisma.sportsSport.findFirst({ where: { sport_id: dto.sport_id, institute_id } });
+    if (!sport) throw new NotFoundException(`Sport #${dto.sport_id} not found`);
+
     return this.prisma.sportsRecord.create({
       data: {
+        institute_id,
         participant_id: dto.participant_id ?? null,
         tournament_team_id: dto.tournament_team_id ?? null,
         sport_id: dto.sport_id,
@@ -26,25 +32,27 @@ export class SportsRecordsService {
     });
   }
 
-  async getParticipantRecords(participantId: number) {
-    const participant = await this.prisma.sportsParticipant.findUnique({
-      where: { participant_id: participantId },
+  async getParticipantRecords(instituteId: string, participantId: number) {
+    const institute_id = requireInstituteId(instituteId);
+    const participant = await this.prisma.sportsParticipant.findFirst({
+      where: { participant_id: participantId, institute_id },
     });
     if (!participant) throw new NotFoundException(`Participant #${participantId} not found`);
 
     return this.prisma.sportsRecord.findMany({
-      where: { participant_id: participantId },
+      where: { participant_id: participantId, institute_id },
       include: { sport: true, source_fixture: true, verifier: true },
       orderBy: { achieved_date: 'desc' },
     });
   }
 
-  async getSportRecords(sportId: number) {
-    const sport = await this.prisma.sportsSport.findUnique({ where: { sport_id: sportId } });
+  async getSportRecords(instituteId: string, sportId: number) {
+    const institute_id = requireInstituteId(instituteId);
+    const sport = await this.prisma.sportsSport.findFirst({ where: { sport_id: sportId, institute_id } });
     if (!sport) throw new NotFoundException(`Sport #${sportId} not found`);
 
     return this.prisma.sportsRecord.findMany({
-      where: { sport_id: sportId },
+      where: { sport_id: sportId, institute_id },
       include: { participant: true, tournament_team: true, verifier: true },
       orderBy: { achieved_date: 'desc' },
     });
@@ -52,12 +60,14 @@ export class SportsRecordsService {
 
   // ─── Awards ────────────────────────────────────────────────────────────────
 
-  async issueAward(tournamentId: number, dto: IssueAwardDto) {
-    const tournament = await this.prisma.sportsTournament.findUnique({ where: { tournament_id: tournamentId } });
+  async issueAward(instituteId: string, tournamentId: number, dto: IssueAwardDto) {
+    const institute_id = requireInstituteId(instituteId);
+    const tournament = await this.prisma.sportsTournament.findFirst({ where: { tournament_id: tournamentId, institute_id } });
     if (!tournament) throw new NotFoundException(`Tournament #${tournamentId} not found`);
 
     return this.prisma.sportsAward.create({
       data: {
+        institute_id,
         tournament_id: tournamentId,
         participant_id: dto.participant_id ?? null,
         tournament_team_id: dto.tournament_team_id ?? null,
@@ -68,12 +78,13 @@ export class SportsRecordsService {
     });
   }
 
-  async getTournamentAwards(tournamentId: number) {
-    const tournament = await this.prisma.sportsTournament.findUnique({ where: { tournament_id: tournamentId } });
+  async getTournamentAwards(instituteId: string, tournamentId: number) {
+    const institute_id = requireInstituteId(instituteId);
+    const tournament = await this.prisma.sportsTournament.findFirst({ where: { tournament_id: tournamentId, institute_id } });
     if (!tournament) throw new NotFoundException(`Tournament #${tournamentId} not found`);
 
     return this.prisma.sportsAward.findMany({
-      where: { tournament_id: tournamentId },
+      where: { tournament_id: tournamentId, institute_id },
       include: { participant: true, tournament_team: true },
       orderBy: { issued_date: 'desc' },
     });

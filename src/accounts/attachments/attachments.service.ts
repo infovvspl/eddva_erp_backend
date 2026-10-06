@@ -67,14 +67,22 @@ export class VoucherAttachmentsService {
     return this.prisma.voucherAttachment.findMany({ where: { voucherId }, orderBy: { uploadedAt: 'desc' } });
   }
 
-  private async findOne(id: string) {
-    const attachment = await this.prisma.voucherAttachment.findUnique({ where: { id } });
+  /**
+   * Scoped through the parent voucher: an attachment has no institute column
+   * of its own, so an id-only lookup would let one institute read or delete
+   * another's file by guessing an id. A miss is reported as not-found rather
+   * than forbidden so ids in other tenants are not confirmed to exist.
+   */
+  private async findOne(id: string, instituteId: string) {
+    const attachment = await this.prisma.voucherAttachment.findFirst({
+      where: { id, voucher: { instituteId } },
+    });
     if (!attachment) throw new NotFoundException(`Attachment ${id} not found`);
     return attachment;
   }
 
-  async getFileForDownload(id: string) {
-    const attachment = await this.findOne(id);
+  async getFileForDownload(id: string, actor: AccountsPlatformUser) {
+    const attachment = await this.findOne(id, actor.institute_id);
     const absolutePath = path.join(process.cwd(), attachment.fileUrl);
     if (!fs.existsSync(absolutePath)) throw new NotFoundException('The stored file could not be found on disk');
     return { attachment, absolutePath };
@@ -82,7 +90,7 @@ export class VoucherAttachmentsService {
 
   async remove(id: string, actor: AccountsPlatformUser) {
     const userId = actor.eddva_user_id;
-    const attachment = await this.findOne(id);
+    const attachment = await this.findOne(id, actor.institute_id);
     const absolutePath = path.join(process.cwd(), attachment.fileUrl);
     try {
       if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);

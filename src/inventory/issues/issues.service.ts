@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { InventoryAuditService } from '../common/inventory-audit.service';
 import { InventoryStockLedgerService } from '../common/inventory-stock-ledger.service';
 import { INV_ENTITY } from '../common/inventory-entities';
@@ -27,14 +28,15 @@ export class IssuesService {
     private readonly approvalRules: ApprovalRulesService,
   ) {}
 
-  async create(dto: CreateIssueDto, actorId?: string) {
-    const item = await this.prisma.invItem.findUnique({ where: { item_id: dto.item_id } });
+  async create(instituteId: string, dto: CreateIssueDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const item = await this.prisma.invItem.findFirst({ where: { item_id: dto.item_id, institute_id } });
     if (!item) throw new NotFoundException(`Item #${dto.item_id} not found`);
 
-    const holder = await this.prisma.invHolder.findUnique({ where: { holder_id: dto.holder_id } });
+    const holder = await this.prisma.invHolder.findFirst({ where: { holder_id: dto.holder_id, institute_id } });
     if (!holder) throw new NotFoundException(`Holder #${dto.holder_id} not found`);
 
-    const sourceLocation = await this.prisma.invLocation.findUnique({ where: { location_id: dto.source_location_id } });
+    const sourceLocation = await this.prisma.invLocation.findFirst({ where: { location_id: dto.source_location_id, institute_id } });
     if (!sourceLocation) throw new NotFoundException(`Location #${dto.source_location_id} not found`);
 
     const isAsset = item.item_type === 'asset';
@@ -45,7 +47,7 @@ export class IssuesService {
       if (!dto.asset_unit_id) {
         throw new BadRequestException(`Item "${item.name}" is individually tracked (item_type=asset) — asset_unit_id is required`);
       }
-      assetUnit = await this.prisma.invAssetUnit.findUnique({ where: { asset_unit_id: dto.asset_unit_id } });
+      assetUnit = await this.prisma.invAssetUnit.findFirst({ where: { asset_unit_id: dto.asset_unit_id, institute_id } });
       if (!assetUnit) throw new NotFoundException(`Asset unit #${dto.asset_unit_id} not found`);
       if (assetUnit.item_id !== item.item_id) {
         throw new BadRequestException(`Asset unit #${dto.asset_unit_id} does not belong to item #${item.item_id}`);
@@ -60,11 +62,12 @@ export class IssuesService {
       quantity = dto.quantity ?? 1;
     }
 
-    const approval = await this.approvalRules.resolveForIssue(item.category_id, item.item_id, quantity);
+    const approval = await this.approvalRules.resolveForIssue(institute_id, item.category_id, item.item_id, quantity);
 
     const issue = await this.prisma.$transaction(async (tx) => {
       const created = await tx.invAssetIssue.create({
         data: {
+          institute_id,
           item_id: item.item_id,
           asset_unit_id: assetUnit?.asset_unit_id,
           quantity,
@@ -80,7 +83,7 @@ export class IssuesService {
       });
 
       if (!approval.required) {
-        await this.dispense(tx, created.issue_id, item.item_id, dto.source_location_id, quantity, isAsset, assetUnit?.asset_unit_id, dto.holder_id, actorId);
+        await this.dispense(tx, institute_id, created.issue_id, item.item_id, dto.source_location_id, quantity, isAsset, assetUnit?.asset_unit_id, dto.holder_id, actorId);
       }
 
       return created;
@@ -94,12 +97,13 @@ export class IssuesService {
       metadata: { item_id: item.item_id, asset_unit_id: assetUnit?.asset_unit_id, quantity, holder_id: dto.holder_id },
     });
 
-    return this.findOne(issue.issue_id);
+    return this.findOne(institute_id, issue.issue_id);
   }
 
   /** Decrements stock (consumables) or marks the asset issued — shared by create() (no approval needed) and approve(). */
   private async dispense(
     tx: any,
+    instituteId: string,
     issueId: number,
     itemId: number,
     locationId: number,
@@ -125,6 +129,7 @@ export class IssuesService {
       }
     } else {
       await this.ledger.decrement(tx, 'issue_out', {
+        institute_id: instituteId,
         item_id: itemId,
         location_id: locationId,
         quantity,
@@ -136,8 +141,9 @@ export class IssuesService {
     }
   }
 
-  async approve(id: number, actorId?: string) {
-    const issue = await this.assertExists(id);
+  async approve(instituteId: string, id: number, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const issue = await this.assertExists(institute_id, id);
     if (issue.approval_status !== 'pending') {
       throw new ConflictException(`Issue #${id} is not pending approval (current: ${issue.approval_status})`);
     }
@@ -145,7 +151,7 @@ export class IssuesService {
     const isAsset = !!issue.asset_unit_id;
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      await this.dispense(tx, id, issue.item_id, issue.source_location_id, issue.quantity, isAsset, issue.asset_unit_id ?? undefined, issue.holder_id, actorId);
+      await this.dispense(tx, institute_id, id, issue.item_id, issue.source_location_id, issue.quantity, isAsset, issue.asset_unit_id ?? undefined, issue.holder_id, actorId);
       return tx.invAssetIssue.update({
         where: { issue_id: id },
         data: { approval_status: 'approved', status: 'issued', approved_by: actorId, approved_at: new Date() },
@@ -156,8 +162,8 @@ export class IssuesService {
     return updated;
   }
 
-  async reject(id: number, dto: RejectIssueDto, actorId?: string) {
-    const issue = await this.assertExists(id);
+  async reject(instituteId: string, id: number, dto: RejectIssueDto, actorId?: string) {
+    const issue = await this.assertExists(instituteId, id);
     if (issue.approval_status !== 'pending') {
       throw new ConflictException(`Issue #${id} is not pending approval (current: ${issue.approval_status})`);
     }
@@ -172,8 +178,9 @@ export class IssuesService {
     return updated;
   }
 
-  async returnIssue(id: number, dto: CreateReturnDto, actorId?: string) {
-    const issue = await this.assertExists(id);
+  async returnIssue(instituteId: string, id: number, dto: CreateReturnDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const issue = await this.assertExists(institute_id, id);
     if (!ACTIVE_ISSUE_STATUSES.includes(issue.status)) {
       throw new ConflictException(`Issue #${id} is not active (current status: ${issue.status}) and cannot be returned`);
     }
@@ -195,6 +202,7 @@ export class IssuesService {
     const result = await this.prisma.$transaction(async (tx) => {
       const returnRecord = await tx.invAssetReturn.create({
         data: {
+          institute_id,
           issue_id: id,
           quantity_returned: quantityReturned,
           condition: dto.condition as any,
@@ -214,6 +222,7 @@ export class IssuesService {
         if (dto.condition !== 'good') {
           await tx.invAssetMaintenance.create({
             data: {
+              institute_id,
               asset_unit_id: issue.asset_unit_id!,
               issue_reported: `Returned in ${dto.condition} condition${dto.remarks ? `: ${dto.remarks}` : ''}`,
               status: 'reported',
@@ -223,6 +232,7 @@ export class IssuesService {
         }
       } else {
         await this.ledger.increment(tx, 'return_in', {
+          institute_id,
           item_id: issue.item_id,
           location_id: issue.source_location_id,
           quantity: quantityReturned,
@@ -251,24 +261,27 @@ export class IssuesService {
       metadata: { issue_id: id, quantity_returned: quantityReturned, condition: dto.condition },
     });
 
-    return this.findOne(id);
+    return this.findOne(institute_id, id);
   }
 
-  async findAll(params: {
-    item_id?: number;
-    holder_id?: number;
-    location_id?: number;
-    status?: string;
-    approval_status?: string;
-    date_from?: string;
-    date_to?: string;
-    page?: number;
-    limit?: number;
-  }) {
+  async findAll(
+    instituteId: string,
+    params: {
+      item_id?: number;
+      holder_id?: number;
+      location_id?: number;
+      status?: string;
+      approval_status?: string;
+      date_from?: string;
+      date_to?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const where: any = {};
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (params.item_id) where.item_id = params.item_id;
     if (params.holder_id) where.holder_id = params.holder_id;
     if (params.location_id) where.source_location_id = params.location_id;
@@ -294,14 +307,14 @@ export class IssuesService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findOne(id: number) {
-    const issue = await this.prisma.invAssetIssue.findUnique({ where: { issue_id: id }, include: ISSUE_DETAIL_INCLUDE });
+  async findOne(instituteId: string, id: number) {
+    const issue = await this.prisma.invAssetIssue.findFirst({ where: { issue_id: id, institute_id: requireInstituteId(instituteId) }, include: ISSUE_DETAIL_INCLUDE });
     if (!issue) throw new NotFoundException(`Issue #${id} not found`);
     return issue;
   }
 
-  private async assertExists(id: number) {
-    const issue = await this.prisma.invAssetIssue.findUnique({ where: { issue_id: id } });
+  private async assertExists(instituteId: string, id: number) {
+    const issue = await this.prisma.invAssetIssue.findFirst({ where: { issue_id: id, institute_id: instituteId } });
     if (!issue) throw new NotFoundException(`Issue #${id} not found`);
     return issue;
   }

@@ -4,6 +4,8 @@ import { LibNotificationService } from './lib-notification.service';
 import { LibJwtGuard } from '../auth/lib-jwt.guard';
 import { LibInstituteAdminViewOnlyGuard } from '../auth/lib-institute-admin-view-only.guard';
 import { LibPermissionsGuard } from '../auth/lib-permissions.guard';
+import { LibUser } from '../auth/lib-user.decorator';
+import type { LibPlatformUser } from '../auth/lib-auth.service';
 
 @ApiTags('Library / Notifications')
 @ApiBearerAuth()
@@ -15,8 +17,8 @@ export class LibNotificationsController {
   @Get()
   @ApiOperation({ summary: 'Get system notification logs for library events (overdue, fines, reservations)' })
   @ApiQuery({ name: 'member_id', required: false, type: Number, description: 'Optional member_id filter' })
-  findAll(@Query('member_id') memberId?: string) {
+  findAll(@LibUser() user: LibPlatformUser, @Query('member_id') memberId?: string) {
     const parsedId = memberId ? parseInt(memberId, 10) : undefined;
-    return this.notificationService.findAllLogs(parsedId);
+    return this.notificationService.findAllLogs(user.institute_id, parsedId);
   }
 }

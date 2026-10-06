@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { LibNotificationService } from '../notifications/lib-notification.service';
 import { ReturnIssueDto } from './dto/return-issue.dto';
 import { diffDays } from '../../common/utils/date.util';
@@ -15,9 +16,10 @@ export class ReturnService {
     private readonly notificationService: LibNotificationService,
   ) {}
 
-  async returnBook(issueId: number, dto: ReturnIssueDto) {
-    const issue = await this.prisma.libIssueRecord.findUnique({
-      where: { issue_id: issueId },
+  async returnBook(instituteId: string, issueId: number, dto: ReturnIssueDto) {
+    const institute_id = requireInstituteId(instituteId);
+    const issue = await this.prisma.libIssueRecord.findFirst({
+      where: { issue_id: issueId, institute_id },
       include: { copy: { include: { book: true } } },
     });
     if (!issue) throw new NotFoundException(`Issue record #${issueId} not found`);
@@ -84,6 +86,7 @@ export class ReturnService {
     if (fineRecord) {
       createdFine = await this.prisma.libFine.create({
         data: {
+          institute_id,
           issue_id: fineRecord.issue_id,
           member_id: fineRecord.member_id,
           reason: 'overdue',
@@ -97,6 +100,7 @@ export class ReturnService {
     // Notify next in reservation queue
     const nextReservation = await this.prisma.libReservation.findFirst({
       where: {
+        institute_id,
         book_id: issue.copy.book_id,
         status: 'pending',
       },

@@ -2,8 +2,10 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CreateBookDto } from './dto/create-book.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
 import { BookQueryDto } from './dto/book-query.dto';
@@ -12,21 +14,32 @@ import { BookQueryDto } from './dto/book-query.dto';
 export class LibCatalogService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateBookDto) {
+  /** A book may only use a category that belongs to the same institute. */
+  private async assertCategoryInInstitute(instituteId: string, categoryId: number) {
+    const category = await this.prisma.libCategory.findFirst({
+      where: { category_id: categoryId, institute_id: instituteId },
+    });
+    if (!category) throw new BadRequestException(`Category #${categoryId} not found`);
+  }
+
+  async create(instituteId: string, dto: CreateBookDto) {
+    const institute_id = requireInstituteId(instituteId);
     if (dto.isbn) {
-      const existing = await this.prisma.libBook.findUnique({
-        where: { isbn: dto.isbn },
+      const existing = await this.prisma.libBook.findFirst({
+        where: { institute_id, isbn: dto.isbn },
       });
       if (existing) throw new ConflictException(`Book with ISBN '${dto.isbn}' already exists`);
     }
-    return this.prisma.libBook.create({ data: dto as any });
+    await this.assertCategoryInInstitute(institute_id, dto.category_id);
+    return this.prisma.libBook.create({ data: { ...(dto as any), institute_id } });
   }
 
-  async findAll(query: BookQueryDto) {
+  async findAll(instituteId: string, query: BookQueryDto) {
+    const institute_id = requireInstituteId(instituteId);
     const { page = 1, limit = 20, q, category_id, language } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = { institute_id };
     if (category_id) where.category_id = category_id;
     if (language) where.language = { equals: language, mode: 'insensitive' };
     if (q) {
@@ -54,9 +67,10 @@ export class LibCatalogService {
     return { data, total, page, limit };
   }
 
-  async search(q: string) {
+  async search(instituteId: string, q: string) {
     return this.prisma.libBook.findMany({
       where: {
+        institute_id: requireInstituteId(instituteId),
         OR: [
           { title: { contains: q, mode: 'insensitive' } },
           { author: { contains: q, mode: 'insensitive' } },
@@ -73,9 +87,9 @@ export class LibCatalogService {
     });
   }
 
-  async findOne(id: number) {
-    const book = await this.prisma.libBook.findUnique({
-      where: { book_id: id },
+  async findOne(instituteId: string, id: number) {
+    const book = await this.prisma.libBook.findFirst({
+      where: { book_id: id, institute_id: requireInstituteId(instituteId) },
       include: {
         category: true,
         _count: { select: { copies: { where: { status: 'available' } } } },
@@ -85,19 +99,23 @@ export class LibCatalogService {
     return book;
   }
 
-  async update(id: number, dto: UpdateBookDto) {
-    await this.findOne(id);
+  async update(instituteId: string, id: number, dto: UpdateBookDto) {
+    await this.findOne(instituteId, id);
+    if (dto.category_id !== undefined) {
+      await this.assertCategoryInInstitute(instituteId, dto.category_id);
+    }
     return this.prisma.libBook.update({
       where: { book_id: id },
       data: dto as any,
     });
   }
 
-  async remove(id: number) {
-    await this.findOne(id);
+  async remove(instituteId: string, id: number) {
+    await this.findOne(instituteId, id);
     const activeCopies = await this.prisma.libBookCopy.count({
       where: {
         book_id: id,
+        institute_id: instituteId,
         status: { in: ['issued', 'reserved'] },
       },
     });
@@ -107,15 +125,15 @@ export class LibCatalogService {
     return this.prisma.libBook.delete({ where: { book_id: id } });
   }
 
-  async updateCoverImage(id: number, coverImageUrl: string) {
-    await this.findOne(id);
+  async updateCoverImage(instituteId: string, id: number, coverImageUrl: string) {
+    await this.findOne(instituteId, id);
     return this.prisma.libBook.update({
       where: { book_id: id },
       data: { cover_image_url: coverImageUrl },
     });
   }
 
-  async findOneOrFail(id: number) {
-    return this.findOne(id);
+  async findOneOrFail(instituteId: string, id: number) {
+    return this.findOne(instituteId, id);
   }
 }

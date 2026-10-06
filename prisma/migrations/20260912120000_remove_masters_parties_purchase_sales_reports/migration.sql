@@ -19,7 +19,7 @@ CREATE TYPE "DocumentType_new" AS ENUM ('VISITOR_BADGE', 'JOURNAL_VOUCHER', 'PAY
 ALTER TABLE "number_sequences" ALTER COLUMN "documentType" TYPE "DocumentType_new" USING ("documentType"::text::"DocumentType_new");
 ALTER TYPE "DocumentType" RENAME TO "DocumentType_old";
 ALTER TYPE "DocumentType_new" RENAME TO "DocumentType";
-DROP TYPE "public"."DocumentType_old";
+DROP TYPE "DocumentType_old";
 COMMIT;
 
 -- DropForeignKey

@@ -2,9 +2,9 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { CanteenAuditService } from '../common/canteen-audit.service';
 import { CreateCanteenPaymentDto } from './dto/create-canteen-payment.dto';
 import { RefundCanteenPaymentDto } from './dto/refund-canteen-payment.dto';
@@ -23,9 +23,10 @@ export class CanteenPaymentsService {
     private readonly auditService: CanteenAuditService,
   ) {}
 
-  async processPayment(orderId: string, dto: CreateCanteenPaymentDto, staffUserId: string) {
-    const order = await this.prisma.canteenOrder.findUnique({
-      where: { id: orderId },
+  async processPayment(instituteId: string, orderId: string, dto: CreateCanteenPaymentDto, staffUserId: string) {
+    const instId = requireInstituteId(instituteId);
+    const order = await this.prisma.canteenOrder.findFirst({
+      where: { id: orderId, instituteId: instId },
       include: {
         payments: true,
         member: { include: { wallet: true } },
@@ -111,6 +112,7 @@ export class CanteenPaymentsService {
         // Create wallet debit ledger entry
         const walletTx = await tx.canteenWalletTransaction.create({
           data: {
+            instituteId: instId,
             walletId: wallet.id,
             type: CanteenWalletTransType.DEBIT,
             amount: payAmount,
@@ -127,6 +129,7 @@ export class CanteenPaymentsService {
       // Record Payment
       const payment = await tx.canteenPayment.create({
         data: {
+          instituteId: instId,
           orderId,
           paymentMode: dto.paymentMode,
           amount: payAmount,
@@ -165,16 +168,16 @@ export class CanteenPaymentsService {
     });
   }
 
-  async getPaymentsByOrder(orderId: string) {
+  async getPaymentsByOrder(instituteId: string, orderId: string) {
     return this.prisma.canteenPayment.findMany({
-      where: { orderId },
+      where: { orderId, instituteId: requireInstituteId(instituteId) },
       orderBy: { paidAt: 'desc' },
     });
   }
 
-  async getPaymentById(id: string) {
-    const payment = await this.prisma.canteenPayment.findUnique({
-      where: { id },
+  async getPaymentById(instituteId: string, id: string) {
+    const payment = await this.prisma.canteenPayment.findFirst({
+      where: { id, instituteId: requireInstituteId(instituteId) },
       include: {
         order: { include: { member: { include: { wallet: true } } } },
       },
@@ -185,8 +188,9 @@ export class CanteenPaymentsService {
     return payment;
   }
 
-  async refundPayment(id: string, dto: RefundCanteenPaymentDto, actorUserId?: string) {
-    const payment = await this.getPaymentById(id);
+  async refundPayment(instituteId: string, id: string, dto: RefundCanteenPaymentDto, actorUserId?: string) {
+    const instId = requireInstituteId(instituteId);
+    const payment = await this.getPaymentById(instId, id);
 
     if (payment.status === 'refunded') {
       throw new BadRequestException('Payment has already been refunded.');
@@ -208,6 +212,7 @@ export class CanteenPaymentsService {
 
           await tx.canteenWalletTransaction.create({
             data: {
+              instituteId: instId,
               walletId: wallet.id,
               type: CanteenWalletTransType.CREDIT,
               amount: refundAmt,

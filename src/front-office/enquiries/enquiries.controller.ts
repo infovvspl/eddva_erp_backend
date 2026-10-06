@@ -28,7 +28,7 @@ export class EnquiriesController {
   @RequirePermission({ resource: 'enquiries', action: 'create' })
   @ApiOperation({ summary: 'Create an enquiry' })
   create(@Body() dto: CreateEnquiryDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.enquiriesService.create(dto, user.eddva_user_id);
+    return this.enquiriesService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get()
@@ -58,7 +58,7 @@ export class EnquiriesController {
     @Query('limit') limit?: string,
   ) {
     const scope = await this.access.resolveScope(user);
-    return this.enquiriesService.findAll(
+    return this.enquiriesService.findAll(user.institute_id, 
       {
         source,
         category,
@@ -79,23 +79,23 @@ export class EnquiriesController {
   @RequirePermission({ resource: 'enquiries', action: 'read' })
   @ApiOperation({ summary: 'Follow-ups due in the next N days (default 7)' })
   @ApiQuery({ name: 'days', required: false })
-  upcomingFollowups(@Query('days') days?: string) {
-    return this.enquiriesService.upcomingFollowups(days ? Number(days) : undefined);
+  upcomingFollowups(@FrontOfficeUser() user: FrontOfficePlatformUser, @Query('days') days?: string) {
+    return this.enquiriesService.upcomingFollowups(user.institute_id, days ? Number(days) : undefined);
   }
 
   @Get('followups/overdue')
   @RequirePermission({ resource: 'enquiries', action: 'read' })
   @ApiOperation({ summary: 'Follow-ups past their next_followup_date on non-closed enquiries' })
-  overdueFollowups() {
-    return this.enquiriesService.overdueFollowups();
+  overdueFollowups(@FrontOfficeUser() user: FrontOfficePlatformUser) {
+    return this.enquiriesService.overdueFollowups(user.institute_id);
   }
 
   @Get(':id')
   @RequirePermission({ resource: 'enquiries', action: 'read' })
   @ApiOperation({ summary: 'Get enquiry details' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.enquiriesService.findOne(id);
+  findOne(@FrontOfficeUser() user: FrontOfficePlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.enquiriesService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -103,7 +103,7 @@ export class EnquiriesController {
   @ApiOperation({ summary: 'Update enquiry details' })
   @ApiParam({ name: 'id', example: 1 })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateEnquiryDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.enquiriesService.update(id, dto, user.eddva_user_id);
+    return this.enquiriesService.update(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Patch(':id/assign')
@@ -111,7 +111,7 @@ export class EnquiriesController {
   @ApiOperation({ summary: 'Assign/reassign an enquiry' })
   @ApiParam({ name: 'id', example: 1 })
   assign(@Param('id', ParseIntPipe) id: number, @Body() dto: AssignEnquiryDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.enquiriesService.assign(id, dto, user.eddva_user_id);
+    return this.enquiriesService.assign(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Patch(':id/status')
@@ -119,7 +119,7 @@ export class EnquiriesController {
   @ApiOperation({ summary: 'Change enquiry status (open → in_progress → closed)' })
   @ApiParam({ name: 'id', example: 1 })
   changeStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: ChangeEnquiryStatusDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.enquiriesService.changeStatus(id, dto, user.eddva_user_id);
+    return this.enquiriesService.changeStatus(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Post(':id/followups')
@@ -127,22 +127,22 @@ export class EnquiriesController {
   @ApiOperation({ summary: 'Create a follow-up (auto-moves an open enquiry to in_progress)' })
   @ApiParam({ name: 'id', example: 1 })
   createFollowup(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateFollowupDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.enquiriesService.createFollowup(id, dto, user.eddva_user_id);
+    return this.enquiriesService.createFollowup(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Get(':id/followups')
   @RequirePermission({ resource: 'enquiries', action: 'read' })
   @ApiOperation({ summary: 'List follow-ups for an enquiry' })
   @ApiParam({ name: 'id', example: 1 })
-  listFollowups(@Param('id', ParseIntPipe) id: number) {
-    return this.enquiriesService.listFollowups(id);
+  listFollowups(@FrontOfficeUser() user: FrontOfficePlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.enquiriesService.listFollowups(user.institute_id, id);
   }
 
   @Get(':id/history')
   @RequirePermission({ resource: 'enquiries', action: 'read' })
   @ApiOperation({ summary: 'Get enquiry audit history' })
   @ApiParam({ name: 'id', example: 1 })
-  history(@Param('id', ParseIntPipe) id: number) {
-    return this.enquiriesService.history(id);
+  history(@FrontOfficeUser() user: FrontOfficePlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.enquiriesService.history(user.institute_id, id);
   }
 }

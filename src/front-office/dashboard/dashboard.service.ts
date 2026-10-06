@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 
 function startOfToday() {
   const d = new Date();
@@ -28,23 +29,23 @@ export class DashboardService {
     return Object.keys(range).length > 0 ? range : undefined;
   }
 
-  private async visitorMetrics(from?: string, to?: string) {
+  private async visitorMetrics(instituteId: string, from?: string, to?: string) {
     const todayStart = startOfToday();
     const todayEnd = endOfToday();
 
     const [todayVisitors, currentlyCheckedIn, checkedOutToday, byHostRaw] = await Promise.all([
-      this.prisma.frontOfficeVisitorLog.count({ where: { check_in_time: { gte: todayStart, lt: todayEnd } } }),
-      this.prisma.frontOfficeVisitorLog.count({ where: { status: 'checked_in' } }),
-      this.prisma.frontOfficeVisitorLog.count({ where: { status: 'checked_out', check_out_time: { gte: todayStart, lt: todayEnd } } }),
+      this.prisma.frontOfficeVisitorLog.count({ where: { institute_id: instituteId, check_in_time: { gte: todayStart, lt: todayEnd } } }),
+      this.prisma.frontOfficeVisitorLog.count({ where: { institute_id: instituteId, status: 'checked_in' } }),
+      this.prisma.frontOfficeVisitorLog.count({ where: { institute_id: instituteId, status: 'checked_out', check_out_time: { gte: todayStart, lt: todayEnd } } }),
       this.prisma.frontOfficeVisitorLog.groupBy({
         by: ['host_employee_id'],
-        where: { check_in_time: this.dateRange(from, to) },
+        where: { institute_id: instituteId, check_in_time: this.dateRange(from, to) },
         _count: { _all: true },
       }),
     ]);
 
     const employees = await this.prisma.frontOfficeEmployee.findMany({
-      where: { employee_id: { in: byHostRaw.map((r) => r.host_employee_id) } },
+      where: { employee_id: { in: byHostRaw.map((r) => r.host_employee_id) }, institute_id: instituteId },
       include: { department: { select: { name: true } } },
     });
     const employeeMap = new Map(employees.map((e) => [e.employee_id, e]));
@@ -59,8 +60,9 @@ export class DashboardService {
     const byDay = await this.prisma.$queryRawUnsafe<Array<{ day: Date; count: bigint }>>(
       `SELECT DATE_TRUNC('day', check_in_time) AS day, COUNT(*)::bigint AS count
        FROM front_office_visitor_logs
-       WHERE ($1::timestamp IS NULL OR check_in_time >= $1) AND ($2::timestamp IS NULL OR check_in_time <= $2)
+       WHERE institute_id = $1 AND ($2::timestamp IS NULL OR check_in_time >= $2) AND ($3::timestamp IS NULL OR check_in_time <= $3)
        GROUP BY 1 ORDER BY 1 ASC`,
+      instituteId,
       from ? new Date(from) : null,
       to ? new Date(to) : null,
     );
@@ -74,16 +76,16 @@ export class DashboardService {
     };
   }
 
-  private async enquiryMetrics(from?: string, to?: string) {
+  private async enquiryMetrics(instituteId: string, from?: string, to?: string) {
     const createdRange = this.dateRange(from, to);
     const [total, byStatus, bySource, byCategory, byAssignee, upcomingFollowups, overdueFollowups] = await Promise.all([
-      this.prisma.frontOfficeEnquiry.count({ where: { created_at: createdRange } }),
-      this.prisma.frontOfficeEnquiry.groupBy({ by: ['status'], where: { created_at: createdRange }, _count: { _all: true } }),
-      this.prisma.frontOfficeEnquiry.groupBy({ by: ['source'], where: { created_at: createdRange }, _count: { _all: true } }),
-      this.prisma.frontOfficeEnquiry.groupBy({ by: ['category'], where: { created_at: createdRange }, _count: { _all: true } }),
-      this.prisma.frontOfficeEnquiry.groupBy({ by: ['assigned_to'], where: { created_at: createdRange }, _count: { _all: true } }),
-      this.prisma.frontOfficeEnquiryFollowup.count({ where: { next_followup_date: { gte: new Date() } } }),
-      this.prisma.frontOfficeEnquiryFollowup.count({ where: { next_followup_date: { lt: new Date() }, enquiry: { status: { not: 'closed' } } } }),
+      this.prisma.frontOfficeEnquiry.count({ where: { institute_id: instituteId, created_at: createdRange } }),
+      this.prisma.frontOfficeEnquiry.groupBy({ by: ['status'], where: { institute_id: instituteId, created_at: createdRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeEnquiry.groupBy({ by: ['source'], where: { institute_id: instituteId, created_at: createdRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeEnquiry.groupBy({ by: ['category'], where: { institute_id: instituteId, created_at: createdRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeEnquiry.groupBy({ by: ['assigned_to'], where: { institute_id: instituteId, created_at: createdRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeEnquiryFollowup.count({ where: { institute_id: instituteId, next_followup_date: { gte: new Date() } } }),
+      this.prisma.frontOfficeEnquiryFollowup.count({ where: { institute_id: instituteId, next_followup_date: { lt: new Date() }, enquiry: { status: { not: 'closed' } } } }),
     ]);
 
     const statusMap = Object.fromEntries(byStatus.map((r) => [r.status, r._count._all]));
@@ -100,23 +102,23 @@ export class DashboardService {
     };
   }
 
-  private async appointmentMetrics(from?: string, to?: string) {
+  private async appointmentMetrics(instituteId: string, from?: string, to?: string) {
     const todayStart = startOfToday();
     const todayEnd = endOfToday();
     const dateRange = this.dateRange(from, to);
 
     const [todayCount, upcomingCount, byStatus, byDepartment, byEmployee] = await Promise.all([
-      this.prisma.frontOfficeAppointment.count({ where: { appointment_date: { gte: todayStart, lt: todayEnd } } }),
-      this.prisma.frontOfficeAppointment.count({ where: { appointment_date: { gt: todayEnd }, status: { notIn: ['cancelled', 'no_show'] } } }),
-      this.prisma.frontOfficeAppointment.groupBy({ by: ['status'], where: { appointment_date: dateRange }, _count: { _all: true } }),
-      this.prisma.frontOfficeAppointment.groupBy({ by: ['department_id'], where: { appointment_date: dateRange }, _count: { _all: true } }),
-      this.prisma.frontOfficeAppointment.groupBy({ by: ['host_employee_id'], where: { appointment_date: dateRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeAppointment.count({ where: { institute_id: instituteId, appointment_date: { gte: todayStart, lt: todayEnd } } }),
+      this.prisma.frontOfficeAppointment.count({ where: { institute_id: instituteId, appointment_date: { gt: todayEnd }, status: { notIn: ['cancelled', 'no_show'] } } }),
+      this.prisma.frontOfficeAppointment.groupBy({ by: ['status'], where: { institute_id: instituteId, appointment_date: dateRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeAppointment.groupBy({ by: ['department_id'], where: { institute_id: instituteId, appointment_date: dateRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeAppointment.groupBy({ by: ['host_employee_id'], where: { institute_id: instituteId, appointment_date: dateRange }, _count: { _all: true } }),
     ]);
 
     const statusMap = Object.fromEntries(byStatus.map((r) => [r.status, r._count._all]));
-    const departments = await this.prisma.frontOfficeDepartment.findMany({ where: { department_id: { in: byDepartment.map((r) => r.department_id) } } });
+    const departments = await this.prisma.frontOfficeDepartment.findMany({ where: { department_id: { in: byDepartment.map((r) => r.department_id) }, institute_id: instituteId } });
     const deptMap = new Map(departments.map((d) => [d.department_id, d.name]));
-    const employees = await this.prisma.frontOfficeEmployee.findMany({ where: { employee_id: { in: byEmployee.map((r) => r.host_employee_id) } } });
+    const employees = await this.prisma.frontOfficeEmployee.findMany({ where: { employee_id: { in: byEmployee.map((r) => r.host_employee_id) }, institute_id: instituteId } });
     const empMap = new Map(employees.map((e) => [e.employee_id, e.name]));
 
     return {
@@ -130,20 +132,22 @@ export class DashboardService {
     };
   }
 
-  private async complaintMetrics(from?: string, to?: string) {
+  private async complaintMetrics(instituteId: string, from?: string, to?: string) {
     const createdRange = this.dateRange(from, to);
     const [total, byStatus, byPriority, byCategory, byAssignee, avgResolutionRaw] = await Promise.all([
-      this.prisma.frontOfficeComplaint.count({ where: { created_at: createdRange } }),
-      this.prisma.frontOfficeComplaint.groupBy({ by: ['status'], where: { created_at: createdRange }, _count: { _all: true } }),
-      this.prisma.frontOfficeComplaint.groupBy({ by: ['priority'], where: { created_at: createdRange }, _count: { _all: true } }),
-      this.prisma.frontOfficeComplaint.groupBy({ by: ['category'], where: { created_at: createdRange }, _count: { _all: true } }),
-      this.prisma.frontOfficeComplaint.groupBy({ by: ['assigned_to'], where: { created_at: createdRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeComplaint.count({ where: { institute_id: instituteId, created_at: createdRange } }),
+      this.prisma.frontOfficeComplaint.groupBy({ by: ['status'], where: { institute_id: instituteId, created_at: createdRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeComplaint.groupBy({ by: ['priority'], where: { institute_id: instituteId, created_at: createdRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeComplaint.groupBy({ by: ['category'], where: { institute_id: instituteId, created_at: createdRange }, _count: { _all: true } }),
+      this.prisma.frontOfficeComplaint.groupBy({ by: ['assigned_to'], where: { institute_id: instituteId, created_at: createdRange }, _count: { _all: true } }),
       this.prisma.$queryRawUnsafe<Array<{ avg_hours: number | null }>>(
         `SELECT AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600.0) AS avg_hours
          FROM front_office_complaints
-         WHERE resolved_at IS NOT NULL
-           AND ($1::timestamp IS NULL OR created_at >= $1)
-           AND ($2::timestamp IS NULL OR created_at <= $2)`,
+         WHERE institute_id = $1
+           AND resolved_at IS NOT NULL
+           AND ($2::timestamp IS NULL OR created_at >= $2)
+           AND ($3::timestamp IS NULL OR created_at <= $3)`,
+        instituteId,
         from ? new Date(from) : null,
         to ? new Date(to) : null,
       ),
@@ -166,12 +170,13 @@ export class DashboardService {
     };
   }
 
-  async getSummary(from?: string, to?: string) {
+  async getSummary(instituteId: string, from?: string, to?: string) {
+    const institute_id = requireInstituteId(instituteId);
     const [visitors, enquiries, appointments, complaints] = await Promise.all([
-      this.visitorMetrics(from, to),
-      this.enquiryMetrics(from, to),
-      this.appointmentMetrics(from, to),
-      this.complaintMetrics(from, to),
+      this.visitorMetrics(institute_id, from, to),
+      this.enquiryMetrics(institute_id, from, to),
+      this.appointmentMetrics(institute_id, from, to),
+      this.complaintMetrics(institute_id, from, to),
     ]);
     return { range: { from: from ?? null, to: to ?? null }, visitors, enquiries, appointments, complaints };
   }

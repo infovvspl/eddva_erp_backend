@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import {
   FrontOfficeNotificationChannel,
   FrontOfficeNotificationEntityType,
 } from '@prisma/client';
 
 export interface SendFoNotificationParams {
+  instituteId: string;
   entityType: FrontOfficeNotificationEntityType;
   entityId: number;
   eventType: string;
@@ -31,9 +33,11 @@ export class FrontOfficeNotificationService {
   constructor(private readonly prisma: PrismaService) {}
 
   async send(params: SendFoNotificationParams): Promise<void> {
+    const institute_id = requireInstituteId(params.instituteId);
     try {
       await this.prisma.frontOfficeNotification.create({
         data: {
+          institute_id,
           entity_type: params.entityType,
           entity_id: params.entityId,
           event_type: params.eventType,
@@ -50,6 +54,7 @@ export class FrontOfficeNotificationService {
       try {
         await this.prisma.frontOfficeNotification.create({
           data: {
+            institute_id,
             entity_type: params.entityType,
             entity_id: params.entityId,
             event_type: params.eventType,
@@ -65,9 +70,10 @@ export class FrontOfficeNotificationService {
     }
   }
 
-  async findAll(filters: { entityType?: string; entityId?: number; recipientEmployeeId?: number }) {
+  async findAll(instituteId: string, filters: { entityType?: string; entityId?: number; recipientEmployeeId?: number }) {
     return this.prisma.frontOfficeNotification.findMany({
       where: {
+        institute_id: requireInstituteId(instituteId),
         entity_type: filters.entityType as FrontOfficeNotificationEntityType | undefined,
         entity_id: filters.entityId,
         recipient_employee_id: filters.recipientEmployeeId,

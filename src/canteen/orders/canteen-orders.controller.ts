@@ -38,7 +38,7 @@ export class CanteenOrdersController {
   @RequirePermission({ resource: 'orders', action: 'create' })
   @Post()
   async createOrder(@Body() dto: CreateCanteenOrderDto, @CanteenUser() user: CanteenPlatformUser) {
-    return this.ordersService.createOrder(dto, user.eddva_user_id);
+    return this.ordersService.createOrder(user.institute_id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'List Canteen orders' })
@@ -55,6 +55,7 @@ export class CanteenOrdersController {
   @RequirePermission({ resource: 'orders', action: 'read' })
   @Get()
   async getOrders(
+    @CanteenUser() user: CanteenPlatformUser,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('search') search?: string,
@@ -66,7 +67,7 @@ export class CanteenOrdersController {
     @Query('dateTo') dateTo?: string,
     @Query('sort') sort?: string,
   ) {
-    return this.ordersService.getOrders({
+    return this.ordersService.getOrders(user.institute_id, {
       page,
       limit,
       search,
@@ -83,8 +84,8 @@ export class CanteenOrdersController {
   @ApiOperation({ summary: 'Get Canteen order by ID' })
   @RequirePermission({ resource: 'orders', action: 'read' })
   @Get(':id')
-  async getOrderById(@Param('id') id: string) {
-    return this.ordersService.getOrderById(id);
+  async getOrderById(@CanteenUser() user: CanteenPlatformUser, @Param('id') id: string) {
+    return this.ordersService.getOrderById(user.institute_id, id);
   }
 
   @ApiOperation({ summary: 'Update Canteen order (items, member, terminal, discount)' })
@@ -95,7 +96,7 @@ export class CanteenOrdersController {
     @Body() dto: UpdateCanteenOrderDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.ordersService.updateOrder(id, dto, user.eddva_user_id);
+    return this.ordersService.updateOrder(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Update Canteen order status only' })
@@ -106,22 +107,22 @@ export class CanteenOrdersController {
     @Body() dto: UpdateOrderStatusDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.ordersService.updateOrderStatus(id, dto, user.eddva_user_id);
+    return this.ordersService.updateOrderStatus(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Cancel Canteen order' })
   @RequirePermission({ resource: 'orders', action: 'cancel' })
   @Delete(':id')
   async cancelOrder(@Param('id') id: string, @CanteenUser() user: CanteenPlatformUser) {
-    return this.ordersService.cancelOrder(id, user.eddva_user_id);
+    return this.ordersService.cancelOrder(user.institute_id, id, user.eddva_user_id);
   }
 
   // --- Order Items ---
   @ApiOperation({ summary: 'Get line items for order' })
   @RequirePermission({ resource: 'order_items', action: 'read' })
   @Get(':orderId/items')
-  async getOrderItems(@Param('orderId') orderId: string) {
-    return this.ordersService.getOrderItems(orderId);
+  async getOrderItems(@CanteenUser() user: CanteenPlatformUser, @Param('orderId') orderId: string) {
+    return this.ordersService.getOrderItems(user.institute_id, orderId);
   }
 
   @ApiOperation({ summary: 'Add item to unpaid order' })
@@ -132,7 +133,7 @@ export class CanteenOrdersController {
     @Body() dto: CanteenOrderItemDto,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.ordersService.addOrderItem(orderId, dto, user.eddva_user_id);
+    return this.ordersService.addOrderItem(user.institute_id, orderId, dto, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Update item quantity on unpaid order' })
@@ -144,7 +145,7 @@ export class CanteenOrdersController {
     @Body('quantity') quantity: number,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.ordersService.updateOrderItem(orderId, itemId, quantity, user.eddva_user_id);
+    return this.ordersService.updateOrderItem(user.institute_id, orderId, itemId, quantity, user.eddva_user_id);
   }
 
   @ApiOperation({ summary: 'Remove item from unpaid order' })
@@ -155,6 +156,6 @@ export class CanteenOrdersController {
     @Param('itemId') itemId: string,
     @CanteenUser() user: CanteenPlatformUser,
   ) {
-    return this.ordersService.removeOrderItem(orderId, itemId, user.eddva_user_id);
+    return this.ordersService.removeOrderItem(user.institute_id, orderId, itemId, user.eddva_user_id);
   }
 }

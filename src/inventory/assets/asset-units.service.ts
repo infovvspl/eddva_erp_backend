@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { InventoryAuditService } from '../common/inventory-audit.service';
 import { INV_ENTITY } from '../common/inventory-entities';
 import { UpdateAssetUnitDto } from './dto/update-asset-unit.dto';
@@ -18,11 +19,11 @@ export class AssetUnitsService {
     private readonly audit: InventoryAuditService,
   ) {}
 
-  async findAll(params: { item_id?: number; location_id?: number; holder_id?: number; status?: string; search?: string; page?: number; limit?: number }) {
+  async findAll(instituteId: string, params: { item_id?: number; location_id?: number; holder_id?: number; status?: string; search?: string; page?: number; limit?: number }) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const where: any = {};
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (params.item_id) where.item_id = params.item_id;
     if (params.location_id) where.current_location_id = params.location_id;
     if (params.holder_id) where.current_holder_id = params.holder_id;
@@ -53,9 +54,9 @@ export class AssetUnitsService {
    * workflow needs in one call: item, current location, current holder, and
    * open maintenance state.
    */
-  async findByTag(tag: string) {
-    const asset = await this.prisma.invAssetUnit.findUnique({
-      where: { asset_tag: tag },
+  async findByTag(instituteId: string, tag: string) {
+    const asset = await this.prisma.invAssetUnit.findFirst({
+      where: { asset_tag: tag, institute_id: requireInstituteId(instituteId) },
       include: {
         ...ASSET_DETAIL_INCLUDE,
         maintenance: { orderBy: { created_at: 'desc' }, take: 5 },
@@ -70,17 +71,18 @@ export class AssetUnitsService {
     return asset;
   }
 
-  private async assertExistsByTag(tag: string) {
-    const asset = await this.prisma.invAssetUnit.findUnique({ where: { asset_tag: tag } });
+  private async assertExistsByTag(instituteId: string, tag: string) {
+    const asset = await this.prisma.invAssetUnit.findFirst({ where: { asset_tag: tag, institute_id: instituteId } });
     if (!asset) throw new NotFoundException(`Asset with tag "${tag}" not found`);
     return asset;
   }
 
-  async update(tag: string, dto: UpdateAssetUnitDto, actorId?: string) {
-    const existing = await this.assertExistsByTag(tag);
+  async update(instituteId: string, tag: string, dto: UpdateAssetUnitDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.assertExistsByTag(institute_id, tag);
 
     if (dto.current_location_id) {
-      const location = await this.prisma.invLocation.findUnique({ where: { location_id: dto.current_location_id } });
+      const location = await this.prisma.invLocation.findFirst({ where: { location_id: dto.current_location_id, institute_id } });
       if (!location) throw new NotFoundException(`Location #${dto.current_location_id} not found`);
     }
     if (dto.status === 'issued' || existing.status === 'issued') {
@@ -92,7 +94,7 @@ export class AssetUnitsService {
     }
 
     const updated = await this.prisma.invAssetUnit.update({
-      where: { asset_tag: tag },
+      where: { asset_unit_id: existing.asset_unit_id },
       data: {
         serial_number: dto.serial_number,
         status: dto.status as any,

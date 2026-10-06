@@ -18,6 +18,7 @@ describe('InventoryStockLedgerService', () => {
       tx.$queryRawUnsafe.mockResolvedValue([{ quantity: 100 }]);
 
       const result = await service.increment(tx, 'purchase_in', {
+        institute_id: 'inst-1',
         item_id: 1,
         location_id: 1,
         quantity: 100,
@@ -27,7 +28,7 @@ describe('InventoryStockLedgerService', () => {
       });
 
       expect(result).toBe(100);
-      expect(tx.$queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining('ON CONFLICT'), 1, 1, 100);
+      expect(tx.$queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining('ON CONFLICT'), 1, 1, 'inst-1', 100);
       expect(tx.invStockLedger.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ transaction_type: 'purchase_in', quantity: 100, balance_after: 100 }) }),
       );
@@ -35,7 +36,7 @@ describe('InventoryStockLedgerService', () => {
 
     it('rejects a non-positive quantity before touching the database', async () => {
       await expect(
-        service.increment(tx, 'purchase_in', { item_id: 1, location_id: 1, quantity: 0, reference_type: 'purchase', reference_id: 1 }),
+        service.increment(tx, 'purchase_in', { institute_id: 'inst-1', item_id: 1, location_id: 1, quantity: 0, reference_type: 'purchase', reference_id: 1 }),
       ).rejects.toThrow(ConflictException);
       expect(tx.$queryRawUnsafe).not.toHaveBeenCalled();
     });
@@ -46,7 +47,7 @@ describe('InventoryStockLedgerService', () => {
       tx.$queryRawUnsafe.mockResolvedValue([]);
 
       await expect(
-        service.decrement(tx, 'issue_out', { item_id: 1, location_id: 1, quantity: 1000, reference_type: 'issue', reference_id: 1 }),
+        service.decrement(tx, 'issue_out', { institute_id: 'inst-1', item_id: 1, location_id: 1, quantity: 1000, reference_type: 'issue', reference_id: 1 }),
       ).rejects.toThrow(ConflictException);
       expect(tx.invStockLedger.create).not.toHaveBeenCalled();
     });
@@ -55,6 +56,7 @@ describe('InventoryStockLedgerService', () => {
       tx.$queryRawUnsafe.mockResolvedValue([{ quantity: 90 }]);
 
       const result = await service.decrement(tx, 'issue_out', {
+        institute_id: 'inst-1',
         item_id: 1,
         location_id: 1,
         quantity: 10,

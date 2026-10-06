@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { InventoryAuditService } from '../common/inventory-audit.service';
 import { InventoryStockLedgerService } from '../common/inventory-stock-ledger.service';
 import { INV_ENTITY } from '../common/inventory-entities';
@@ -13,17 +14,18 @@ export class TransfersService {
     private readonly ledger: InventoryStockLedgerService,
   ) {}
 
-  async create(dto: CreateTransferDto, actorId?: string) {
+  async create(instituteId: string, dto: CreateTransferDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
     if (dto.from_location_id === dto.to_location_id) {
       throw new BadRequestException('from_location_id and to_location_id must differ');
     }
 
-    const item = await this.prisma.invItem.findUnique({ where: { item_id: dto.item_id } });
+    const item = await this.prisma.invItem.findFirst({ where: { item_id: dto.item_id, institute_id } });
     if (!item) throw new NotFoundException(`Item #${dto.item_id} not found`);
 
     const [fromLocation, toLocation] = await Promise.all([
-      this.prisma.invLocation.findUnique({ where: { location_id: dto.from_location_id } }),
-      this.prisma.invLocation.findUnique({ where: { location_id: dto.to_location_id } }),
+      this.prisma.invLocation.findFirst({ where: { location_id: dto.from_location_id, institute_id } }),
+      this.prisma.invLocation.findFirst({ where: { location_id: dto.to_location_id, institute_id } }),
     ]);
     if (!fromLocation) throw new NotFoundException(`Location #${dto.from_location_id} not found`);
     if (!toLocation) throw new NotFoundException(`Location #${dto.to_location_id} not found`);
@@ -34,6 +36,7 @@ export class TransfersService {
     const transfer = await this.prisma.$transaction(async (tx) => {
       const created = await tx.invStockTransfer.create({
         data: {
+          institute_id,
           item_id: dto.item_id,
           from_location_id: dto.from_location_id,
           to_location_id: dto.to_location_id,
@@ -44,6 +47,7 @@ export class TransfersService {
       });
 
       await this.ledger.decrement(tx, 'transfer_out', {
+        institute_id,
         item_id: dto.item_id,
         location_id: dto.from_location_id,
         quantity: dto.quantity,
@@ -54,6 +58,7 @@ export class TransfersService {
       });
 
       await this.ledger.increment(tx, 'transfer_in', {
+        institute_id,
         item_id: dto.item_id,
         location_id: dto.to_location_id,
         quantity: dto.quantity,
@@ -77,11 +82,11 @@ export class TransfersService {
     return transfer;
   }
 
-  async findAll(params: { item_id?: number; location_id?: number; date_from?: string; date_to?: string; page?: number; limit?: number }) {
+  async findAll(instituteId: string, params: { item_id?: number; location_id?: number; date_from?: string; date_to?: string; page?: number; limit?: number }) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const where: any = {};
+    const where: any = { institute_id: requireInstituteId(instituteId) };
     if (params.item_id) where.item_id = params.item_id;
     if (params.location_id) where.OR = [{ from_location_id: params.location_id }, { to_location_id: params.location_id }];
     if (params.date_from || params.date_to) {
@@ -108,9 +113,9 @@ export class TransfersService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findOne(id: number) {
-    const transfer = await this.prisma.invStockTransfer.findUnique({
-      where: { transfer_id: id },
+  async findOne(instituteId: string, id: number) {
+    const transfer = await this.prisma.invStockTransfer.findFirst({
+      where: { transfer_id: id, institute_id: requireInstituteId(instituteId) },
       include: { item: true, from_location: true, to_location: true },
     });
     if (!transfer) throw new NotFoundException(`Transfer #${id} not found`);

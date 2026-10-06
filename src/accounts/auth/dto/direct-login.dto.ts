@@ -1,5 +1,5 @@
-import { IsNotEmpty, IsString } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AccountsDirectLoginDto {
   @ApiProperty({ example: 'accountant_raj', description: 'Username or user email' })
@@ -11,4 +11,13 @@ export class AccountsDirectLoginDto {
   @IsString()
   @IsNotEmpty()
   password: string;
+
+  @ApiPropertyOptional({
+    example: '',
+    description:
+      'Leave empty in almost all cases. Only needed when the same username exists in more than one institute (the API then answers 400 asking for it). An empty value is treated as omitted.',
+  })
+  @IsOptional()
+  @IsString()
+  institute_id?: string;
 }

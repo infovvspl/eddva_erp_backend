@@ -46,7 +46,11 @@ export class SportsAuthController {
   @ApiResponse({ status: 200, description: 'Login successful. Returns sports_token.' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async directLogin(@Body() dto: SportsDirectLoginDto) {
-    return this.authService.directLogin(dto.username, dto.password);
+    return this.authService.directLogin(
+      dto.username,
+      dto.password,
+      dto.institute_id,
+    );
   }
 
   @Get('me')

@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { FrontOfficeAuditService } from '../common/front-office-audit.service';
 import { FO_ENTITY } from '../common/front-office-entities';
 import { CreateDepartmentDto } from './dto/create-department.dto';
@@ -12,11 +13,12 @@ export class DepartmentsService {
     private readonly audit: FrontOfficeAuditService,
   ) {}
 
-  async create(dto: CreateDepartmentDto, actorId?: string) {
-    const existing = await this.prisma.frontOfficeDepartment.findUnique({ where: { name: dto.name } });
+  async create(instituteId: string, dto: CreateDepartmentDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.prisma.frontOfficeDepartment.findFirst({ where: { name: dto.name, institute_id } });
     if (existing) throw new ConflictException(`Department "${dto.name}" already exists`);
 
-    const department = await this.prisma.frontOfficeDepartment.create({ data: { name: dto.name } });
+    const department = await this.prisma.frontOfficeDepartment.create({ data: { name: dto.name, institute_id } });
     await this.audit.log({
       userId: actorId,
       entityType: FO_ENTITY.DEPARTMENT,
@@ -27,28 +29,29 @@ export class DepartmentsService {
     return department;
   }
 
-  async findAll(search?: string) {
+  async findAll(instituteId: string, search?: string) {
     return this.prisma.frontOfficeDepartment.findMany({
-      where: search ? { name: { contains: search, mode: 'insensitive' } } : undefined,
+      where: { institute_id: requireInstituteId(instituteId), ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}) },
       include: { _count: { select: { employees: true, appointments: true } } },
       orderBy: { name: 'asc' },
     });
   }
 
-  async findOne(id: number) {
-    const department = await this.prisma.frontOfficeDepartment.findUnique({
-      where: { department_id: id },
+  async findOne(instituteId: string, id: number) {
+    const department = await this.prisma.frontOfficeDepartment.findFirst({
+      where: { department_id: id, institute_id: requireInstituteId(instituteId) },
       include: { employees: true },
     });
     if (!department) throw new NotFoundException(`Department #${id} not found`);
     return department;
   }
 
-  async update(id: number, dto: UpdateDepartmentDto, actorId?: string) {
-    const existing = await this.findOne(id);
+  async update(instituteId: string, id: number, dto: UpdateDepartmentDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const existing = await this.findOne(institute_id, id);
 
     if (dto.name && dto.name !== existing.name) {
-      const clash = await this.prisma.frontOfficeDepartment.findUnique({ where: { name: dto.name } });
+      const clash = await this.prisma.frontOfficeDepartment.findFirst({ where: { name: dto.name, institute_id } });
       if (clash) throw new ConflictException(`Department "${dto.name}" already exists`);
     }
 

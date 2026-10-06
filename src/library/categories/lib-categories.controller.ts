@@ -24,6 +24,8 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { LibJwtGuard } from '../auth/lib-jwt.guard';
 import { LibPermissionsGuard } from '../auth/lib-permissions.guard';
 import { RequirePermission } from '../auth/require-permissions.decorator';
+import { LibUser } from '../auth/lib-user.decorator';
+import type { LibPlatformUser } from '../auth/lib-auth.service';
 
 @ApiTags('Library / Categories')
 @ApiBearerAuth()
@@ -36,15 +38,15 @@ export class LibCategoriesController {
   @RequirePermission({ resource: 'categories', action: 'create' })
   @ApiOperation({ summary: 'Create a new category (admin)' })
   @ApiResponse({ status: 201, description: 'Category created' })
-  create(@Body() dto: CreateCategoryDto) {
-    return this.categoriesService.create(dto);
+  create(@LibUser() user: LibPlatformUser, @Body() dto: CreateCategoryDto) {
+    return this.categoriesService.create(user.institute_id, dto);
   }
 
   @Get()
   @RequirePermission({ resource: 'categories', action: 'read' })
   @ApiOperation({ summary: 'List all categories' })
-  findAll() {
-    return this.categoriesService.findAll();
+  findAll(@LibUser() user: LibPlatformUser) {
+    return this.categoriesService.findAll(user.institute_id);
   }
 
   @Patch(':id')
@@ -52,10 +54,11 @@ export class LibCategoriesController {
   @ApiOperation({ summary: 'Update a category (admin)' })
   @ApiParam({ name: 'id', description: 'category_id of the Category to update (e.g. 1)' })
   update(
+    @LibUser() user: LibPlatformUser,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateCategoryDto,
   ) {
-    return this.categoriesService.update(id, dto);
+    return this.categoriesService.update(user.institute_id, id, dto);
   }
 
   @Delete(':id')
@@ -63,7 +66,7 @@ export class LibCategoriesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a category — only if no books assigned (admin)' })
   @ApiParam({ name: 'id', description: 'category_id of the Category to delete (e.g. 1)' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.categoriesService.remove(id);
+  remove(@LibUser() user: LibPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.categoriesService.remove(user.institute_id, id);
   }
 }

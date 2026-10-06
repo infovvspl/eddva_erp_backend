@@ -11,7 +11,7 @@ import { UpdateAccountsDynamicRoleDto } from './dto/update-dynamic-role.dto';
 import { AssignAccountsUserToRoleDto } from './dto/assign-user.dto';
 import { AccountsPlatformUser } from '../auth/accounts-auth.service';
 import { AccountsPermissionsRegistryService } from './accounts-permissions-registry.service';
-import { isAccountsAdmin } from '../common/accounts-access.service';
+import { AccountsAccessService, isAccountsAdmin } from '../common/accounts-access.service';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
@@ -19,6 +19,7 @@ export class AccountsDynamicRolesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissionsService: AccountsPermissionsRegistryService,
+    private readonly access: AccountsAccessService,
   ) {}
 
   /** Returns the dynamic resource & action catalog definitions fetched live from PostgreSQL DB */
@@ -162,11 +163,12 @@ export class AccountsDynamicRolesService {
       const catalog = await this.permissionsService.listPermissions();
       return catalog.resources.map((res) => ({ resource: res.resource, actions: [...res.available_actions] }));
     }
-    const assignment = await this.prisma.accountsUserDynamicRole.findUnique({
-      where: { institute_id_eddva_user_id: { institute_id: actor.institute_id, eddva_user_id: actor.eddva_user_id } },
-      include: { role: true },
-    });
-    return assignment?.role.permissions ?? [];
+    // Resolved by the same code the permissions guard uses (role_id claim,
+    // then the user's assignment, then JWT permissions). This method used to
+    // look up only the assignment, so for a token carrying role_id it could
+    // report a different matrix from the one actually being enforced.
+    const { rules } = await this.access.getPermissionRules(actor);
+    return rules;
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

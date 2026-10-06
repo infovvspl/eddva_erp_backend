@@ -25,14 +25,14 @@ export class VisitorLogsController {
   @RequirePermission({ resource: 'visitors', action: 'checkin' })
   @ApiOperation({ summary: 'Check in a visitor (walk-in or against a scheduled appointment)' })
   checkIn(@Body() dto: CheckInDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.visitorLogsService.checkIn(dto, user.eddva_user_id);
+    return this.visitorLogsService.checkIn(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get('active')
   @RequirePermission({ resource: 'visitors', action: 'read' })
   @ApiOperation({ summary: 'List everyone currently checked in' })
-  findActive() {
-    return this.visitorLogsService.findActive();
+  findActive(@FrontOfficeUser() user: FrontOfficePlatformUser) {
+    return this.visitorLogsService.findActive(user.institute_id);
   }
 
   @Get()
@@ -56,7 +56,7 @@ export class VisitorLogsController {
     @Query('limit') limit?: string,
   ) {
     const scope = await this.access.resolveScope(user);
-    return this.visitorLogsService.findAll(
+    return this.visitorLogsService.findAll(user.institute_id, 
       {
         date,
         host_employee_id: hostEmployeeId ? Number(hostEmployeeId) : undefined,
@@ -74,8 +74,8 @@ export class VisitorLogsController {
   @RequirePermission({ resource: 'visitors', action: 'read' })
   @ApiOperation({ summary: 'Get a visitor log' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.visitorLogsService.findOne(id);
+  findOne(@FrontOfficeUser() user: FrontOfficePlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.visitorLogsService.findOne(user.institute_id, id);
   }
 
   @Patch(':id/check-out')
@@ -83,6 +83,6 @@ export class VisitorLogsController {
   @ApiOperation({ summary: 'Check out a visitor' })
   @ApiParam({ name: 'id', example: 1 })
   checkOut(@Param('id', ParseIntPipe) id: number, @Body() dto: CheckOutDto, @FrontOfficeUser() user: FrontOfficePlatformUser) {
-    return this.visitorLogsService.checkOut(id, dto, user.eddva_user_id);
+    return this.visitorLogsService.checkOut(user.institute_id, id, dto, user.eddva_user_id);
   }
 }

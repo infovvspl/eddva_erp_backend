@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DocumentType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { FrontOfficeAuditService } from '../common/front-office-audit.service';
 import { NumberingService } from '../../numbering/numbering.service';
 import { FrontOfficeNotificationService } from '../notifications/front-office-notification.service';
@@ -27,11 +28,12 @@ export class VisitorLogsService {
    * and visitor details are cross-populated from the appointment rather than
    * trusted blindly from the request body.
    */
-  async checkIn(dto: CheckInDto, actorId?: string) {
+  async checkIn(instituteId: string, dto: CheckInDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
     let appointment: any = null;
     if (dto.appointment_id) {
-      appointment = await this.prisma.frontOfficeAppointment.findUnique({
-        where: { appointment_id: dto.appointment_id },
+      appointment = await this.prisma.frontOfficeAppointment.findFirst({
+        where: { appointment_id: dto.appointment_id, institute_id },
         include: { host_employee: true, visitor: true },
       });
       if (!appointment) throw new NotFoundException(`Appointment #${dto.appointment_id} not found`);
@@ -46,7 +48,7 @@ export class VisitorLogsService {
     // 1. Identify or create the visitor master record.
     let visitor;
     if (dto.visitor_id) {
-      visitor = await this.prisma.frontOfficeVisitor.findUnique({ where: { visitor_id: dto.visitor_id } });
+      visitor = await this.prisma.frontOfficeVisitor.findFirst({ where: { visitor_id: dto.visitor_id, institute_id } });
       if (!visitor) throw new NotFoundException(`Visitor #${dto.visitor_id} not found`);
     } else if (appointment?.visitor) {
       visitor = appointment.visitor;
@@ -54,6 +56,7 @@ export class VisitorLogsService {
       const resolvedFullName = dto.full_name ?? appointment?.visitor_name;
       if (!resolvedFullName) throw new BadRequestException('full_name is required when neither visitor_id nor an appointment with a visitor_name is supplied');
       visitor = await this.visitorsService.findOrCreate(
+        institute_id,
         {
           full_name: resolvedFullName,
           phone: dto.phone ?? appointment?.phone ?? undefined,
@@ -78,7 +81,7 @@ export class VisitorLogsService {
     const hostEmployeeId = appointment ? appointment.host_employee_id : dto.host_employee_id;
     if (!hostEmployeeId) throw new BadRequestException('host_employee_id is required when not checking in against an appointment');
 
-    const host = await this.prisma.frontOfficeEmployee.findUnique({ where: { employee_id: hostEmployeeId } });
+    const host = await this.prisma.frontOfficeEmployee.findFirst({ where: { employee_id: hostEmployeeId, institute_id } });
     if (!host) throw new NotFoundException(`Employee #${hostEmployeeId} not found`);
 
     // Pre-checks for a friendly error; the partial unique indexes on
@@ -104,6 +107,7 @@ export class VisitorLogsService {
     try {
       log = await this.prisma.frontOfficeVisitorLog.create({
         data: {
+          institute_id,
           visitor_id: visitor.visitor_id,
           host_employee_id: hostEmployeeId,
           appointment_id: appointment?.appointment_id,
@@ -137,6 +141,7 @@ export class VisitorLogsService {
     });
 
     await this.notifications.send({
+      instituteId: institute_id,
       entityType: 'visitor',
       entityId: log.log_id,
       eventType: 'visitor_checked_in',
@@ -144,11 +149,12 @@ export class VisitorLogsService {
       message: `${visitor.full_name} has checked in to see you (badge ${badgeNumber}).`,
     });
 
-    return this.findOne(log.log_id);
+    return this.findOne(institute_id, log.log_id);
   }
 
-  async checkOut(logId: number, dto: CheckOutDto, actorId?: string) {
-    const log = await this.prisma.frontOfficeVisitorLog.findUnique({ where: { log_id: logId } });
+  async checkOut(instituteId: string, logId: number, dto: CheckOutDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
+    const log = await this.prisma.frontOfficeVisitorLog.findFirst({ where: { log_id: logId, institute_id } });
     if (!log) throw new NotFoundException(`Visitor log #${logId} not found`);
     if (log.status !== 'checked_in') {
       throw new ConflictException(`Visitor log #${logId} is already ${log.status}`);
@@ -170,6 +176,7 @@ export class VisitorLogsService {
     });
 
     await this.notifications.send({
+      instituteId: institute_id,
       entityType: 'visitor',
       entityId: logId,
       eventType: 'visitor_checked_out',
@@ -181,13 +188,14 @@ export class VisitorLogsService {
   }
 
   async findAll(
+    instituteId: string,
     params: { date?: string; host_employee_id?: number; status?: string; appointment_id?: number; visitor_id?: number; page?: number; limit?: number },
     scopeWhere: Record<string, any> = {},
   ) {
     const page = params.page && params.page > 0 ? params.page : 1;
     const limit = params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 25;
 
-    const filters: any = {};
+    const filters: any = { institute_id: requireInstituteId(instituteId) };
     if (params.host_employee_id) filters.host_employee_id = params.host_employee_id;
     if (params.status) filters.status = params.status;
     if (params.appointment_id) filters.appointment_id = params.appointment_id;
@@ -218,9 +226,9 @@ export class VisitorLogsService {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findActive() {
+  async findActive(instituteId: string) {
     return this.prisma.frontOfficeVisitorLog.findMany({
-      where: { status: 'checked_in' },
+      where: { institute_id: requireInstituteId(instituteId), status: 'checked_in' },
       include: {
         visitor: { select: { visitor_id: true, full_name: true, phone: true, organization: true } },
         host_employee: { select: { employee_id: true, name: true, department_id: true } },
@@ -229,9 +237,9 @@ export class VisitorLogsService {
     });
   }
 
-  async findOne(id: number) {
-    const log = await this.prisma.frontOfficeVisitorLog.findUnique({
-      where: { log_id: id },
+  async findOne(instituteId: string, id: number) {
+    const log = await this.prisma.frontOfficeVisitorLog.findFirst({
+      where: { log_id: id, institute_id: requireInstituteId(instituteId) },
       include: {
         // id_proof_number is deliberately excluded here — visitor logs never expose it,
         // even encrypted; the dedicated /visitors/:id endpoint is the only sensitive-view path.

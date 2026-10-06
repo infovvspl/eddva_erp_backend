@@ -21,23 +21,23 @@ export class CategoriesController {
   @RequirePermission({ resource: 'categories', action: 'create' })
   @ApiOperation({ summary: 'Create an item category (optionally as a sub-category)' })
   create(@Body() dto: CreateCategoryDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.categoriesService.create(dto, user.eddva_user_id);
+    return this.categoriesService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get()
   @RequirePermission({ resource: 'categories', action: 'read' })
   @ApiOperation({ summary: 'List/search categories' })
   @ApiQuery({ name: 'search', required: false })
-  findAll(@Query('search') search?: string) {
-    return this.categoriesService.findAll(search);
+  findAll(@InventoryUser() user: InventoryPlatformUser, @Query('search') search?: string) {
+    return this.categoriesService.findAll(user.institute_id, search);
   }
 
   @Get(':id')
   @RequirePermission({ resource: 'categories', action: 'read' })
   @ApiOperation({ summary: 'Get a category with its parent and sub-categories' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.categoriesService.findOne(id);
+  findOne(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.categoriesService.findOne(user.institute_id, id);
   }
 
   @Patch(':id')
@@ -45,6 +45,6 @@ export class CategoriesController {
   @ApiOperation({ summary: 'Update a category (rename, re-parent, activate/deactivate)' })
   @ApiParam({ name: 'id', example: 1 })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCategoryDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.categoriesService.update(id, dto, user.eddva_user_id);
+    return this.categoriesService.update(user.institute_id, id, dto, user.eddva_user_id);
   }
 }

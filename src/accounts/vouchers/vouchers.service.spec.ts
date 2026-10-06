@@ -296,5 +296,26 @@ describe('VouchersService', () => {
       expect(result.id).toBe('v-3');
       expect(mockTx.voucher.create).not.toHaveBeenCalled();
     });
+
+    it('scopes the idempotency lookup to the institute so another tenant\'s voucher can never be returned', async () => {
+      mockPrisma.voucher.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.financialYear.findFirst.mockResolvedValue(openFy);
+      mockTx.voucher.create.mockResolvedValue({ id: 'v-4', voucherNumber: 'JRN-00002', status: 'POSTED' });
+
+      await service.createAndPostAuto(autoParams);
+
+      expect(mockPrisma.voucher.findFirst).toHaveBeenCalledWith({
+        where: { instituteId: 'inst-1', sourceModule: 'SALES_INVOICE', sourceReferenceId: 'inv-1' },
+      });
+      expect(mockPrisma.financialYear.findFirst).toHaveBeenCalledWith({
+        where: expect.objectContaining({ instituteId: 'inst-1', status: 'OPEN' }),
+      });
+    });
+
+    it('fails closed when no institute is supplied instead of querying across tenants', async () => {
+      await expect(service.createAndPostAuto({ ...autoParams, instituteId: '' })).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.voucher.findFirst).not.toHaveBeenCalled();
+      expect(mockTx.voucher.create).not.toHaveBeenCalled();
+    });
   });
 });

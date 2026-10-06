@@ -14,6 +14,7 @@ import { LibAuthModule } from './auth/lib-auth.module';
 import { LibRolesPermissionsModule } from './roles-permissions/lib-roles-permissions.module';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
+import { LibDashboardModule } from './dashboard/lib-dashboard.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { DashboardService } from './dashboard/dashboard.service';
     LibReservationsModule,
     LibIssuesModule,
     LibSchedulerModule,
+    LibDashboardModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

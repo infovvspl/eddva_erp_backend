@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { FrontOfficeAuditService } from '../common/front-office-audit.service';
 import { FO_ENTITY } from '../common/front-office-entities';
 import { CreateAttachmentDto } from './dto/create-attachment.dto';
@@ -24,20 +25,22 @@ export class AttachmentsService {
     private readonly audit: FrontOfficeAuditService,
   ) {}
 
-  private async assertEntityExists(entityType: string, entityId: number) {
+  /** entity_type/entity_id is a polymorphic reference with no DB-level FK, so ownership
+   * of the target entity is checked here, scoped to the caller's institute. */
+  private async assertEntityExists(instituteId: string, entityType: string, entityId: number) {
     switch (entityType) {
       case 'visitor': {
-        const row = await this.prisma.frontOfficeVisitor.findUnique({ where: { visitor_id: entityId } });
+        const row = await this.prisma.frontOfficeVisitor.findFirst({ where: { visitor_id: entityId, institute_id: instituteId } });
         if (!row) throw new NotFoundException(`Visitor #${entityId} not found`);
         return;
       }
       case 'enquiry': {
-        const row = await this.prisma.frontOfficeEnquiry.findUnique({ where: { enquiry_id: entityId } });
+        const row = await this.prisma.frontOfficeEnquiry.findFirst({ where: { enquiry_id: entityId, institute_id: instituteId } });
         if (!row) throw new NotFoundException(`Enquiry #${entityId} not found`);
         return;
       }
       case 'complaint': {
-        const row = await this.prisma.frontOfficeComplaint.findUnique({ where: { complaint_id: entityId } });
+        const row = await this.prisma.frontOfficeComplaint.findFirst({ where: { complaint_id: entityId, institute_id: instituteId } });
         if (!row) throw new NotFoundException(`Complaint #${entityId} not found`);
         return;
       }
@@ -46,7 +49,8 @@ export class AttachmentsService {
     }
   }
 
-  async upload(file: Express.Multer.File, dto: CreateAttachmentDto, actorId?: string) {
+  async upload(instituteId: string, file: Express.Multer.File, dto: CreateAttachmentDto, actorId?: string) {
+    const institute_id = requireInstituteId(instituteId);
     if (!file) throw new BadRequestException('file is required');
     if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
       throw new BadRequestException(`File type "${file.mimetype}" is not allowed`);
@@ -55,7 +59,7 @@ export class AttachmentsService {
       throw new BadRequestException('File exceeds the 10MB size limit');
     }
 
-    await this.assertEntityExists(dto.entity_type, dto.entity_id);
+    await this.assertEntityExists(institute_id, dto.entity_type, dto.entity_id);
 
     const dir = path.join(UPLOAD_ROOT, dto.entity_type, String(dto.entity_id));
     fs.mkdirSync(dir, { recursive: true });
@@ -65,6 +69,7 @@ export class AttachmentsService {
 
     const attachment = await this.prisma.frontOfficeAttachment.create({
       data: {
+        institute_id,
         entity_type: dto.entity_type as any,
         entity_id: dto.entity_id,
         file_name: file.originalname,
@@ -86,21 +91,21 @@ export class AttachmentsService {
     return attachment;
   }
 
-  async findAll(entityType?: string, entityId?: number) {
+  async findAll(instituteId: string, entityType?: string, entityId?: number) {
     return this.prisma.frontOfficeAttachment.findMany({
-      where: { entity_type: entityType as any, entity_id: entityId },
+      where: { institute_id: requireInstituteId(instituteId), entity_type: entityType as any, entity_id: entityId },
       orderBy: { uploaded_at: 'desc' },
     });
   }
 
-  async findOne(id: number) {
-    const attachment = await this.prisma.frontOfficeAttachment.findUnique({ where: { attachment_id: id } });
+  async findOne(instituteId: string, id: number) {
+    const attachment = await this.prisma.frontOfficeAttachment.findFirst({ where: { attachment_id: id, institute_id: requireInstituteId(instituteId) } });
     if (!attachment) throw new NotFoundException(`Attachment #${id} not found`);
     return attachment;
   }
 
-  async getFileForDownload(id: number) {
-    const attachment = await this.findOne(id);
+  async getFileForDownload(instituteId: string, id: number) {
+    const attachment = await this.findOne(instituteId, id);
     const absolutePath = path.join(process.cwd(), attachment.file_url);
     if (!fs.existsSync(absolutePath)) {
       throw new NotFoundException('The stored file could not be found on disk');
@@ -108,8 +113,8 @@ export class AttachmentsService {
     return { attachment, absolutePath };
   }
 
-  async remove(id: number, actorId?: string) {
-    const attachment = await this.findOne(id);
+  async remove(instituteId: string, id: number, actorId?: string) {
+    const attachment = await this.findOne(instituteId, id);
     const absolutePath = path.join(process.cwd(), attachment.file_url);
     try {
       if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);

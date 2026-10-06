@@ -40,8 +40,8 @@ export class VoucherAttachmentsController {
   @RequirePermission({ resource: 'attachments', action: 'read' })
   @ApiOperation({ summary: 'Download an attachment file' })
   @ApiParam({ name: 'id' })
-  async download(@Param('id') id: string, @Res() res: Response) {
-    const { absolutePath } = await this.attachmentsService.getFileForDownload(id);
+  async download(@Param('id') id: string, @AccountsUser() user: AccountsPlatformUser, @Res() res: Response) {
+    const { absolutePath } = await this.attachmentsService.getFileForDownload(id, user);
     res.download(absolutePath);
   }
 

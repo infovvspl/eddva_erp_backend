@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireInstituteId } from '../../common/utils/require-institute.util';
 
 export interface ScanResult {
   copy_id: number;
@@ -27,9 +28,9 @@ export interface ScanResult {
 export class BarcodeService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async resolve(barcode: string): Promise<ScanResult> {
-    const copy = await this.prisma.libBookCopy.findUnique({
-      where: { barcode },
+  async resolve(instituteId: string, barcode: string): Promise<ScanResult> {
+    const copy = await this.prisma.libBookCopy.findFirst({
+      where: { institute_id: requireInstituteId(instituteId), barcode },
       include: {
         book: {
           select: {

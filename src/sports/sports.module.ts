@@ -23,6 +23,9 @@ import { SportsRecordsService } from './records-awards/sports-records.service';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
 
+import { SportsDashboardController } from './dashboard/sports-dashboard.controller';
+import { SportsDashboardService } from './dashboard/sports-dashboard.service';
+
 @Module({
   imports: [SportsAuthModule, SportsRolesPermissionsModule],
   controllers: [
@@ -34,6 +37,7 @@ import { DashboardService } from './dashboard/dashboard.service';
     SportsTournamentsController,
     SportsRecordsController,
     DashboardController,
+    SportsDashboardController,
   ],
   providers: [
     SportsAuthService,
@@ -44,6 +48,7 @@ import { DashboardService } from './dashboard/dashboard.service';
     SportsTournamentsService,
     SportsRecordsService,
     DashboardService,
+    SportsDashboardService,
   ],
   exports: [
     SportsAuthService,

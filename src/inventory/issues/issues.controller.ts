@@ -27,21 +27,21 @@ export class IssuesController {
   @RequirePermission({ resource: 'issues', action: 'create' })
   @ApiOperation({ summary: 'Issue stock (consumable) or an asset unit to a holder — held for approval automatically if a matching approval rule is exceeded' })
   create(@Body() dto: CreateIssueDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.issuesService.create(dto, user.eddva_user_id);
+    return this.issuesService.create(user.institute_id, dto, user.eddva_user_id);
   }
 
   @Get('approval-rules')
   @RequirePermission({ resource: 'issues', action: 'approve' })
   @ApiOperation({ summary: 'List configured approval rules (by category and/or value/quantity threshold)' })
-  listApprovalRules() {
-    return this.approvalRulesService.findAll();
+  listApprovalRules(@InventoryUser() user: InventoryPlatformUser) {
+    return this.approvalRulesService.findAll(user.institute_id);
   }
 
   @Post('approval-rules')
   @RequirePermission({ resource: 'issues', action: 'approve' })
   @ApiOperation({ summary: 'Create an approval rule — omit category_id for a global rule' })
-  createApprovalRule(@Body() dto: CreateApprovalRuleDto) {
-    return this.approvalRulesService.create(dto);
+  createApprovalRule(@InventoryUser() user: InventoryPlatformUser, @Body() dto: CreateApprovalRuleDto) {
+    return this.approvalRulesService.create(user.institute_id, dto);
   }
 
   @Get()
@@ -57,6 +57,7 @@ export class IssuesController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   findAll(
+    @InventoryUser() user: InventoryPlatformUser,
     @Query('item_id') itemId?: string,
     @Query('holder_id') holderId?: string,
     @Query('location_id') locationId?: string,
@@ -67,7 +68,7 @@ export class IssuesController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.issuesService.findAll({
+    return this.issuesService.findAll(user.institute_id, {
       item_id: itemId ? Number(itemId) : undefined,
       holder_id: holderId ? Number(holderId) : undefined,
       location_id: locationId ? Number(locationId) : undefined,
@@ -84,8 +85,8 @@ export class IssuesController {
   @RequirePermission({ resource: 'issues', action: 'read' })
   @ApiOperation({ summary: 'Get issue details including its return history' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.issuesService.findOne(id);
+  findOne(@InventoryUser() user: InventoryPlatformUser, @Param('id', ParseIntPipe) id: number) {
+    return this.issuesService.findOne(user.institute_id, id);
   }
 
   @Post(':id/approve')
@@ -93,7 +94,7 @@ export class IssuesController {
   @ApiOperation({ summary: 'Approve a pending-approval issue — stock only leaves the store at this point, not at creation' })
   @ApiParam({ name: 'id', example: 1 })
   approve(@Param('id', ParseIntPipe) id: number, @InventoryUser() user: InventoryPlatformUser) {
-    return this.issuesService.approve(id, user.eddva_user_id);
+    return this.issuesService.approve(user.institute_id, id, user.eddva_user_id);
   }
 
   @Post(':id/reject')
@@ -101,7 +102,7 @@ export class IssuesController {
   @ApiOperation({ summary: 'Reject a pending-approval issue — no stock ever moves' })
   @ApiParam({ name: 'id', example: 1 })
   reject(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectIssueDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.issuesService.reject(id, dto, user.eddva_user_id);
+    return this.issuesService.reject(user.institute_id, id, dto, user.eddva_user_id);
   }
 
   @Post(':id/return')
@@ -109,6 +110,6 @@ export class IssuesController {
   @ApiOperation({ summary: 'Return an issue — full or partial for consumables, full unit for assets' })
   @ApiParam({ name: 'id', example: 1 })
   returnIssue(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateReturnDto, @InventoryUser() user: InventoryPlatformUser) {
-    return this.issuesService.returnIssue(id, dto, user.eddva_user_id);
+    return this.issuesService.returnIssue(user.institute_id, id, dto, user.eddva_user_id);
   }
 }
