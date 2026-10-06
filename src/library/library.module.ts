@@ -12,6 +12,8 @@ import { LibNotificationsModule } from './notifications/lib-notifications.module
 import { LibSchedulerModule } from './scheduler/lib-scheduler.module';
 import { LibAuthModule } from './auth/lib-auth.module';
 import { LibRolesPermissionsModule } from './roles-permissions/lib-roles-permissions.module';
+import { DashboardController } from './dashboard/dashboard.controller';
+import { DashboardService } from './dashboard/dashboard.service';
 
 @Module({
   imports: [
@@ -29,5 +31,8 @@ import { LibRolesPermissionsModule } from './roles-permissions/lib-roles-permiss
     LibIssuesModule,
     LibSchedulerModule,
   ],
+  controllers: [DashboardController],
+  providers: [DashboardService],
+  exports: [DashboardService],
 })
 export class LibraryModule {}

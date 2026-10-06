@@ -17,6 +17,7 @@ import { SalesPurchaseModule } from './sales-purchase/sales-purchase.module';
 import { AdmissionModule } from './admission/admission.module';
 import { HostelModule } from './hostel/hostel.module';
 import { AlumniModule } from './alumni/alumni.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -40,6 +41,7 @@ import { AppService } from './app.service';
     AdmissionModule,
     HostelModule,
     AlumniModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

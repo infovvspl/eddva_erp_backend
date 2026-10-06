@@ -54,5 +54,6 @@ import { DashboardService } from './dashboard/dashboard.service';
     AttachmentsService,
     DashboardService,
   ],
+  exports: [DashboardService],
 })
 export class FrontOfficeModule {}

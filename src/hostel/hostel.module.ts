@@ -113,5 +113,6 @@ import { HostelScheduler } from './scheduler/hostel.scheduler';
     ReportsService,
     HostelScheduler,
   ],
+  exports: [DashboardService],
 })
 export class HostelModule {}
