@@ -114,5 +114,6 @@ import { AlumniScheduler } from './scheduler/alumni.scheduler';
     ReportsService,
     AlumniScheduler,
   ],
+  exports: [DashboardService],
 })
 export class AlumniModule {}

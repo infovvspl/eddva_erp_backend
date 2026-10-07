@@ -74,5 +74,6 @@ import { DashboardService } from './dashboard/dashboard.service';
     AlertsService,
     DashboardService,
   ],
+  exports: [DashboardService],
 })
 export class InventoryModule {}
