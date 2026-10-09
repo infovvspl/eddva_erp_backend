@@ -18,6 +18,8 @@ import { CanteenDashboardService } from './dashboard/canteen-dashboard.service';
 import { CanteenAuthModule } from './auth/canteen-auth.module';
 import { CanteenAuditService } from './common/canteen-audit.service';
 import { CanteenRolesPermissionsModule } from './roles-permissions/canteen-roles-permissions.module';
+import { DashboardController } from './dashboard/dashboard.controller';
+import { DashboardService } from './dashboard/dashboard.service';
 
 @Module({
   imports: [CanteenAuthModule, CanteenRolesPermissionsModule],
@@ -29,6 +31,7 @@ import { CanteenRolesPermissionsModule } from './roles-permissions/canteen-roles
     CanteenPaymentsController,
     CanteenWalletController,
     CanteenReportsController,
+    DashboardController,
     CanteenDashboardController,
   ],
   providers: [
@@ -40,6 +43,7 @@ import { CanteenRolesPermissionsModule } from './roles-permissions/canteen-roles
     CanteenPaymentsService,
     CanteenWalletService,
     CanteenReportsService,
+    DashboardService,
     CanteenDashboardService,
   ],
   exports: [
@@ -50,6 +54,7 @@ import { CanteenRolesPermissionsModule } from './roles-permissions/canteen-roles
     CanteenPaymentsService,
     CanteenWalletService,
     CanteenReportsService,
+    DashboardService,
     CanteenDashboardService,
   ],
 })

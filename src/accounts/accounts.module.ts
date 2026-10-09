@@ -15,6 +15,8 @@ import { AccountsReportsController } from './ledger/reports.controller';
 import { VoucherAttachmentsService } from './attachments/attachments.service';
 import { VoucherAttachmentsController } from './attachments/attachments.controller';
 import { AccountMappingsController } from './account-mappings/account-mappings.controller';
+import { DashboardController } from './dashboard/dashboard.controller';
+import { DashboardService } from './dashboard/dashboard.service';
 import { AccountsDashboardController } from './dashboard/accounts-dashboard.controller';
 import { AccountsDashboardService } from './dashboard/accounts-dashboard.service';
 
@@ -36,8 +38,11 @@ import { AccountsDashboardService } from './dashboard/accounts-dashboard.service
     AccountsReportsController,
     VoucherAttachmentsController,
     AccountMappingsController,
+    DashboardController,
     AccountsDashboardController,
   ],
-  providers: [AccountGroupsService, CostCentersService, ClosingService, LedgerService, VoucherAttachmentsService, AccountsDashboardService],
+  providers: [AccountGroupsService, CostCentersService, ClosingService, LedgerService, VoucherAttachmentsService, DashboardService, AccountsDashboardService],
+  exports: [DashboardService],
+  // ],
 })
 export class AccountsModule {}

@@ -106,5 +106,6 @@ import { DashboardService } from './dashboard/dashboard.service';
     ReportsService,
     DashboardService,
   ],
+  exports: [DashboardService],
 })
 export class AdmissionModule {}

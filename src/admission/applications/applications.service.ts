@@ -524,6 +524,9 @@ export class ApplicationsService {
         interview_status: application.interview_status,
         offer_status: application.offer_status,
         admission_fee: application.admission_fee,
+        // Same value as admission_fee.fee_structure_configured, exposed flat so the UI
+        // can disable "Confirm Admission" and explain why without reaching into admission_fee.
+        admission_fee_configured: application.admission_fee.fee_structure_configured,
         confirmation_status: application.confirmation?.status ?? null,
       },
     };

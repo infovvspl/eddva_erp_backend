@@ -22,7 +22,6 @@ import { TrackingService } from './tracking/tracking.service';
 
 import { FeesController } from './fees/fees.controller';
 import { FeesService } from './fees/fees.service';
-
 import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
 
@@ -49,5 +48,6 @@ import { DashboardService } from './dashboard/dashboard.service';
     FeesService,
     DashboardService,
   ],
+  exports: [DashboardService],
 })
 export class TransportModule {}
