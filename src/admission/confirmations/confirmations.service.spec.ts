@@ -124,12 +124,17 @@ describe('ConfirmationsService.confirm — the applicant→student boundary', ()
     nothingWasWritten();
   });
 
-  it('no fee structure configured → cannot decide, so refuses', async () => {
+  it('no fee structure configured → cannot decide, so refuses with the program/session the UI needs to create one', async () => {
     tx.admissionFeeStructure.findUnique.mockResolvedValue(null);
     tx.admissionPayment.aggregate.mockResolvedValue({
       _sum: { amount_paid: null },
     });
-    await rejectsWith('ADMISSION_FEE_NOT_CONFIGURED');
+    await expect(service.confirm(actor, 1)).rejects.toMatchObject({
+      response: {
+        error: 'ADMISSION_FEE_NOT_CONFIGURED',
+        details: { program_id: 5, session_id: 2 },
+      },
+    });
     nothingWasWritten();
   });
 

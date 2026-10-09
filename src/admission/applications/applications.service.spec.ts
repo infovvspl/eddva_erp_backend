@@ -336,6 +336,80 @@ describe('ApplicationsService', () => {
     });
   });
 
+  describe('getStatus — supporting.admission_fee_configured', () => {
+    // getStatus only reshapes whatever findOne returns; findOne's own
+    // composition (fee lookup, seat count, child-stage summary) has its own
+    // coverage, so this mocks findOne directly rather than re-driving it
+    // through db/seats — also sidesteps the `jest.spyOn(service, 'findOne')`
+    // leak at line 229 above (clearAllMocks doesn't restore spies).
+    const applicant = {
+      dob: new Date('2010-01-01'),
+      gender: 'male',
+      guardian_name: 'G',
+      guardian_contact: '9999999999',
+    };
+    const baseFound = {
+      application_id: 41,
+      application_number: 'APP/2026-27/00003',
+      status: 'offered',
+      applicant,
+      application_fee_status: 'none',
+      document_status: 'none',
+      document_summary: { total: 0, pending: 0, verified: 0, rejected: 0 },
+      test_status: null,
+      interview_status: null,
+      offer_status: 'accepted',
+      confirmation: null,
+    };
+
+    afterEach(() => {
+      (service.findOne as jest.Mock).mockRestore?.();
+    });
+
+    it("no fee structure configured for the application's program/session → admission_fee_configured: false", async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({
+        ...baseFound,
+        admission_fee: {
+          required: null,
+          paid: new Prisma.Decimal(0),
+          balance: null,
+          due_date: null,
+          fee_structure_configured: false,
+          is_paid: false,
+        },
+      } as never);
+
+      const result = await service.getStatus('inst-1', 41);
+
+      expect(result.supporting.admission_fee_configured).toBe(false);
+      expect(result.supporting.admission_fee.fee_structure_configured).toBe(
+        false,
+      );
+    });
+
+    it('a matching fee structure exists and is fully paid → admission_fee_configured: true', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({
+        ...baseFound,
+        admission_fee: {
+          required: new Prisma.Decimal(25000),
+          paid: new Prisma.Decimal(25000),
+          balance: new Prisma.Decimal(0),
+          due_date: new Date('2027-04-30'),
+          fee_structure_configured: true,
+          is_paid: true,
+        },
+      } as never);
+
+      const result = await service.getStatus('inst-1', 41);
+
+      expect(result.supporting.admission_fee_configured).toBe(true);
+      expect(result.supporting.admission_fee).toMatchObject({
+        fee_structure_configured: true,
+        is_paid: true,
+      });
+    });
+  });
+
   describe('update / remove', () => {
     it('cannot be edited once it has progressed past review', async () => {
       lookup.application.mockResolvedValue({

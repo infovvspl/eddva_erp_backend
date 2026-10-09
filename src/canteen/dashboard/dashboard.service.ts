@@ -10,8 +10,7 @@ function startOfToday() {
 }
 
 /**
- * Canteen models have no institute_id field (not institute-scoped), same as
- * Front-Office/Inventory/Library/Sports — all metrics are platform-wide.
+ * Every metric is scoped to the caller's institute_id (Canteen tenant isolation).
  *
  * Reuses CanteenReportsService's existing report methods rather than
  * duplicating their queries — the "orders"/"top_items"/"category_sales"/
@@ -25,7 +24,7 @@ export class DashboardService {
     private readonly reports: CanteenReportsService,
   ) {}
 
-  async getSummary(from?: string, to?: string) {
+  async getSummary(instituteId: string, from?: string, to?: string) {
     const query: CanteenReportQueryDto = { dateFrom: from, dateTo: to };
 
     const [
@@ -41,21 +40,21 @@ export class DashboardService {
       paymentSummary,
       shiftReport,
     ] = await Promise.all([
-      this.prisma.canteenMember.count(),
-      this.prisma.canteenWallet.aggregate({ _sum: { balance: true }, where: { status: 'ACTIVE' } }),
-      this.prisma.canteenWallet.count({ where: { status: 'ACTIVE' } }),
+      this.prisma.canteenMember.count({ where: { instituteId } }),
+      this.prisma.canteenWallet.aggregate({ _sum: { balance: true }, where: { instituteId, status: 'ACTIVE' } }),
+      this.prisma.canteenWallet.count({ where: { instituteId, status: 'ACTIVE' } }),
       this.prisma.canteenOrder.aggregate({
         _count: { _all: true },
         _sum: { totalAmount: true },
-        where: { orderDate: { gte: startOfToday() }, status: { not: 'CANCELLED' } },
+        where: { instituteId, orderDate: { gte: startOfToday() }, status: { not: 'CANCELLED' } },
       }),
-      this.prisma.canteenOrder.count({ where: { paymentStatus: 'UNPAID' } }),
-      this.prisma.canteenPosShift.count({ where: { status: 'OPEN' } }),
-      this.reports.getSalesReport(query),
-      this.reports.getItemSalesReport(query),
-      this.reports.getCategorySalesReport(query),
-      this.reports.getPaymentSummaryReport(query),
-      this.reports.getShiftReport(query),
+      this.prisma.canteenOrder.count({ where: { instituteId, paymentStatus: 'UNPAID' } }),
+      this.prisma.canteenPosShift.count({ where: { instituteId, status: 'OPEN' } }),
+      this.reports.getSalesReport(instituteId, query),
+      this.reports.getItemSalesReport(instituteId, query),
+      this.reports.getCategorySalesReport(instituteId, query),
+      this.reports.getPaymentSummaryReport(instituteId, query),
+      this.reports.getShiftReport(instituteId, query),
     ]);
 
     return {

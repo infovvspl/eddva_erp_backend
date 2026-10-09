@@ -123,6 +123,10 @@ export class ConfirmationsService {
         throw new BusinessException(
           'ADMISSION_FEE_NOT_CONFIGURED',
           'Admission cannot be confirmed: no admission fee is configured for this program and session.',
+          {
+            program_id: application.program_id,
+            session_id: application.session_id,
+          },
         );
       }
       if (!fee.is_paid) {
