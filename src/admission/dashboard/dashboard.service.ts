@@ -16,13 +16,45 @@ export class DashboardService {
    * KPI cards, the funnel and recent activity. Built from the same funnel and
    * seat reports (so the numbers always agree with the Reports pages) plus a few
    * live counts. Filters: session, program, date range.
+   *
+   * When no session_id is supplied the dashboard defaults to the institute's
+   * current 'active' session (or the most-recently-created one as a fallback)
+   * so it never shows a confusing mix of data across old sessions.
    */
   async summary(instituteId: string, q: AdmissionReportQueryDto) {
     const now = new Date();
+
+    // ── Auto-resolve session ────────────────────────────────────────────────
+    // Prefer the caller-supplied session; otherwise find the active one so we
+    // don't aggregate records across every historical session by default.
+    let resolvedSessionId = q.session_id;
+    if (!resolvedSessionId) {
+      const activeSession = await this.prisma.admissionAcademicSession.findFirst({
+        where: { institute_id: instituteId, deleted_at: null, status: 'active' },
+        orderBy: { start_date: 'desc' },
+        select: { session_id: true },
+      });
+      if (!activeSession) {
+        // Fallback: most recently created session (covers institutes that haven't
+        // set a session to 'active' yet).
+        const latestSession = await this.prisma.admissionAcademicSession.findFirst({
+          where: { institute_id: instituteId, deleted_at: null },
+          orderBy: { created_at: 'desc' },
+          select: { session_id: true },
+        });
+        resolvedSessionId = latestSession?.session_id;
+      } else {
+        resolvedSessionId = activeSession.session_id;
+      }
+    }
+
+    // Build an effective query that always has a session scope.
+    const effectiveQ: AdmissionReportQueryDto = { ...q, session_id: resolvedSessionId };
+
     const applicationScope: Prisma.AdmissionApplicationWhereInput = {
       institute_id: instituteId,
       deleted_at: null,
-      session_id: q.session_id,
+      session_id: resolvedSessionId,
       program_id: q.program_id,
     };
 
@@ -37,8 +69,8 @@ export class DashboardService {
       recentApplications,
       recentConfirmations,
     ] = await Promise.all([
-      this.reports.funnel(instituteId, q),
-      this.reports.seats(instituteId, q),
+      this.reports.funnel(instituteId, effectiveQ),
+      this.reports.seats(instituteId, effectiveQ),
       this.prisma.admissionEnquiry.count({
         where: {
           institute_id: instituteId,
@@ -52,7 +84,7 @@ export class DashboardService {
         where: {
           institute_id: instituteId,
           deleted_at: null,
-          session_id: q.session_id,
+          session_id: resolvedSessionId,
           program_id: q.program_id,
           test_date: { gte: now },
         },
@@ -115,7 +147,7 @@ export class DashboardService {
 
     return {
       filters: {
-        session_id: q.session_id,
+        session_id: resolvedSessionId,
         program_id: q.program_id,
         from: q.from,
         to: q.to,
