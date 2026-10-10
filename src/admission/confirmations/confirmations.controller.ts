@@ -21,6 +21,7 @@ import { RequirePermission } from '../auth/require-permissions.decorator';
 import { AdmissionUser } from '../auth/admission-user.decorator';
 import type { AdmissionPlatformUser } from '../auth/admission-auth.service';
 import { ConfirmationsService } from './confirmations.service';
+import { LmsSyncService } from '../lms-sync/lms-sync.service';
 import {
   CancelConfirmationDto,
   LinkStudentDto,
@@ -38,7 +39,10 @@ const GUARDS = [
 @UseGuards(...GUARDS)
 @Controller('api/admission/applications/:applicationId')
 export class ApplicationConfirmationController {
-  constructor(private readonly svc: ConfirmationsService) {}
+  constructor(
+    private readonly svc: ConfirmationsService,
+    private readonly lmsSync: LmsSyncService,
+  ) {}
 
   @Post('confirm')
   @RequirePermission({ resource: 'confirmations', action: 'create' })
@@ -47,11 +51,14 @@ export class ApplicationConfirmationController {
       'Confirm the admission (atomic). Requires an accepted offer and a fully paid admission fee; issues the enrollment number. 409 if already confirmed',
   })
   @ApiParam({ name: 'applicationId', example: 1 })
-  confirm(
+  async confirm(
     @AdmissionUser() user: AdmissionPlatformUser,
     @Param('applicationId', ParseIntPipe) applicationId: number,
   ) {
-    return this.svc.confirm(user, applicationId);
+    const confirmation = await this.svc.confirm(user, applicationId);
+    // Push the new student to the LMS in the background; failures stay `pending` and are retried.
+    this.lmsSync.trigger(confirmation.confirmation_id);
+    return confirmation;
   }
 
   @Get('confirmation')
@@ -89,7 +96,10 @@ export class ApplicationConfirmationController {
 @UseGuards(...GUARDS)
 @Controller('api/admission/confirmations')
 export class ConfirmationsController {
-  constructor(private readonly svc: ConfirmationsService) {}
+  constructor(
+    private readonly svc: ConfirmationsService,
+    private readonly lmsSync: LmsSyncService,
+  ) {}
 
   @Get()
   @RequirePermission({ resource: 'confirmations', action: 'read' })
@@ -128,5 +138,20 @@ export class ConfirmationsController {
     @Body() dto: LinkStudentDto,
   ) {
     return this.svc.linkStudent(user, id, dto);
+  }
+
+  @Post(':id/sync-lms')
+  @RequirePermission({ resource: 'confirmations', action: 'link_student' })
+  @ApiOperation({
+    summary:
+      'Retry pushing this confirmed admission to the LMS as a student. Result shows linked / failed / skipped',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  async syncLms(
+    @AdmissionUser() user: AdmissionPlatformUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    await this.svc.findOne(user.institute_id, id); // tenant check + 404
+    return this.lmsSync.sync(id);
   }
 }

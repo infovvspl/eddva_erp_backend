@@ -47,6 +47,8 @@ import {
   ConfirmationsController,
 } from './confirmations/confirmations.controller';
 import { ConfirmationsService } from './confirmations/confirmations.service';
+import { LmsSyncService } from './lms-sync/lms-sync.service';
+import { LmsSyncScheduler } from './lms-sync/lms-sync.scheduler';
 import { ReportsController } from './reports/reports.controller';
 import { ReportsService } from './reports/reports.service';
 import { DashboardController } from './dashboard/dashboard.controller';
@@ -103,6 +105,8 @@ import { DashboardService } from './dashboard/dashboard.service';
     FeeStructuresService,
     AdmissionPaymentsService,
     ConfirmationsService,
+    LmsSyncService,
+    LmsSyncScheduler,
     ReportsService,
     DashboardService,
   ],

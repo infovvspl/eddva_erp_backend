@@ -4217,6 +4217,10 @@ model AdmissionConfirmation {
   /// Reference to the core Student record once the school core system has created it.
   student_ref         String?
   student_link_status AdmissionStudentLinkStatus  @default(pending)
+  /// LMS push bookkeeping: attempts so far, last failure, last try.
+  lms_sync_attempts   Int                         @default(0)
+  lms_sync_error      String?
+  lms_last_attempt_at DateTime?
   created_at          DateTime                    @default(now())
   updated_at          DateTime                    @updatedAt
 
