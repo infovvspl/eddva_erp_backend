@@ -36,8 +36,11 @@ import { SportsDashboardService } from './dashboard/sports-dashboard.service';
     SportsHousesController,
     SportsTournamentsController,
     SportsRecordsController,
-    DashboardController,
+    // Order matters: both controllers map GET api/sports/dashboard/summary and Nest
+    // serves the first one registered. The sports page reads the reply of
+    // SportsDashboardController (totals, ...), so it comes first.
     SportsDashboardController,
+    DashboardController,
   ],
   providers: [
     SportsAuthService,

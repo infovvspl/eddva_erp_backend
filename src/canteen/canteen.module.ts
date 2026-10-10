@@ -31,8 +31,11 @@ import { DashboardService } from './dashboard/dashboard.service';
     CanteenPaymentsController,
     CanteenWalletController,
     CanteenReportsController,
-    DashboardController,
+    // Order matters: both controllers map GET api/canteen/dashboard/summary and Nest
+    // serves the first one registered. The canteen page reads the reply of
+    // CanteenDashboardController (totals, ...), so it comes first.
     CanteenDashboardController,
+    DashboardController,
   ],
   providers: [
     CanteenAuditService,
