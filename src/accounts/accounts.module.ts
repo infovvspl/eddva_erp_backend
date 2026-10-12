@@ -38,8 +38,11 @@ import { AccountsDashboardService } from './dashboard/accounts-dashboard.service
     AccountsReportsController,
     VoucherAttachmentsController,
     AccountMappingsController,
-    DashboardController,
+    // Order matters: both controllers map GET api/accounts/dashboard/summary and Nest
+    // serves the first one registered. The accounts page reads the reply of
+    // AccountsDashboardController (totals, ...), so it comes first.
     AccountsDashboardController,
+    DashboardController,
   ],
   providers: [AccountGroupsService, CostCentersService, ClosingService, LedgerService, VoucherAttachmentsService, DashboardService, AccountsDashboardService],
   exports: [DashboardService],

@@ -12,7 +12,6 @@ import { LibNotificationsModule } from './notifications/lib-notifications.module
 import { LibSchedulerModule } from './scheduler/lib-scheduler.module';
 import { LibAuthModule } from './auth/lib-auth.module';
 import { LibRolesPermissionsModule } from './roles-permissions/lib-roles-permissions.module';
-import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
 import { LibDashboardModule } from './dashboard/lib-dashboard.module';
 
@@ -33,7 +32,11 @@ import { LibDashboardModule } from './dashboard/lib-dashboard.module';
     LibSchedulerModule,
     LibDashboardModule,
   ],
-  controllers: [DashboardController],
+  // DashboardController is not registered: it maps the same route as
+  // LibDashboardController (GET api/library/dashboard/summary) and, being in the
+  // parent module, was served first - the library page reads the reply of
+  // LibDashboardController (totals, ...). DashboardService stays exported.
+  controllers: [],
   providers: [DashboardService],
   exports: [DashboardService],
 })
