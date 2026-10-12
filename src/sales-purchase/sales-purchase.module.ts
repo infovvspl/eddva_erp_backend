@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SalesPurchaseAuthModule } from './auth/sales-purchase-auth.module';
 import { SalesPurchaseRolesPermissionsModule } from './roles-permissions/sales-purchase-roles-permissions.module';
+import { AccountsCoreModule } from '../accounts/accounts-core.module';
 import { SalesPurchaseAccessService } from './common/sales-purchase-access.service';
 import { SalesPurchaseAuditService } from './common/sales-purchase-audit.service';
 
@@ -58,7 +59,11 @@ import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
 
 @Module({
-  imports: [SalesPurchaseAuthModule, SalesPurchaseRolesPermissionsModule],
+  imports: [
+    SalesPurchaseAuthModule,
+    SalesPurchaseRolesPermissionsModule,
+    AccountsCoreModule,
+  ],
   controllers: [
     ItemCategoriesController,
     UomsController,

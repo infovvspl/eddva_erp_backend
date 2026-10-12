@@ -5,6 +5,7 @@ import { InventoryAuditService } from '../common/inventory-audit.service';
 import { InventoryStockLedgerService } from '../common/inventory-stock-ledger.service';
 import { INV_ENTITY } from '../common/inventory-entities';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
+import { AutoPostingService } from '../../accounts/auto-posting/auto-posting.service';
 
 @Injectable()
 export class PurchasesService {
@@ -12,6 +13,7 @@ export class PurchasesService {
     private readonly prisma: PrismaService,
     private readonly audit: InventoryAuditService,
     private readonly ledger: InventoryStockLedgerService,
+    private readonly autoPosting: AutoPostingService,
   ) {}
 
   async create(instituteId: string, dto: CreatePurchaseDto, actorId?: string) {
@@ -104,6 +106,15 @@ export class PurchasesService {
       entityId: String(result.purchase.purchase_id),
       action: 'create',
       metadata: { item_id: dto.item_id, vendor_id: dto.vendor_id, location_id: dto.location_id, quantity: dto.quantity, total_amount },
+    });
+
+    await this.autoPosting.postInventoryPurchase({
+      instituteId: institute_id,
+      purchaseId: result.purchase.purchase_id,
+      invoiceNumber: result.purchase.invoice_number,
+      purchaseDate: result.purchase.purchase_date,
+      totalAmount: Number(result.purchase.total_amount),
+      userId: actorId ?? 'SYSTEM',
     });
 
     return { ...result.purchase, asset_units: result.assetUnits };

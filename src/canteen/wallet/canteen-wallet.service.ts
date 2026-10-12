@@ -17,12 +17,14 @@ import {
   CanteenWalletStatus,
   CanteenWalletTransType,
 } from '@prisma/client';
+import { AutoPostingService } from '../../accounts/auto-posting/auto-posting.service';
 
 @Injectable()
 export class CanteenWalletService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: CanteenAuditService,
+    private readonly autoPosting: AutoPostingService,
   ) {}
 
   // --- Wallets ---
@@ -185,7 +187,7 @@ export class CanteenWalletService {
     }
 
     // Atomic transaction for Topup + Credit Ledger + Balance Update
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const topup = await tx.canteenWalletTopup.create({
         data: {
           instituteId: instId,
@@ -238,6 +240,17 @@ export class CanteenWalletService {
         ledgerTransactionId: ledger.id,
       };
     });
+
+    await this.autoPosting.postCanteenWalletTopup({
+      instituteId: instId,
+      topupId: result.topup.id,
+      walletId,
+      topupDate: result.topup.topupDate,
+      amount: topupAmount,
+      userId: approverUserId ?? 'SYSTEM',
+    });
+
+    return result;
   }
 
   async getTopupsByWallet(instituteId: string, walletId: string) {

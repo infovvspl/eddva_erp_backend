@@ -260,7 +260,7 @@ describe('Library tenant isolation', () => {
 
   describe('fines', () => {
     it('cannot read, pay or waive another institute\'s fine', async () => {
-      const svc = new LibFinesService(prisma, { sendFineAlert: jest.fn() } as any);
+      const svc = new LibFinesService(prisma, { sendFineAlert: jest.fn() } as any, { postLibraryFine: jest.fn() } as any);
       await expect(svc.findOne(B, 4)).rejects.toThrow(NotFoundException);
       await expect(svc.pay(B, 4, { amount_paid: 1, received_by: 1 } as any)).rejects.toThrow(NotFoundException);
       await expect(svc.waive(B, 4, {} as any)).rejects.toThrow(NotFoundException);
@@ -270,7 +270,7 @@ describe('Library tenant isolation', () => {
 
     it('stamps fines it creates', async () => {
       prisma.libFine.create.mockResolvedValue({ fine_id: 1 });
-      await new LibFinesService(prisma, { sendFineAlert: jest.fn() } as any).createFine(A, 9, 2, 'overdue', 10);
+      await new LibFinesService(prisma, { sendFineAlert: jest.fn() } as any, { postLibraryFine: jest.fn() } as any).createFine(A, 9, 2, 'overdue', 10);
       expect(prisma.libFine.create.mock.calls[0][0].data.institute_id).toBe(A);
     });
   });

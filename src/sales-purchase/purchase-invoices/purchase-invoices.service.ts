@@ -13,6 +13,7 @@ import { buildMeta, parsePagination } from '../common/pagination.util';
 import { calcInvoiceLine, sumDecimals, toNumber } from '../common/money.util';
 import { VendorsService } from '../vendors/vendors.service';
 import { ItemsService } from '../items/items.service';
+import { AutoPostingService } from '../../accounts/auto-posting/auto-posting.service';
 import {
   PurchaseInvoiceMatchService,
   MatchLineInput,
@@ -33,6 +34,7 @@ export class PurchaseInvoicesService {
     private readonly vendors: VendorsService,
     private readonly items: ItemsService,
     private readonly match: PurchaseInvoiceMatchService,
+    private readonly autoPosting: AutoPostingService,
   ) {}
 
   private async buildLines(
@@ -488,6 +490,16 @@ export class PurchaseInvoicesService {
       oldStatus: invoice.status,
       newStatus: updated.status,
     });
+
+    await this.autoPosting.postPurchaseInvoice({
+      instituteId,
+      invoiceId: String(id),
+      invoiceNumber: updated.invoice_number,
+      invoiceDate: updated.invoice_date,
+      grandTotal: Number(updated.grand_total),
+      userId: actorId,
+    });
+
     return updated;
   }
 

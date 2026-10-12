@@ -15,6 +15,9 @@ import {
 @Injectable()
 export class TransportInstituteAdminViewOnlyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
+    // Institute Admins have full read/write access to Transport, same as other modules.
+    return true;
+
     const req = context.switchToHttp().getRequest();
     const user = req.transportUser;
 

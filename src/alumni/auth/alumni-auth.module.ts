@@ -9,12 +9,16 @@ import { AlumniAccessService } from '../common/alumni-access.service';
 import { AlumniAuditService } from '../common/alumni-audit.service';
 import { AlumniSystemRoleService } from '../common/alumni-system-role.service';
 import { AlumniNotificationService } from '../notifications/alumni-notification.service';
+import { AlumniLmsSyncService } from '../lms-sync/alumni-lms-sync.service';
+import { AlumniLmsSyncScheduler } from '../lms-sync/alumni-lms-sync.scheduler';
 
 /**
  * Auth for the Alumni island: SSO exchange, direct login, alumni
  * self-registration and the guards. The audit / notification / system-role
  * services live here (and are exported) because self-registration needs them and
- * the root module must not be imported back into this one.
+ * the root module must not be imported back into this one. AlumniLmsSyncService
+ * lives here too — it's triggered from registration, the same way admission's
+ * lms-sync lives alongside the confirmation flow that triggers it.
  */
 @Module({
   controllers: [AlumniAuthController],
@@ -28,6 +32,8 @@ import { AlumniNotificationService } from '../notifications/alumni-notification.
     AlumniAuditService,
     AlumniSystemRoleService,
     AlumniNotificationService,
+    AlumniLmsSyncService,
+    AlumniLmsSyncScheduler,
   ],
   exports: [
     AlumniAuthService,

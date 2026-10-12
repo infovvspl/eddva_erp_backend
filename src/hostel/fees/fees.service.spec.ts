@@ -264,12 +264,14 @@ describe('PaymentsService', () => {
   const numbering = { next: jest.fn() };
   const audit = { log: jest.fn() };
   const notifications = { notifyGuardian: jest.fn() };
+  const autoPosting = { postHostelFeeInvoice: jest.fn() };
   const service = new PaymentsService(
     db as never,
     lookup as never,
     numbering as never,
     audit as never,
     notifications as never,
+    autoPosting as never,
   );
   const pay = (amount: number, over: Record<string, unknown> = {}) =>
     service.record(actor, 11, {
@@ -335,6 +337,19 @@ describe('PaymentsService', () => {
       },
     });
     expect(db.hostelFeePayment.create).not.toHaveBeenCalled();
+  });
+
+  it('posts the payment to the ledger after the invoice status updates', async () => {
+    lookup.lockInvoice.mockResolvedValue(invoice());
+    await pay(2500);
+    expect(autoPosting.postHostelFeeInvoice).toHaveBeenCalledWith({
+      instituteId: 'inst-1',
+      paymentId: 1,
+      invoiceId: 11,
+      paymentDate: expect.any(Date),
+      amountPaid: 2500,
+      userId: 'a1',
+    });
   });
 
   it('refuses a payment on a fully paid invoice (409)', async () => {

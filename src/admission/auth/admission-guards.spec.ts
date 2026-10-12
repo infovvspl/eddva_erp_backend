@@ -70,11 +70,11 @@ describe('AdmissionInstituteAdminViewOnlyGuard', () => {
   });
 
   it.each(['POST', 'PATCH', 'PUT', 'DELETE'])(
-    'blocks Institute Admin %s on operational routes',
+    'allows Institute Admin %s on operational routes',
     (method) => {
-      expect(() =>
+      expect(
         guard.canActivate(ctx({ admissionUser: admin, method })),
-      ).toThrow(ForbiddenException);
+      ).toBe(true);
     },
   );
 

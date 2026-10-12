@@ -5,12 +5,14 @@ import { TRANSPORT_ENTITY } from '../common/transport-entities';
 import { CreateFeePlanDto } from './dto/create-fee-plan.dto';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
+import { AutoPostingService } from '../../accounts/auto-posting/auto-posting.service';
 
 @Injectable()
 export class FeesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: TransportAuditService,
+    private readonly autoPosting: AutoPostingService,
   ) {}
 
   // ─── Fee Plans ────────────────────────────────────────────────────────
@@ -85,6 +87,16 @@ export class FeesService {
       },
     });
     await this.audit.log({ userId: actorId, entityType: TRANSPORT_ENTITY.FEE_PAYMENT, entityId: String(payment.payment_id), action: 'create', metadata: { subscription_id: subscriptionId, amount_paid: dto.amount_paid } });
+
+    await this.autoPosting.postTransportFeePayment({
+      instituteId,
+      paymentId: payment.payment_id,
+      subscriptionId,
+      paymentDate: payment.payment_date,
+      amountPaid: Number(payment.amount_paid),
+      userId: actorId ?? 'SYSTEM',
+    });
+
     return payment;
   }
 

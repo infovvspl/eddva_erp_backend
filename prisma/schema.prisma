@@ -5202,6 +5202,11 @@ enum AlumniNotificationStatus {
   failed
 }
 
+enum AlumniLmsSyncStatus {
+  pending
+  synced
+}
+
 /// The alumni directory — one row per alumnus/alumna per institute.
 model AlumniProfile {
   alumni_id                 Int                      @id @default(autoincrement())
@@ -5242,6 +5247,13 @@ model AlumniProfile {
   created_by                String?
   created_at                DateTime                 @default(now())
   updated_at                DateTime                 @updatedAt
+  /// LMS push bookkeeping (section 12/19-style, see AdmissionConfirmation): marks the
+  /// matching `student_ref` GRADUATED in the LMS once this profile is created. Stays
+  /// `pending` forever when student_ref is null — there is nothing to sync.
+  lms_sync_status           AlumniLmsSyncStatus      @default(pending)
+  lms_sync_attempts         Int                      @default(0)
+  lms_sync_error            String?
+  lms_last_attempt_at       DateTime?
 
   employments         AlumniEmployment[]
   group_memberships   AlumniGroupMember[]
@@ -5714,4 +5726,353 @@ model AlumniNumberSequence {
 
   @@unique([sequence_type, financial_year])
   @@map("alumni_number_sequences")
+}
+
+// ============================================================================
+// Staff Management — a self-contained island, built the same way as every
+// other business module: own auth (SSO + direct login, own JWT secret), own
+// dynamic RBAC, own tables and own numbering. No foreign keys to, or calls
+// into, any other business module. Teaching vs non-teaching is a classifying
+// field (StaffType) on StaffMember, not a structural split — both share one
+// directory and one RBAC/workflow surface.
+// ============================================================================
+
+enum StaffType {
+  teaching
+  non_teaching
+}
+
+enum StaffStatus {
+  active
+  resigned
+  terminated
+}
+
+enum StaffLmsSyncStatus {
+  pending
+  synced
+}
+
+model StaffDepartment {
+  department_id Int      @id @default(autoincrement())
+  institute_id  String
+  name          String
+  description   String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  members StaffMember[]
+
+  @@unique([institute_id, name])
+  @@index([institute_id])
+  @@map("staff_departments")
+}
+
+/// The staff directory — one row per teaching/non-teaching staff member per institute.
+model StaffMember {
+  staff_id         Int             @id @default(autoincrement())
+  institute_id     String
+  staff_code       String
+  staff_type       StaffType
+  full_name        String
+  department_id    Int
+  department       StaffDepartment @relation(fields: [department_id], references: [department_id])
+  designation      String
+  employment_type  String?
+  email            String?
+  phone            String?
+  date_of_joining  DateTime        @db.Date
+  reporting_to_id  Int?
+  reporting_to     StaffMember?    @relation("StaffReportingLine", fields: [reporting_to_id], references: [staff_id])
+  reports          StaffMember[]   @relation("StaffReportingLine")
+  status           StaffStatus     @default(active)
+  status_reason    String?
+  relieved_on      DateTime?       @db.Date
+  created_by       String?
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+
+  /// LMS push bookkeeping (section 12/19-style, see AdmissionConfirmation/AlumniProfile):
+  /// only teaching staff are pushed as LMS teachers; stays `pending` forever
+  /// for non-teaching staff, or for teaching staff with no email on file.
+  lms_teacher_ref     String?
+  lms_sync_status     StaffLmsSyncStatus @default(pending)
+  lms_sync_attempts   Int                @default(0)
+  lms_sync_error      String?
+  lms_last_attempt_at DateTime?
+
+  leave_balances LeaveBalance[]
+  leave_applications LeaveApplication[]
+  salary_structures StaffSalaryStructure[]
+  payslips Payslip[]
+
+  @@unique([institute_id, staff_code])
+  @@index([institute_id, staff_type])
+  @@index([institute_id, department_id])
+  @@index([institute_id, status])
+  @@index([institute_id, full_name])
+  @@map("staff_members")
+}
+
+model StaffDynamicRole {
+  role_id      Int      @id @default(autoincrement())
+  institute_id String
+  name         String
+  description  String?
+  permissions  Json     @default("[]")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user_roles StaffUserDynamicRole[]
+
+  @@unique([institute_id, name])
+  @@map("staff_dynamic_roles")
+}
+
+model StaffUserDynamicRole {
+  id            Int              @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  username      String
+  password_hash String
+  is_active     Boolean          @default(true)
+  role_id       Int
+  assigned_at   DateTime         @default(now())
+  role          StaffDynamicRole @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+
+  @@unique([institute_id, eddva_user_id])
+  @@unique([institute_id, username])
+  @@map("staff_user_dynamic_roles")
+}
+
+model StaffSsoSession {
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  token_hash    String   @unique
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@map("staff_sso_sessions")
+}
+
+model StaffPermission {
+  permission_id Int      @id @default(autoincrement())
+  key           String   @unique
+  resource      String
+  action        String
+  name          String
+  category      String
+  description   String?
+  is_system     Boolean  @default(true)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("staff_permissions_catalog")
+}
+
+/// Module-local document-number sequences (staff codes).
+model StaffNumberSequence {
+  id             Int    @id @default(autoincrement())
+  sequence_type  String
+  financial_year String
+  prefix         String
+  current_number Int    @default(0)
+
+  @@unique([sequence_type, financial_year])
+  @@map("staff_number_sequences")
+}
+
+/// Leave Management — master data + annual accrual (Phase B). Applies to one
+/// staff_type, or both when null (e.g. a public-holiday-linked leave type that
+/// every staff member gets, regardless of teaching/non-teaching).
+model LeaveType {
+  leave_type_id        Int        @id @default(autoincrement())
+  institute_id         String
+  name                 String
+  code                 String
+  applicable_staff_type StaffType?
+  annual_quota_days    Decimal    @db.Decimal(5, 1)
+  is_paid              Boolean    @default(true)
+  allow_carry_forward  Boolean    @default(false)
+  max_carry_forward_days Decimal? @db.Decimal(5, 1)
+  is_active            Boolean    @default(true)
+  created_at           DateTime   @default(now())
+  updated_at           DateTime   @updatedAt
+
+  balances LeaveBalance[]
+  applications LeaveApplication[]
+
+  @@unique([institute_id, code])
+  @@index([institute_id])
+  @@map("staff_leave_types")
+}
+
+/// One row per staff member, per leave type, per calendar year.
+model LeaveBalance {
+  balance_id   Int       @id @default(autoincrement())
+  institute_id String
+  staff_id     Int
+  staff        StaffMember @relation(fields: [staff_id], references: [staff_id])
+  leave_type_id Int
+  leave_type   LeaveType @relation(fields: [leave_type_id], references: [leave_type_id])
+  year         Int
+  allocated_days Decimal @db.Decimal(5, 1)
+  used_days    Decimal   @default(0) @db.Decimal(5, 1)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  @@unique([staff_id, leave_type_id, year])
+  @@index([institute_id, year])
+  @@map("staff_leave_balances")
+}
+
+enum LeaveApplicationStatus {
+  pending
+  approved
+  rejected
+  cancelled
+}
+
+/// A leave request against one LeaveBalance (staff x leave_type x year, the
+/// year being from_date's calendar year). Approval/rejection/cancellation are
+/// permission-gated (leave_applications:approve etc.), not tied to a specific
+/// reporting-manager login — this module has no staff self-service portal yet,
+/// so applications are filed/decided by whoever holds an HR/admin role,
+/// scoped to the target staff_id, the same way Hostel staff manage residents
+/// who have no login of their own.
+model LeaveApplication {
+  application_id  Int                    @id @default(autoincrement())
+  institute_id    String
+  staff_id        Int
+  staff           StaffMember            @relation(fields: [staff_id], references: [staff_id])
+  leave_type_id   Int
+  leave_type      LeaveType              @relation(fields: [leave_type_id], references: [leave_type_id])
+  from_date       DateTime               @db.Date
+  to_date         DateTime               @db.Date
+  days_count      Decimal                @db.Decimal(5, 1)
+  reason          String?
+  status          LeaveApplicationStatus @default(pending)
+  applied_by      String
+  decided_by      String?
+  decided_at      DateTime?
+  decision_reason String?
+  created_at      DateTime               @default(now())
+  updated_at      DateTime               @updatedAt
+
+  @@index([institute_id, staff_id])
+  @@index([institute_id, status])
+  @@map("staff_leave_applications")
+}
+
+enum StaffNotificationStatus {
+  queued
+  sent
+  failed
+}
+
+/// DB-logged notification outbox — same "log only" convention as every other
+/// module's notification service: no SMS/email provider exists in this
+/// codebase, so rows stay `queued` until a real delivery worker exists.
+model StaffNotification {
+  notification_id Int                     @id @default(autoincrement())
+  institute_id    String
+  entity_type     String
+  entity_id       Int
+  event_type      String
+  channel         String                  @default("in_app")
+  recipient       String?
+  message         String?
+  status          StaffNotificationStatus @default(queued)
+  sent_at         DateTime?
+  created_at      DateTime                @default(now())
+
+  @@index([institute_id, event_type])
+  @@index([entity_type, entity_id])
+  @@map("staff_notifications")
+}
+
+/// Payroll — salary structures are effective-dated history (never edited in
+/// place: a raise is a new row, the prior one gets `effective_to` closed),
+/// so a payroll run always reconstructs what was actually in force for that
+/// month rather than today's numbers.
+model StaffSalaryStructure {
+  structure_id   Int         @id @default(autoincrement())
+  institute_id   String
+  staff_id       Int
+  staff          StaffMember @relation(fields: [staff_id], references: [staff_id])
+  basic_salary   Decimal     @db.Decimal(12, 2)
+  /// { "hra": 5000, "da": 2000, ... } — arbitrary allowance components, summed for gross pay.
+  allowances     Json        @default("{}")
+  effective_from DateTime    @db.Date
+  effective_to   DateTime?   @db.Date
+  created_by     String?
+  created_at     DateTime    @default(now())
+  updated_at     DateTime    @updatedAt
+
+  @@index([institute_id, staff_id, effective_from])
+  @@map("staff_salary_structures")
+}
+
+enum PayrollRunStatus {
+  draft
+  finalized
+  paid
+}
+
+/// One per institute per calendar month. Generating it snapshots each active
+/// staff member's salary structure and unpaid-leave days into a Payslip —
+/// re-running `generate` after that is refused; a correction means editing
+/// the underlying data and generating a fresh month, not silently
+/// recomputing a run that may already have been reviewed or paid.
+model PayrollRun {
+  run_id       Int              @id @default(autoincrement())
+  institute_id String
+  month        Int
+  year         Int
+  status       PayrollRunStatus @default(draft)
+  generated_by String?
+  generated_at DateTime         @default(now())
+  finalized_by String?
+  finalized_at DateTime?
+  paid_by      String?
+  paid_at      DateTime?
+  created_at   DateTime         @default(now())
+  updated_at   DateTime         @updatedAt
+
+  payslips Payslip[]
+
+  @@unique([institute_id, month, year])
+  @@map("staff_payroll_runs")
+}
+
+/// One per staff member per PayrollRun. `lop_days`/`lop_amount` come from
+/// approved, unpaid-leave-type LeaveApplications overlapping this month;
+/// `net_salary` is what actually gets posted to the ledger on payment.
+model Payslip {
+  payslip_id       Int         @id @default(autoincrement())
+  institute_id     String
+  run_id           Int
+  run              PayrollRun  @relation(fields: [run_id], references: [run_id])
+  staff_id         Int
+  staff            StaffMember @relation(fields: [staff_id], references: [staff_id])
+  basic_salary     Decimal     @db.Decimal(12, 2)
+  allowances_total Decimal     @db.Decimal(12, 2)
+  gross_salary     Decimal     @db.Decimal(12, 2)
+  lop_days         Decimal     @default(0) @db.Decimal(5, 1)
+  lop_amount       Decimal     @default(0) @db.Decimal(12, 2)
+  other_deductions Decimal     @default(0) @db.Decimal(12, 2)
+  net_salary       Decimal     @db.Decimal(12, 2)
+  created_at       DateTime    @default(now())
+  updated_at       DateTime    @updatedAt
+
+  @@unique([run_id, staff_id])
+  @@index([institute_id, staff_id])
+  @@map("staff_payslips")
 }

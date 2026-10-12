@@ -19,6 +19,7 @@ import { BusinessException } from '../common/business-exception';
 import { calcInvoiceLine, sumDecimals, toNumber } from '../common/money.util';
 import { CustomersService } from '../customers/customers.service';
 import { ItemsService } from '../items/items.service';
+import { AutoPostingService } from '../../accounts/auto-posting/auto-posting.service';
 import {
   CreateSalesInvoiceDto,
   CreateSalesInvoiceItemDto,
@@ -49,6 +50,7 @@ export class SalesInvoicesService {
     private readonly audit: SalesPurchaseAuditService,
     private readonly customers: CustomersService,
     private readonly items: ItemsService,
+    private readonly autoPosting: AutoPostingService,
   ) {}
 
   private async buildLines(
@@ -527,6 +529,16 @@ export class SalesInvoicesService {
       oldStatus: invoice.status,
       newStatus: updated.status,
     });
+
+    await this.autoPosting.postSalesInvoice({
+      instituteId,
+      invoiceId: String(id),
+      invoiceNumber: updated.invoice_number,
+      invoiceDate: updated.invoice_date,
+      grandTotal: Number(updated.grand_total),
+      userId: actorId,
+    });
+
     return updated;
   }
 

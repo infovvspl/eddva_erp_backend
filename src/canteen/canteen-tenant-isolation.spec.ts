@@ -129,14 +129,14 @@ describe('Canteen tenant isolation', () => {
 
   describe('wallet', () => {
     it('will not create a wallet for another institute\'s member', async () => {
-      const svc = new CanteenWalletService(prisma, audit as any);
+      const svc = new CanteenWalletService(prisma, audit as any, { postCanteenWalletTopup: jest.fn() } as any);
       await expect(svc.createWallet(A, 'm9', {} as any)).rejects.toThrow(NotFoundException);
       expect(prisma.canteenMember.findFirst).toHaveBeenCalledWith({ where: { id: 'm9', instituteId: A } });
       expect(prisma.canteenWallet.create).not.toHaveBeenCalled();
     });
 
     it('cannot read another institute\'s wallet or top up it', async () => {
-      const svc = new CanteenWalletService(prisma, audit as any);
+      const svc = new CanteenWalletService(prisma, audit as any, { postCanteenWalletTopup: jest.fn() } as any);
       await expect(svc.getWalletById(B, 'w1')).rejects.toThrow(NotFoundException);
       await expect(svc.processTopup(B, 'w1', { amount: 10 } as any)).rejects.toThrow(NotFoundException);
     });

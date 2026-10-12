@@ -4,6 +4,7 @@ import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { LibNotificationService } from '../notifications/lib-notification.service';
 import { PayFineDto } from './dto/pay-fine.dto';
 import { WaiveFineDto } from './dto/waive-fine.dto';
+import { AutoPostingService } from '../../accounts/auto-posting/auto-posting.service';
 
 /**
  * FineService (calc engine) — architecture-named service.
@@ -15,6 +16,7 @@ export class LibFinesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationService: LibNotificationService,
+    private readonly autoPosting: AutoPostingService,
   ) {}
 
   /**
@@ -113,6 +115,15 @@ export class LibFinesService {
     await this.prisma.libFine.update({
       where: { fine_id: fineId },
       data: { status: newStatus },
+    });
+
+    await this.autoPosting.postLibraryFine({
+      instituteId,
+      paymentId: payment.payment_id,
+      fineId,
+      paymentDate: payment.payment_date,
+      amountPaid: dto.amount_paid,
+      userId: String(dto.received_by),
     });
 
     return { payment, new_status: newStatus };

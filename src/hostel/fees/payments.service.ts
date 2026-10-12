@@ -15,6 +15,7 @@ import {
   parsePagination,
 } from '../common/pagination.util';
 import { QueryHostelPaymentDto, RecordHostelPaymentDto } from './dto/fee.dto';
+import { AutoPostingService } from '../../accounts/auto-posting/auto-posting.service';
 
 const PAYMENT_INCLUDE = {
   invoice: {
@@ -40,6 +41,7 @@ export class PaymentsService {
     private readonly numbering: HostelNumberingService,
     private readonly audit: HostelAuditService,
     private readonly notifications: HostelNotificationService,
+    private readonly autoPosting: AutoPostingService,
   ) {}
 
   /**
@@ -158,6 +160,16 @@ export class PaymentsService {
         amount_paid_total: invoice.amount_paid.toFixed(2),
       },
     });
+
+    await this.autoPosting.postHostelFeeInvoice({
+      instituteId: actor.institute_id,
+      paymentId: payment.payment_id,
+      invoiceId,
+      paymentDate: payment.payment_date,
+      amountPaid: Number(amount),
+      userId: actor.eddva_user_id,
+    });
+
     const resident = await this.lookup.resident(
       actor.institute_id,
       invoice.resident_id,

@@ -64,11 +64,13 @@ describe('AlumniRegistrationService (staff creates profile + account together)',
   const roles = { ensure: jest.fn() };
   const audit = { log: jest.fn() };
   const notifications = { notifyAlumni: jest.fn(), notifyStaff: jest.fn() };
+  const lmsSync = { trigger: jest.fn() };
   const svc = new AlumniRegistrationService(
     db as never,
     roles as never,
     audit as never,
     notifications as never,
+    lmsSync as never,
   );
   const dto = {
     full_name: 'Alice Anand',
@@ -130,6 +132,11 @@ describe('AlumniRegistrationService (staff creates profile + account together)',
       await bcrypt.compare('AlicePass#1', String(account.password_hash)),
     ).toBe(true);
     expect(account.password_hash).not.toContain('AlicePass');
+  });
+
+  it('triggers the LMS GRADUATED push for the new profile', async () => {
+    const out = await svc.register(officer, dto);
+    expect(lmsSync.trigger).toHaveBeenCalledWith(out.alumni_id);
   });
 
   it('can be routed through the verification queue instead of verified-by-default', async () => {

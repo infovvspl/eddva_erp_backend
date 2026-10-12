@@ -38,9 +38,10 @@ import { AlertsService } from './alerts/alerts.service';
 
 import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
+import { AccountsCoreModule } from '../accounts/accounts-core.module';
 
 @Module({
-  imports: [InventoryAuthModule, InventoryRolesPermissionsModule],
+  imports: [InventoryAuthModule, InventoryRolesPermissionsModule, AccountsCoreModule],
   controllers: [
     CategoriesController,
     LocationsController,

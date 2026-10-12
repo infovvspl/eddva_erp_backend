@@ -20,9 +20,10 @@ import { CanteenAuditService } from './common/canteen-audit.service';
 import { CanteenRolesPermissionsModule } from './roles-permissions/canteen-roles-permissions.module';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
+import { AccountsCoreModule } from '../accounts/accounts-core.module';
 
 @Module({
-  imports: [CanteenAuthModule, CanteenRolesPermissionsModule],
+  imports: [CanteenAuthModule, CanteenRolesPermissionsModule, AccountsCoreModule],
   controllers: [
     CanteenMenuController,
     CanteenMembersController,

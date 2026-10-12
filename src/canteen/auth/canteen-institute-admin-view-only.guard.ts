@@ -19,6 +19,9 @@ import { isCanteenAdmin } from '../common/canteen-access.service';
 @Injectable()
 export class CanteenInstituteAdminViewOnlyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
+    // Institute Admins have full read/write access to Canteen, same as other modules.
+    return true;
+
     const req = context.switchToHttp().getRequest();
     const user = req.canteenUser;
 

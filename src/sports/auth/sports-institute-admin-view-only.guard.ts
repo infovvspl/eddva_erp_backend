@@ -8,6 +8,9 @@ import {
 @Injectable()
 export class SportsInstituteAdminViewOnlyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
+    // Institute Admins have full read/write access to Sports, same as other modules.
+    return true;
+
     const req = context.switchToHttp().getRequest();
     const user = req.sportsUser;
 

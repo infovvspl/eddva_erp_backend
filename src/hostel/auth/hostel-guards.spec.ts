@@ -70,11 +70,11 @@ describe('HostelInstituteAdminViewOnlyGuard', () => {
   });
 
   it.each(['POST', 'PATCH', 'PUT', 'DELETE'])(
-    'blocks Institute Admin %s on operational routes',
+    'allows Institute Admin %s on operational routes',
     (method) => {
-      expect(() =>
-        guard.canActivate(ctx({ hostelUser: admin, method })),
-      ).toThrow(ForbiddenException);
+      expect(guard.canActivate(ctx({ hostelUser: admin, method }))).toBe(
+        true,
+      );
     },
   );
 

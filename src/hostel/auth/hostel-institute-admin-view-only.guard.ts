@@ -1,39 +1,13 @@
-import {
-  Injectable,
-  CanActivate,
-  ExecutionContext,
-  ForbiddenException,
-} from '@nestjs/common';
-import { isHostelAdmin } from '../common/hostel-access.service';
-import type { HostelRequest } from './hostel-request';
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 
 /**
- * Institute Admins have view-only access to Hostel operational tasks
- * (blocks/rooms/residents/allotments/gate passes/attendance/visitors/mess/
- * complaints/fees/discipline/reports). Mirrors CanteenInstituteAdminViewOnlyGuard.
- *
- * Not attached to HostelDynamicRolesController,
- * HostelPermissionsRegistryController or HostelAuthController —
- * Institute Admin write access there is enforced by requireInstituteAdmin()
- * inside those services directly.
+ * Institute Admins have full read/write access to Hostel, same as other
+ * modules. Kept as its own guard (rather than removed from the controllers'
+ * @UseGuards lists) so re-introducing a restriction later is a one-line change.
  */
 @Injectable()
 export class HostelInstituteAdminViewOnlyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const req = context.switchToHttp().getRequest<HostelRequest>();
-    const user = req.hostelUser;
-
-    if (!user) return true; // HostelJwtGuard handles unauthenticated requests
-    if (!isHostelAdmin(user)) return true;
-
-    const readMethods = ['GET', 'HEAD', 'OPTIONS'];
-    if (!readMethods.includes(req.method.toUpperCase())) {
-      throw new ForbiddenException(
-        'Institute Admin has view-only access to Hostel operational tasks. ' +
-          'Please use an account with an assigned Hostel role (Warden/Gate Security/etc.) to perform write actions.',
-      );
-    }
-
     return true;
   }
 }

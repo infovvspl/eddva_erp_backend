@@ -24,9 +24,10 @@ import { FeesController } from './fees/fees.controller';
 import { FeesService } from './fees/fees.service';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
+import { AccountsCoreModule } from '../accounts/accounts-core.module';
 
 @Module({
-  imports: [TransportAuthModule, TransportRolesPermissionsModule],
+  imports: [TransportAuthModule, TransportRolesPermissionsModule, AccountsCoreModule],
   controllers: [
     VehiclesController,
     RoutesController,

@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { FeesService } from './fees.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TransportAuditService } from '../common/transport-audit.service';
+import { AutoPostingService } from '../../accounts/auto-posting/auto-posting.service';
 
 describe('FeesService', () => {
   let service: FeesService;
@@ -15,6 +16,7 @@ describe('FeesService', () => {
     transportFeePayment: { create: jest.fn() },
   };
   const mockAudit = { log: jest.fn() };
+  const mockAutoPosting = { postTransportFeePayment: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -23,6 +25,7 @@ describe('FeesService', () => {
         FeesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: TransportAuditService, useValue: mockAudit },
+        { provide: AutoPostingService, useValue: mockAutoPosting },
       ],
     }).compile();
     service = module.get(FeesService);
@@ -64,6 +67,32 @@ describe('FeesService', () => {
         service.recordPayment('INST_1', 1, { amount_paid: 100, payment_date: '2026-09-01', payment_mode: 'CASH' } as any),
       ).rejects.toThrow(NotFoundException);
       expect(mockPrisma.transportFeePayment.create).not.toHaveBeenCalled();
+    });
+
+    it('posts the payment to the ledger after it is recorded', async () => {
+      mockPrisma.transportPassengerFeeSubscription.findFirst.mockResolvedValue({ subscription_id: 1 });
+      const paymentDate = new Date('2026-09-01');
+      mockPrisma.transportFeePayment.create.mockResolvedValue({
+        payment_id: 5,
+        amount_paid: 100,
+        payment_date: paymentDate,
+      });
+
+      await service.recordPayment(
+        'INST_1',
+        1,
+        { amount_paid: 100, payment_date: '2026-09-01', payment_mode: 'CASH' } as any,
+        'USER_1',
+      );
+
+      expect(mockAutoPosting.postTransportFeePayment).toHaveBeenCalledWith({
+        instituteId: 'INST_1',
+        paymentId: 5,
+        subscriptionId: 1,
+        paymentDate,
+        amountPaid: 100,
+        userId: 'USER_1',
+      });
     });
   });
 });

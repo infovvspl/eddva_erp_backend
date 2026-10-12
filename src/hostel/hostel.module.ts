@@ -54,16 +54,20 @@ import { DashboardService } from './dashboard/dashboard.service';
 import { ReportsController } from './reports/reports.controller';
 import { ReportsService } from './reports/reports.service';
 import { HostelScheduler } from './scheduler/hostel.scheduler';
+import { AccountsCoreModule } from '../accounts/accounts-core.module';
 
 /**
  * Hostel Management — a self-contained island, built the same way as
  * Admission / Front Office / Canteen: its own auth (SSO + direct login, own
  * JWT secret), own dynamic RBAC, own tables and own numbering. It shares only
  * the ERP's platform infrastructure (Prisma, the audit log, @nestjs/schedule)
- * and has no foreign keys to, or calls into, any other business module.
+ * and has no foreign keys to any other business module. AccountsCoreModule is
+ * the one sanctioned exception — the lightweight AutoPostingService import
+ * surface Accounts built specifically for this (section 12/19), used here to
+ * post fee payments to the central ledger.
  */
 @Module({
-  imports: [HostelAuthModule, HostelRolesPermissionsModule],
+  imports: [HostelAuthModule, HostelRolesPermissionsModule, AccountsCoreModule],
   controllers: [
     BlocksController,
     RoomsController,

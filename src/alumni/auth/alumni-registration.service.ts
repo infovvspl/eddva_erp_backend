@@ -8,6 +8,7 @@ import { BusinessException } from '../common/business-exception';
 import { orConflict } from '../common/unique-violation.util';
 import { currentYear } from '../common/validation';
 import { AlumniNotificationService } from '../notifications/alumni-notification.service';
+import { AlumniLmsSyncService } from '../lms-sync/alumni-lms-sync.service';
 import { AlumniPlatformUser } from './alumni-auth.service';
 import { RegisterAlumniDto } from './dto/register.dto';
 
@@ -64,6 +65,7 @@ export class AlumniRegistrationService {
     private readonly roles: AlumniSystemRoleService,
     private readonly audit: AlumniAuditService,
     private readonly notifications: AlumniNotificationService,
+    private readonly lmsSync: AlumniLmsSyncService,
   ) {}
 
   async register(actor: AlumniPlatformUser, dto: RegisterAlumniDto) {
@@ -182,6 +184,10 @@ export class AlumniRegistrationService {
       },
       { alumni_id: profile.alumni_id, email: profile.email },
     );
+
+    // Push the GRADUATED status to the LMS in the background; failures stay
+    // `pending` and are retried by AlumniLmsSyncScheduler. No-ops if student_ref wasn't given.
+    this.lmsSync.trigger(profile.alumni_id);
 
     return {
       alumni_id: profile.alumni_id,

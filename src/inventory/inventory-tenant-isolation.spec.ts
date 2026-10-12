@@ -136,7 +136,7 @@ describe('Inventory tenant isolation', () => {
     const ledger = { increment: jest.fn(), decrement: jest.fn() };
 
     it('will not purchase against another institute\'s item, vendor or location', async () => {
-      const svc = new PurchasesService(prisma, audit as any, ledger as any);
+      const svc = new PurchasesService(prisma, audit as any, ledger as any, { postInventoryPurchase: jest.fn() } as any);
       await expect(
         svc.create(B, { item_id: 1, vendor_id: 1, location_id: 1, quantity: 1, unit_price: 10, purchase_date: '2026-01-01' } as any),
       ).rejects.toThrow(NotFoundException);
@@ -148,7 +148,7 @@ describe('Inventory tenant isolation', () => {
       prisma.invVendor.findFirst.mockResolvedValue({ vendor_id: 1 });
       prisma.invLocation.findFirst.mockResolvedValue({ location_id: 1 });
       prisma.invStockPurchase.create.mockResolvedValue({ purchase_id: 1 });
-      await new PurchasesService(prisma, audit as any, ledger as any).create(A, {
+      await new PurchasesService(prisma, audit as any, ledger as any, { postInventoryPurchase: jest.fn() } as any).create(A, {
         item_id: 1, vendor_id: 1, location_id: 1, quantity: 1, unit_price: 10, purchase_date: '2026-01-01',
       } as any);
       expect(prisma.invStockPurchase.create.mock.calls[0][0].data.institute_id).toBe(A);
