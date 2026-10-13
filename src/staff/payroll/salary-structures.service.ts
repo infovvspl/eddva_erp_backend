@@ -56,6 +56,7 @@ export class SalaryStructuresService {
         staff_id: dto.staff_id,
         basic_salary: dto.basic_salary,
         allowances: dto.allowances ?? {},
+        deductions: dto.deductions ?? {},
         effective_from,
         created_by: actor.eddva_user_id,
       },

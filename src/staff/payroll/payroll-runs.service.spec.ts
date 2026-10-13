@@ -19,6 +19,7 @@ describe('PayrollRunsService.generate', () => {
   };
   const mockAudit = { log: jest.fn() };
   const mockAutoPosting = { postPayrollDisbursement: jest.fn() };
+  const mockNotifications = { notify: jest.fn() };
 
   let service: PayrollRunsService;
 
@@ -26,7 +27,7 @@ describe('PayrollRunsService.generate', () => {
     jest.clearAllMocks();
     mockPrisma.$transaction.mockImplementation(async (cb: any) => cb(mockPrisma));
     mockPrisma.payrollRun.create.mockResolvedValue({ run_id: 100, institute_id: 'INST_1', month: 11, year: 2026, status: 'draft' });
-    service = new PayrollRunsService(mockPrisma as any, mockAudit as any, mockAutoPosting as any);
+    service = new PayrollRunsService(mockPrisma as any, mockAudit as any, mockAutoPosting as any, mockNotifications as any);
   });
 
   it('refuses to generate a run that already exists for the month', async () => {
@@ -123,11 +124,12 @@ describe('PayrollRunsService.finalize / markPaid', () => {
   };
   const mockAudit = { log: jest.fn() };
   const mockAutoPosting = { postPayrollDisbursement: jest.fn() };
+  const mockNotifications = { notify: jest.fn() };
   let service: PayrollRunsService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new PayrollRunsService(mockPrisma as any, mockAudit as any, mockAutoPosting as any);
+    service = new PayrollRunsService(mockPrisma as any, mockAudit as any, mockAutoPosting as any, mockNotifications as any);
   });
 
   it('finalizes a draft run', async () => {
@@ -153,9 +155,11 @@ describe('PayrollRunsService.finalize / markPaid', () => {
     mockPrisma.payrollRun.findFirst.mockResolvedValue({
       run_id: 1,
       status: 'finalized',
+      month: 11,
+      year: 2026,
       payslips: [
-        { payslip_id: 10, staff_id: 1, net_salary: 27000 },
-        { payslip_id: 11, staff_id: 2, net_salary: 50000 },
+        { payslip_id: 10, staff_id: 1, net_salary: 27000, staff: { lms_user_id: 'lms-u1' } },
+        { payslip_id: 11, staff_id: 2, net_salary: 50000, staff: { lms_user_id: null } },
       ],
     });
     mockPrisma.payrollRun.update.mockResolvedValue({ run_id: 1, status: 'paid' });
@@ -166,6 +170,8 @@ describe('PayrollRunsService.finalize / markPaid', () => {
     expect(mockAutoPosting.postPayrollDisbursement).toHaveBeenCalledWith(
       expect.objectContaining({ payslipId: 10, staffId: 1, netSalary: 27000 }),
     );
+    expect(mockNotifications.notify).toHaveBeenCalledTimes(2);
+    expect(mockNotifications.notify).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'salary_paid' }), ['lms-u1']);
   });
 
   it('refuses to mark paid a run that is not finalized', async () => {

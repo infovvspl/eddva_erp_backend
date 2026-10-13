@@ -177,13 +177,15 @@ describe('AdmissionPaymentsService (admission fee → receipt)', () => {
   const lookup = { lockApplication: jest.fn() };
   const numbering = { next: jest.fn() };
   const audit = { log: jest.fn() };
-  const notifications = { queue: jest.fn() };
+  const notifications = { queue: jest.fn(), queueMany: jest.fn() };
+  const autoPosting = { postAdmissionFee: jest.fn() };
   const service = new AdmissionPaymentsService(
     db as never,
     lookup as never,
     numbering as never,
     audit as never,
     notifications as never,
+    autoPosting as never,
   );
 
   const dto = {
@@ -238,9 +240,25 @@ describe('AdmissionPaymentsService (admission fee → receipt)', () => {
       actor,
       expect.objectContaining({ action: 'record' }),
     );
-    expect(notifications.queue).toHaveBeenCalledWith(
+    expect(notifications.queueMany).toHaveBeenCalledWith([
       expect.objectContaining({ eventType: 'payment_receipt' }),
-    );
+    ]);
+  });
+
+  it('also notifies the guardian when a distinct guardian_contact is on file', async () => {
+    db.admissionApplication.findUniqueOrThrow.mockResolvedValue({
+      application_id: 1,
+      program_id: 5,
+      session_id: 2,
+      application_number: 'APP/1',
+      applicant: { name: 'Riya Student', email: 'a@b.c', phone: '9', guardian_name: 'Mr. Parent', guardian_contact: 'parent@b.c' },
+    });
+    feeState(25000, 0);
+    await service.record(actor, 1, dto);
+    expect(notifications.queueMany).toHaveBeenCalledWith([
+      expect.objectContaining({ eventType: 'payment_receipt', recipient: 'a@b.c' }),
+      expect.objectContaining({ eventType: 'payment_receipt', recipient: 'parent@b.c' }),
+    ]);
   });
 
   it('only after the offer is accepted', async () => {

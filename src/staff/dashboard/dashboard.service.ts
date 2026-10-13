@@ -33,8 +33,9 @@ export class DashboardService {
       }),
     ]);
 
+    const departmentIds = byDepartmentRaw.map((r) => r.department_id).filter((id): id is number => id !== null);
     const departments = await this.prisma.staffDepartment.findMany({
-      where: { department_id: { in: byDepartmentRaw.map((r) => r.department_id) }, institute_id },
+      where: { department_id: { in: departmentIds }, institute_id },
     });
     const deptMap = new Map(departments.map((d) => [d.department_id, d.name]));
 
@@ -45,7 +46,7 @@ export class DashboardService {
       by_status: byStatus.map((r) => ({ status: r.status, count: r._count._all })),
       by_department: byDepartmentRaw.map((r) => ({
         department_id: r.department_id,
-        department: deptMap.get(r.department_id) ?? 'Unknown',
+        department: r.department_id === null ? 'Unassigned' : (deptMap.get(r.department_id) ?? 'Unknown'),
         count: r._count._all,
       })),
     };

@@ -25,6 +25,7 @@ import { StaffNotificationsController } from './notifications/staff-notification
 import { StaffNotificationService } from './notifications/staff-notification.service';
 
 import { StaffLmsSyncService } from './lms-sync/staff-lms-sync.service';
+import { LmsTeachersController } from './lms-sync/lms-teachers.controller';
 
 import { SalaryStructuresController } from './payroll/salary-structures.controller';
 import { SalaryStructuresService } from './payroll/salary-structures.service';
@@ -36,6 +37,9 @@ import { StaffScheduler } from './scheduler/staff.scheduler';
 
 import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
+
+import { StaffSelfServiceController } from './self-service/staff-self-service.controller';
+import { StaffSelfServiceGuard } from './self-service/staff-self-service.guard';
 
 /**
  * Staff Management — a self-contained island, built the same way as every
@@ -53,9 +57,11 @@ import { DashboardService } from './dashboard/dashboard.service';
     LeaveBalancesController,
     LeaveApplicationsController,
     StaffNotificationsController,
+    LmsTeachersController,
     SalaryStructuresController,
     PayrollRunsController,
     DashboardController,
+    StaffSelfServiceController,
   ],
   providers: [
     StaffAuditService,
@@ -71,6 +77,7 @@ import { DashboardService } from './dashboard/dashboard.service';
     PayrollRunsService,
     StaffScheduler,
     DashboardService,
+    StaffSelfServiceGuard,
   ],
   exports: [DashboardService],
 })

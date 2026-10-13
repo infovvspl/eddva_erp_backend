@@ -55,6 +55,22 @@ export class AdmissionLookupService {
     return this.application(instituteId, id, tx);
   }
 
+  /**
+   * No-login lookup for the parent payment link: the application_id in the
+   * URL alone is not enough — the application_number (shared with the
+   * parent, not sequentially guessable alongside the id) must also match.
+   * Institute scoping comes from the matched row itself, since the caller
+   * has no session/institute context at all.
+   */
+  async applicationForPublicPayment(id: number, applicationNumber: string, tx?: Prisma.TransactionClient) {
+    const row = await this.db(tx).admissionApplication.findFirst({
+      where: { application_id: id, application_number: applicationNumber, deleted_at: null },
+      include: { applicant: true },
+    });
+    if (!row) throw new NotFoundException('Application not found');
+    return row;
+  }
+
   async session(
     instituteId: string,
     id: number,

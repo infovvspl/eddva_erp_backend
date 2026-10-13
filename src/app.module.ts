@@ -18,6 +18,7 @@ import { AdmissionModule } from './admission/admission.module';
 import { HostelModule } from './hostel/hostel.module';
 import { AlumniModule } from './alumni/alumni.module';
 import { StaffModule } from './staff/staff.module';
+import { StudentFeesModule } from './student-fees/student-fees.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -43,6 +44,7 @@ import { AppService } from './app.service';
     HostelModule,
     AlumniModule,
     StaffModule,
+    StudentFeesModule,
     DashboardModule,
   ],
   controllers: [AppController],

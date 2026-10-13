@@ -10,6 +10,7 @@ import { CreateStaffMemberDto } from './dto/create-staff-member.dto';
 import { UpdateStaffMemberDto } from './dto/update-staff-member.dto';
 import { QueryStaffMemberDto } from './dto/query-staff-member.dto';
 import { RelieveStaffMemberDto, ReinstateStaffMemberDto } from './dto/relieve-staff-member.dto';
+import { ImportLmsTeacherDto } from './dto/import-lms-teacher.dto';
 import { LeaveBalancesService } from '../leave-balances/leave-balances.service';
 import { StaffLmsSyncService } from '../lms-sync/staff-lms-sync.service';
 
@@ -41,7 +42,9 @@ export class StaffMembersService {
 
   async create(actor: StaffPlatformUser, dto: CreateStaffMemberDto) {
     const institute_id = requireInstituteId(actor.institute_id);
-    await this.assertDepartmentExists(institute_id, dto.department_id);
+    if (dto.department_id) {
+      await this.assertDepartmentExists(institute_id, dto.department_id);
+    }
     if (dto.reporting_to_id) {
       await this.assertReportingManagerExists(institute_id, dto.reporting_to_id);
     }
@@ -81,6 +84,64 @@ export class StaffMembersService {
     if (member.staff_type === 'teaching') {
       this.lmsSync.trigger(member.staff_id);
     }
+
+    return member;
+  }
+
+  /**
+   * Creates a staff record for a teacher that already exists in the LMS
+   * (predates this integration, or was created directly there). Unlike
+   * `create()`, the staff_code is the LMS's own employee_id — not a freshly
+   * minted STF/... number — so every future department/status push resolves
+   * to the same LMS teacher via that shared identifier. The link is recorded
+   * as already `synced`: there is nothing left to push, the LMS record
+   * already exists.
+   */
+  async importFromLms(actor: StaffPlatformUser, dto: ImportLmsTeacherDto) {
+    const institute_id = requireInstituteId(actor.institute_id);
+
+    const existingByCode = await this.prisma.staffMember.findFirst({
+      where: { staff_code: dto.employee_id, institute_id },
+    });
+    if (existingByCode) {
+      if (existingByCode.lms_teacher_ref && existingByCode.lms_teacher_ref !== dto.teacher_id) {
+        throw new ConflictException(
+          `Employee ID "${dto.employee_id}" is already used by a different LMS teacher (staff member #${existingByCode.staff_id}, "${existingByCode.full_name}"). This employee ID is shared by more than one teacher in the LMS — fix the duplicate there before importing.`,
+        );
+      }
+      throw new ConflictException(`Staff member #${existingByCode.staff_id} is already linked to this LMS teacher`);
+    }
+    if (dto.department_id) {
+      await this.assertDepartmentExists(institute_id, dto.department_id);
+    }
+    const emailClash = await this.prisma.staffMember.findFirst({ where: { email: dto.email, institute_id } });
+    if (emailClash) throw new ConflictException(`A staff member with email "${dto.email}" already exists`);
+
+    const member = await this.prisma.staffMember.create({
+      data: {
+        institute_id,
+        staff_code: dto.employee_id,
+        staff_type: 'teaching',
+        full_name: dto.full_name,
+        department_id: dto.department_id,
+        designation: dto.designation?.trim() || 'Teacher',
+        email: dto.email,
+        date_of_joining: dto.date_of_joining ? new Date(dto.date_of_joining) : new Date(),
+        created_by: actor.eddva_user_id,
+        lms_teacher_ref: dto.teacher_id,
+        lms_sync_status: 'synced',
+      },
+    });
+
+    await this.audit.log(actor, {
+      entityType: STAFF_ENTITY.MEMBER,
+      entityId: String(member.staff_id),
+      action: 'import_from_lms',
+      newStatus: member.status,
+      metadata: { lms_teacher_id: dto.teacher_id },
+    });
+
+    await this.leaveBalances.ensureBalancesForStaffMember(institute_id, member.staff_id, member.staff_type);
 
     return member;
   }
@@ -130,7 +191,10 @@ export class StaffMembersService {
     const institute_id = requireInstituteId(actor.institute_id);
     const existing = await this.findOne(institute_id, id);
 
-    if (dto.department_id) await this.assertDepartmentExists(institute_id, dto.department_id);
+    let newDepartment: { name: string } | undefined;
+    if (dto.department_id) {
+      newDepartment = await this.assertDepartmentExists(institute_id, dto.department_id);
+    }
     if (dto.reporting_to_id) {
       if (dto.reporting_to_id === id) {
         throw new BadRequestException('A staff member cannot report to themselves');
@@ -161,6 +225,11 @@ export class StaffMembersService {
       entityId: String(id),
       action: 'update',
     });
+
+    if (newDepartment && existing.staff_type === 'teaching' && dto.department_id !== existing.department_id) {
+      this.lmsSync.pushDepartment(id, newDepartment.name).catch(() => undefined);
+    }
+
     return updated;
   }
 

@@ -20,6 +20,8 @@ export interface StaffPlatformUser {
   role_id?: number;
   role_name?: string;
   permissions?: unknown;
+  /** Set only for a teacher's own self-service session — the StaffMember row they're allowed to act as. Never set for admin/dynamic-role sessions. */
+  self_staff_id?: number;
 }
 
 /** Claims we read from the EDDVA ERP token exchanged at SSO. */
@@ -46,6 +48,7 @@ interface StaffTokenClaims {
   is_institute_admin?: unknown;
   role_id?: unknown;
   role_name?: unknown;
+  self_staff_id?: unknown;
 }
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24; // 24 hours
@@ -149,6 +152,98 @@ export class StaffAuthService {
       user: platformUser,
       redirect: '/staff/permissions',
     };
+  }
+
+  private lmsConfig() {
+    const baseUrl = process.env.LMS_BASE_URL?.replace(/\/+$/, '');
+    const key = process.env.INTERNAL_API_KEY;
+    const instituteId = process.env.LMS_INSTITUTE_ID?.trim();
+    return baseUrl && key ? { baseUrl, key, instituteId } : null;
+  }
+
+  /**
+   * Validate an LMS teacher's own JWT and exchange it for a scoped Staff JWT
+   * tied to their own StaffMember row. Unlike `exchangeSsoToken` (institute
+   * admins only), this never grants dynamic-RBAC permissions — the resulting
+   * session can only touch the self-service `/api/staff/me/*` endpoints,
+   * enforced by `self_staff_id` rather than a permission grant.
+   */
+  async exchangeTeacherSsoToken(lmsToken: string): Promise<{
+    staff_token: string;
+    user: StaffPlatformUser;
+  }> {
+    const decoded = this.verifyErpToken(lmsToken);
+    const lms_user_id = decoded.sub || decoded.id;
+    const role = (decoded.role || '').toUpperCase();
+    const institute_id = decoded.instituteId || decoded.institute_id || decoded.tenantId || '';
+
+    if (!lms_user_id || !institute_id) {
+      throw new UnauthorizedException('Token missing required fields (user id or institute id)');
+    }
+    // LMS roles can be comma-joined for multi-role accounts (e.g. "TEACHER,INSTITUTE_ADMIN"),
+    // same convention the LMS itself uses to match roles — so this must check
+    // membership, not equality.
+    if (!role.split(',').includes('TEACHER')) {
+      throw new UnauthorizedException('Only a teacher login can be exchanged for a self-service staff session');
+    }
+
+    const cfg = this.lmsConfig();
+    if (!cfg) {
+      throw new Error('LMS_BASE_URL / INTERNAL_API_KEY not configured');
+    }
+
+    const res = await fetch(
+      `${cfg.baseUrl}/internal/erp/teachers/resolve?instituteId=${encodeURIComponent(cfg.instituteId || institute_id)}&userId=${encodeURIComponent(lms_user_id)}`,
+      { headers: { 'x-internal-key': cfg.key }, signal: AbortSignal.timeout(15_000) },
+    );
+    const body: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new UnauthorizedException('No teacher profile found in the LMS for this login');
+      }
+      const detail = body?.message?.message ?? body?.message ?? res.statusText;
+      throw new UnauthorizedException(`LMS ${res.status}: ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`);
+    }
+    const { teacherId, employeeId, name, email } = body.data ?? body;
+
+    const staff = await this.prisma.staffMember.findFirst({
+      where: {
+        institute_id,
+        OR: [
+          ...(teacherId ? [{ lms_teacher_ref: teacherId }] : []),
+          ...(employeeId ? [{ staff_code: employeeId }] : []),
+        ],
+      },
+    });
+    if (!staff) {
+      throw new UnauthorizedException(
+        'No staff record is linked to your LMS teacher profile yet. Ask your institute admin to import you into the Staff Directory first.',
+      );
+    }
+
+    if (staff.lms_user_id !== String(lms_user_id)) {
+      // Self-heals: lets payroll/other notifications target this teacher
+      // directly instead of broadcasting, without a separate backfill step.
+      await this.prisma.staffMember
+        .update({ where: { staff_id: staff.staff_id }, data: { lms_user_id: String(lms_user_id) } })
+        .catch(() => undefined);
+    }
+
+    const platformUser: StaffPlatformUser = {
+      eddva_user_id: String(lms_user_id),
+      institute_id,
+      user_name: name || staff.full_name,
+      user_email: email || staff.email || undefined,
+      user_role: 'TEACHER_SELF_SERVICE',
+      is_institute_admin: false,
+      self_staff_id: staff.staff_id,
+    };
+
+    const staff_token = jwt.sign({ ...platformUser }, this.staffJwtSecret, {
+      expiresIn: TOKEN_TTL_SECONDS,
+    });
+
+    return { staff_token, user: platformUser };
   }
 
   /** Direct login for assigned role users (HR Officer, Department Head, etc.). */
@@ -262,6 +357,8 @@ export class StaffAuthService {
           typeof decoded.role_id === 'number' ? decoded.role_id : undefined,
         role_name:
           typeof decoded.role_name === 'string' ? decoded.role_name : undefined,
+        self_staff_id:
+          typeof decoded.self_staff_id === 'number' ? decoded.self_staff_id : undefined,
       };
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;

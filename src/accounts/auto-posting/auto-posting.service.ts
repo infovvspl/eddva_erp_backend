@@ -56,6 +56,24 @@ interface PayrollDisbursementParams {
   userId: string;
 }
 
+interface AdmissionFeePaymentParams {
+  instituteId: string;
+  paymentId: number;
+  applicationId: number;
+  paymentDate: Date;
+  amountPaid: number;
+  userId: string;
+}
+
+interface TuitionFeePaymentParams {
+  instituteId: string;
+  paymentId: number;
+  studentId: number;
+  paymentDate: Date;
+  amountPaid: number;
+  userId: string;
+}
+
 interface InventoryPurchaseParams {
   instituteId: string;
   purchaseId: number;
@@ -236,6 +254,56 @@ export class AutoPostingService {
       });
     } catch (err) {
       this.logger.warn(`Auto-posting skipped for Hostel Fee Payment #${params.paymentId}: ${err.message}`);
+      return null;
+    }
+  }
+
+  async postAdmissionFee(params: AdmissionFeePaymentParams) {
+    try {
+      const cashAccountId = await this.accountMappingsService.resolve('CASH', params.instituteId);
+      const incomeAccountId = await this.accountMappingsService.resolve('ADMISSION_FEE_INCOME', params.instituteId);
+
+      return await this.vouchersService.createAndPostAuto({
+        voucherTypeCode: 'RECEIPT',
+        voucherDate: params.paymentDate,
+        narration: `Auto-posted from Admission Fee payment #${params.paymentId} (Application #${params.applicationId})`,
+        referenceNo: `ADM-FEE-${params.paymentId}`,
+        entries: [
+          { accountId: cashAccountId, debitAmount: params.amountPaid, creditAmount: 0 },
+          { accountId: incomeAccountId, debitAmount: 0, creditAmount: params.amountPaid },
+        ],
+        sourceModule: 'ADMISSION_FEE_PAYMENT',
+        sourceReferenceId: String(params.paymentId),
+        instituteId: params.instituteId,
+        userId: params.userId,
+      });
+    } catch (err) {
+      this.logger.warn(`Auto-posting skipped for Admission Fee payment #${params.paymentId}: ${err.message}`);
+      return null;
+    }
+  }
+
+  async postTuitionFeePayment(params: TuitionFeePaymentParams) {
+    try {
+      const cashAccountId = await this.accountMappingsService.resolve('CASH', params.instituteId);
+      const incomeAccountId = await this.accountMappingsService.resolve('TUITION_FEE_INCOME', params.instituteId);
+
+      return await this.vouchersService.createAndPostAuto({
+        voucherTypeCode: 'RECEIPT',
+        voucherDate: params.paymentDate,
+        narration: `Auto-posted from Student Fee payment #${params.paymentId} (Student #${params.studentId})`,
+        referenceNo: `STUFEE-${params.paymentId}`,
+        entries: [
+          { accountId: cashAccountId, debitAmount: params.amountPaid, creditAmount: 0 },
+          { accountId: incomeAccountId, debitAmount: 0, creditAmount: params.amountPaid },
+        ],
+        sourceModule: 'STUDENT_FEE_PAYMENT',
+        sourceReferenceId: String(params.paymentId),
+        instituteId: params.instituteId,
+        userId: params.userId,
+      });
+    } catch (err) {
+      this.logger.warn(`Auto-posting skipped for Student Fee payment #${params.paymentId}: ${err.message}`);
       return null;
     }
   }

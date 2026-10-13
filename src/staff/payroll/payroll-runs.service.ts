@@ -6,6 +6,7 @@ import { STAFF_ENTITY } from '../common/staff-entities';
 import { BusinessException } from '../common/business-exception';
 import { StaffPlatformUser } from '../auth/staff-auth.service';
 import { AutoPostingService } from '../../accounts/auto-posting/auto-posting.service';
+import { StaffNotificationService } from '../notifications/staff-notification.service';
 import { GeneratePayrollRunDto } from './dto/generate-payroll-run.dto';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -20,12 +21,15 @@ function inclusiveDayCount(from: Date, to: Date): number {
   return Math.round((to.getTime() - from.getTime()) / MS_PER_DAY) + 1;
 }
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 @Injectable()
 export class PayrollRunsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: StaffAuditService,
     private readonly autoPosting: AutoPostingService,
+    private readonly notifications: StaffNotificationService,
   ) {}
 
   /**
@@ -110,6 +114,7 @@ export class PayrollRunsService {
       gross_salary: number;
       lop_days: number;
       lop_amount: number;
+      other_deductions: number;
       net_salary: number;
     }> = [];
     const skipped: Array<{ staff_id: number; reason: string }> = [];
@@ -123,11 +128,13 @@ export class PayrollRunsService {
       const basic = Number(structure.basic_salary);
       const allowances = (structure.allowances ?? {}) as Record<string, number>;
       const allowancesTotal = Object.values(allowances).reduce((sum, v) => sum + Number(v || 0), 0);
+      const deductions = (structure.deductions ?? {}) as Record<string, number>;
+      const deductionsTotal = Object.values(deductions).reduce((sum, v) => sum + Number(v || 0), 0);
       const gross = basic + allowancesTotal;
       const perDayRate = gross / daysInMonth;
       const lopDays = lopDaysByStaff.get(staffId) ?? 0;
       const lopAmount = round2(lopDays * perDayRate);
-      const net = round2(gross - lopAmount);
+      const net = round2(gross - lopAmount - deductionsTotal);
 
       payslipRows.push({
         institute_id,
@@ -138,6 +145,7 @@ export class PayrollRunsService {
         gross_salary: round2(gross),
         lop_days: lopDays,
         lop_amount: lopAmount,
+        other_deductions: round2(deductionsTotal),
         net_salary: net,
       });
     }
@@ -176,7 +184,7 @@ export class PayrollRunsService {
       where: { run_id: id, institute_id: requireInstituteId(instituteId) },
       include: {
         payslips: {
-          include: { staff: { select: { staff_id: true, full_name: true, staff_code: true } } },
+          include: { staff: { select: { staff_id: true, full_name: true, staff_code: true, lms_user_id: true } } },
           orderBy: { staff_id: 'asc' },
         },
       },
@@ -226,6 +234,7 @@ export class PayrollRunsService {
     }
 
     const payDate = new Date();
+    const monthLabel = `${MONTH_NAMES[run.month - 1]} ${run.year}`;
     for (const payslip of run.payslips) {
       await this.autoPosting.postPayrollDisbursement({
         instituteId: institute_id,
@@ -235,6 +244,20 @@ export class PayrollRunsService {
         netSalary: Number(payslip.net_salary),
         userId: actor.eddva_user_id,
       });
+
+      // Targets the teacher's own LMS login when known (set on their first
+      // self-service login or push-sync); otherwise falls back to a
+      // broadcast notice, same as every other StaffNotificationService call.
+      await this.notifications.notify(
+        {
+          instituteId: institute_id,
+          entityType: STAFF_ENTITY.PAYROLL_RUN,
+          entityId: id,
+          eventType: 'salary_paid',
+          message: `Your salary for ${monthLabel} has been paid: ₹${Number(payslip.net_salary).toLocaleString('en-IN')} net.`,
+        },
+        [payslip.staff.lms_user_id],
+      );
     }
 
     const updated = await this.prisma.payrollRun.update({

@@ -14,6 +14,7 @@ import {
   parsePagination,
 } from '../common/pagination.util';
 import { AdmissionNotificationService } from '../notifications/admission-notification.service';
+import { AutoPostingService } from '../../accounts/auto-posting/auto-posting.service';
 import { PayAdmissionFeeDto, QueryAdmissionPaymentDto } from './dto/fee.dto';
 
 const PAYMENT_INCLUDE = {
@@ -39,6 +40,7 @@ export class AdmissionPaymentsService {
     private readonly numbering: AdmissionNumberingService,
     private readonly audit: AdmissionAuditService,
     private readonly notifications: AdmissionNotificationService,
+    private readonly autoPosting: AutoPostingService,
   ) {}
 
   /**
@@ -180,7 +182,11 @@ export class AdmissionPaymentsService {
     const application =
       await this.prisma.admissionApplication.findUniqueOrThrow({
         where: { application_id: applicationId },
-        include: { applicant: { select: { email: true, phone: true } } },
+        include: {
+          applicant: {
+            select: { name: true, email: true, phone: true, guardian_name: true, guardian_contact: true },
+          },
+        },
       });
 
     // A replayed idempotency key is a no-op: no second audit entry and no second receipt notification.
@@ -204,14 +210,45 @@ export class AdmissionPaymentsService {
       },
     });
 
-    await this.notifications.queue({
+    const receiptMessage = `Receipt ${payment.receipt_number}: ${payment.amount_paid.toString()} received for ${application.application_number}.`;
+    const notices: Parameters<typeof this.notifications.queueMany>[0] = [
+      {
+        instituteId: actor.institute_id,
+        entityType: ADM_ENTITY.PAYMENT,
+        entityId: payment.payment_id,
+        eventType: 'payment_receipt',
+        recipient: application.applicant.email ?? application.applicant.phone,
+        channel: application.applicant.email ? 'email' : 'sms',
+        message: receiptMessage,
+      },
+    ];
+    // Guardian/parent gets their own notice too, when on file and not just
+    // a duplicate of the applicant's own contact (e.g. an adult applicant
+    // who listed themselves as their own guardian).
+    if (
+      application.applicant.guardian_contact &&
+      application.applicant.guardian_contact !== application.applicant.email &&
+      application.applicant.guardian_contact !== application.applicant.phone
+    ) {
+      notices.push({
+        instituteId: actor.institute_id,
+        entityType: ADM_ENTITY.PAYMENT,
+        entityId: payment.payment_id,
+        eventType: 'payment_receipt',
+        recipient: application.applicant.guardian_contact,
+        channel: application.applicant.guardian_contact.includes('@') ? 'email' : 'sms',
+        message: `${receiptMessage} (payment for ${application.applicant.name})`,
+      });
+    }
+    await this.notifications.queueMany(notices);
+
+    await this.autoPosting.postAdmissionFee({
       instituteId: actor.institute_id,
-      entityType: ADM_ENTITY.PAYMENT,
-      entityId: payment.payment_id,
-      eventType: 'payment_receipt',
-      recipient: application.applicant.email ?? application.applicant.phone,
-      channel: application.applicant.email ? 'email' : 'sms',
-      message: `Receipt ${payment.receipt_number}: ${payment.amount_paid.toString()} received for ${application.application_number}.`,
+      paymentId: payment.payment_id,
+      applicationId,
+      paymentDate: payment.payment_date,
+      amountPaid: Number(payment.amount_paid),
+      userId: actor.eddva_user_id,
     });
 
     return {

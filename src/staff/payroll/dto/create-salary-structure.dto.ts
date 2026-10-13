@@ -19,6 +19,14 @@ export class CreateSalaryStructureDto {
   @IsObject()
   allowances?: Record<string, number>;
 
+  @ApiPropertyOptional({
+    example: { pf: 4800, professional_tax: 200 },
+    description: "Arbitrary deduction components (e.g. PF, professional tax), summed into each payslip's other_deductions",
+  })
+  @IsOptional()
+  @IsObject()
+  deductions?: Record<string, number>;
+
   @ApiProperty({ example: '2026-11-01', description: 'When this structure takes effect; closes any prior open structure for this staff member the day before' })
   @IsDateString()
   effective_from: string;

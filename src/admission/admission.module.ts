@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AdmissionAuthModule } from './auth/admission-auth.module';
 import { AdmissionRolesPermissionsModule } from './roles-permissions/admission-roles-permissions.module';
+import { AccountsCoreModule } from '../accounts/accounts-core.module';
 
 import { AdmissionAuditService } from './common/admission-audit.service';
 import { AdmissionLookupService } from './common/admission-lookup.service';
@@ -42,6 +43,8 @@ import {
 } from './fees/fees.controller';
 import { FeeStructuresService } from './fees/fee-structures.service';
 import { AdmissionPaymentsService } from './fees/admission-payments.service';
+import { RazorpayService } from './fees/razorpay.service';
+import { PublicPaymentController } from './fees/public-payment.controller';
 import {
   ApplicationConfirmationController,
   ConfirmationsController,
@@ -61,7 +64,7 @@ import { DashboardService } from './dashboard/dashboard.service';
  * scheduling) and has no foreign keys to, or calls into, any other business module.
  */
 @Module({
-  imports: [AdmissionAuthModule, AdmissionRolesPermissionsModule],
+  imports: [AdmissionAuthModule, AdmissionRolesPermissionsModule, AccountsCoreModule],
   controllers: [
     SessionsController,
     ProgramsController,
@@ -83,6 +86,7 @@ import { DashboardService } from './dashboard/dashboard.service';
     ReportsController,
     DashboardController,
     AdmissionNotificationsController,
+    PublicPaymentController,
   ],
   providers: [
     AdmissionAuditService,
@@ -109,6 +113,7 @@ import { DashboardService } from './dashboard/dashboard.service';
     LmsSyncScheduler,
     ReportsService,
     DashboardService,
+    RazorpayService,
   ],
   exports: [DashboardService],
 })

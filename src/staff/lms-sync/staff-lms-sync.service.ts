@@ -69,7 +69,7 @@ export class StaffLmsSyncService {
           name: staff.full_name,
           email: staff.email,
           phone: staff.phone ?? undefined,
-          department: staff.department.name,
+          department: staff.department?.name,
           designation: staff.designation,
           joiningDate: staff.date_of_joining.toISOString().slice(0, 10),
         }),
@@ -82,12 +82,14 @@ export class StaffLmsSyncService {
       }
       const teacherRef = String(body.teacherId ?? body.data?.teacherId ?? '');
       if (!teacherRef) throw new Error('LMS response had no teacherId');
+      const lmsUserId = body.userId ?? body.data?.userId;
 
       // Guarded like the admission/alumni sync: only a still-pending member is flipped.
       await this.prisma.staffMember.updateMany({
         where: { staff_id: staffId, lms_sync_status: 'pending' },
         data: {
           lms_teacher_ref: teacherRef,
+          lms_user_id: lmsUserId ? String(lmsUserId) : undefined,
           lms_sync_status: 'synced',
           lms_sync_error: null,
           lms_last_attempt_at: new Date(),
@@ -161,5 +163,106 @@ export class StaffLmsSyncService {
     } catch (err) {
       this.logger.warn(`Staff LMS status push failed for #${staffId}: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * Pushes a department reassignment to a teacher's LMS record. A no-op if
+   * the staff member was never synced — never throws into the update flow.
+   */
+  async pushDepartment(staffId: number, departmentName: string): Promise<void> {
+    const cfg = this.config();
+    if (!cfg) return;
+
+    const staff = await this.prisma.staffMember.findUnique({ where: { staff_id: staffId } });
+    if (!staff || staff.lms_sync_status !== 'synced') return;
+
+    try {
+      const res = await fetch(`${cfg.baseUrl}/internal/erp/teachers/department`, {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          'x-internal-key': cfg.key,
+        },
+        body: JSON.stringify({
+          instituteId: cfg.instituteId || staff.institute_id,
+          employeeId: staff.staff_code,
+          department: departmentName,
+        }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const body: any = await res.json().catch(() => ({}));
+        throw new Error(`LMS ${res.status}: ${JSON.stringify(body?.message ?? res.statusText)}`);
+      }
+    } catch (err) {
+      this.logger.warn(`Staff LMS department push failed for #${staffId}: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Read-only: every teacher that already exists in the LMS for this
+   * institute, cross-referenced against the ERP's own staff directory
+   * (matched by employeeId === staff_code) so an admin can see which LMS
+   * teachers have no ERP record yet. Does not write anything.
+   */
+  async listLmsTeachers(instituteId: string) {
+    const cfg = this.config();
+    if (!cfg) {
+      throw new Error('LMS_BASE_URL / INTERNAL_API_KEY not configured');
+    }
+
+    const res = await fetch(`${cfg.baseUrl}/internal/erp/teachers?instituteId=${encodeURIComponent(cfg.instituteId || instituteId)}`, {
+      headers: { 'x-internal-key': cfg.key },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    const body: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = body?.message?.message ?? body?.message ?? res.statusText;
+      throw new Error(`LMS ${res.status}: ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`);
+    }
+    const lmsTeachers: Array<{
+      teacherId: string;
+      employeeId: string | null;
+      name: string;
+      email: string;
+      department: string | null;
+      designation: string | null;
+      joiningDate: string | null;
+      isActive: boolean;
+    }> = body.data ?? body;
+
+    const employeeIds = lmsTeachers.map((t) => t.employeeId).filter((id): id is string => !!id);
+    const teacherIds = lmsTeachers.map((t) => t.teacherId);
+    const erpStaff = await this.prisma.staffMember.findMany({
+      where: {
+        institute_id: instituteId,
+        OR: [{ staff_code: { in: employeeIds } }, { lms_teacher_ref: { in: teacherIds } }],
+      },
+      select: { staff_id: true, staff_code: true, lms_teacher_ref: true },
+    });
+    const byTeacherRef = new Map(erpStaff.filter((s) => s.lms_teacher_ref).map((s) => [s.lms_teacher_ref as string, s]));
+    const byCode = new Map(erpStaff.map((s) => [s.staff_code, s]));
+
+    // Some LMS institutes have data-quality issues where several different
+    // teachers share one employeeId. Matching those by code alone would make
+    // every one of them look "already imported" the moment any one of them
+    // is — so an exact teacherId match (set once a specific teacher is
+    // actually imported) always wins, and a bare code match is only trusted
+    // when that employeeId isn't shared by more than one LMS teacher.
+    const employeeIdCounts = new Map<string, number>();
+    for (const id of employeeIds) employeeIdCounts.set(id, (employeeIdCounts.get(id) ?? 0) + 1);
+
+    return lmsTeachers.map((t) => {
+      const duplicate_employee_id = !!t.employeeId && (employeeIdCounts.get(t.employeeId) ?? 0) > 1;
+
+      const exact = byTeacherRef.get(t.teacherId);
+      if (exact) {
+        return { ...t, in_erp: true, erp_staff_id: exact.staff_id, duplicate_employee_id };
+      }
+      if (!duplicate_employee_id && t.employeeId && byCode.has(t.employeeId)) {
+        return { ...t, in_erp: true, erp_staff_id: byCode.get(t.employeeId)!.staff_id, duplicate_employee_id };
+      }
+      return { ...t, in_erp: false, erp_staff_id: null, duplicate_employee_id };
+    });
   }
 }

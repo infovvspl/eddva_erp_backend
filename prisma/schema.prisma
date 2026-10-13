@@ -3744,6 +3744,8 @@ enum AdmissionPaymentMode {
   upi
   bank_transfer
   cash
+  /// Parent self-checkout via Razorpay — the actual instrument (card/UPI/netbanking) isn't tracked separately.
+  online
 }
 
 enum AdmissionFeePaymentStatus {
@@ -5775,8 +5777,8 @@ model StaffMember {
   staff_code       String
   staff_type       StaffType
   full_name        String
-  department_id    Int
-  department       StaffDepartment @relation(fields: [department_id], references: [department_id])
+  department_id    Int?
+  department       StaffDepartment? @relation(fields: [department_id], references: [department_id])
   designation      String
   employment_type  String?
   email            String?
@@ -5796,6 +5798,11 @@ model StaffMember {
   /// only teaching staff are pushed as LMS teachers; stays `pending` forever
   /// for non-teaching staff, or for teaching staff with no email on file.
   lms_teacher_ref     String?
+  /// The LMS's own `users.id` for this teacher — set the first time they use
+  /// self-service (teacher-sso exchange) or the first time a push-sync
+  /// succeeds. Lets notifications target this specific teacher rather than
+  /// broadcasting to every admin.
+  lms_user_id         String?
   lms_sync_status     StaffLmsSyncStatus @default(pending)
   lms_sync_attempts   Int                @default(0)
   lms_sync_error      String?
@@ -5957,6 +5964,8 @@ model LeaveApplication {
   from_date       DateTime               @db.Date
   to_date         DateTime               @db.Date
   days_count      Decimal                @db.Decimal(5, 1)
+  is_half_day     Boolean                @default(false)
+  half_day_period String?                @db.VarChar(2)
   reason          String?
   status          LeaveApplicationStatus @default(pending)
   applied_by      String
@@ -6010,6 +6019,8 @@ model StaffSalaryStructure {
   basic_salary   Decimal     @db.Decimal(12, 2)
   /// { "hra": 5000, "da": 2000, ... } — arbitrary allowance components, summed for gross pay.
   allowances     Json        @default("{}")
+  /// { "pf": 1800, "professional_tax": 200, ... } — arbitrary deduction components, summed into each payslip's other_deductions.
+  deductions     Json        @default("{}")
   effective_from DateTime    @db.Date
   effective_to   DateTime?   @db.Date
   created_by     String?
@@ -6075,4 +6086,143 @@ model Payslip {
   @@unique([run_id, staff_id])
   @@index([institute_id, staff_id])
   @@map("staff_payslips")
+}
+
+/// Student Fees — a self-contained island like every other business module
+/// here: its own SSO auth (admin-only for v1, no dynamic RBAC/direct-login
+/// yet), its own tables, no foreign keys to Admission/LMS/Staff. "Class" is
+/// this module's own lightweight catalog, not shared with any other module.
+model FeeSsoSession {
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  token_hash    String   @unique
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@index([institute_id])
+  @@map("fee_sso_sessions")
+}
+
+model FeeClass {
+  class_id      Int      @id @default(autoincrement())
+  institute_id  String
+  name          String
+  academic_year String
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  students       FeeStudent[]
+  fee_structures FeeStructure[]
+
+  @@unique([institute_id, name, academic_year])
+  @@index([institute_id, academic_year])
+  @@map("fee_classes")
+}
+
+enum FeeStudentStatus {
+  active
+  inactive
+}
+
+model FeeStudent {
+  student_id       Int              @id @default(autoincrement())
+  institute_id     String
+  class_id         Int
+  class            FeeClass         @relation(fields: [class_id], references: [class_id])
+  name             String
+  roll_no          String?
+  guardian_name    String?
+  guardian_contact String?
+  status           FeeStudentStatus @default(active)
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+
+  payments FeePayment[]
+
+  @@index([institute_id, class_id])
+  @@map("fee_students")
+}
+
+model FeeStructure {
+  structure_id  Int      @id @default(autoincrement())
+  institute_id  String
+  class_id      Int
+  class         FeeClass @relation(fields: [class_id], references: [class_id])
+  term_name     String
+  amount        Decimal  @db.Decimal(12, 2)
+  due_date      DateTime @db.Date
+  academic_year String
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  payments FeePayment[]
+
+  @@unique([institute_id, class_id, term_name, academic_year])
+  @@index([institute_id, academic_year])
+  @@map("fee_structures_classwise")
+}
+
+enum FeePaymentMode {
+  cash
+  card
+  upi
+  bank_transfer
+  online
+}
+
+model FeePayment {
+  payment_id      Int            @id @default(autoincrement())
+  institute_id    String
+  student_id      Int
+  student         FeeStudent     @relation(fields: [student_id], references: [student_id])
+  structure_id    Int
+  structure       FeeStructure   @relation(fields: [structure_id], references: [structure_id])
+  amount_paid     Decimal        @db.Decimal(12, 2)
+  payment_date    DateTime       @db.Date
+  payment_mode    FeePaymentMode
+  transaction_ref String?
+  receipt_number  String
+  recorded_by     String?
+  created_at      DateTime       @default(now())
+
+  @@unique([institute_id, receipt_number])
+  @@index([institute_id, student_id])
+  @@index([institute_id, structure_id])
+  @@map("fee_payments_classwise")
+}
+
+model FeeNumberSequence {
+  institute_id String
+  year         Int
+  last_number  Int    @default(0)
+
+  @@id([institute_id, year])
+  @@map("fee_number_sequences")
+}
+
+enum FeeNotificationStatus {
+  queued
+  sent
+  failed
+}
+
+/// Same "log only" convention as every other module's notification outbox here.
+model FeeNotification {
+  notification_id Int                    @id @default(autoincrement())
+  institute_id    String
+  entity_type     String
+  entity_id       Int
+  event_type      String
+  channel         String                 @default("email")
+  recipient       String?
+  message         String?
+  status          FeeNotificationStatus  @default(queued)
+  created_at      DateTime               @default(now())
+
+  @@index([institute_id, event_type])
+  @@map("fee_notifications")
 }

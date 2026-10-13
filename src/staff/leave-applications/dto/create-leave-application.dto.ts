@@ -1,4 +1,4 @@
-import { IsDateString, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateLeaveApplicationDto {
@@ -17,6 +17,16 @@ export class CreateLeaveApplicationDto {
   @ApiProperty({ example: '2026-11-12' })
   @IsDateString()
   to_date: string;
+
+  @ApiPropertyOptional({ example: false, description: 'Only valid when from_date equals to_date — counts as 0.5 day instead of 1' })
+  @IsOptional()
+  @IsBoolean()
+  is_half_day?: boolean;
+
+  @ApiPropertyOptional({ example: 'AM', enum: ['AM', 'PM'], description: 'Which half of the day; only used when is_half_day is true' })
+  @IsOptional()
+  @IsIn(['AM', 'PM'])
+  half_day_period?: 'AM' | 'PM';
 
   @ApiPropertyOptional({ example: 'Family function' })
   @IsOptional()

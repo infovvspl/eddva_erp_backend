@@ -26,9 +26,10 @@ export class CreateStaffMemberDto {
   @IsEnum(StaffTypeDto)
   staff_type: StaffTypeDto;
 
-  @ApiProperty({ example: 1, description: 'StaffDepartment id' })
+  @ApiPropertyOptional({ example: 1, description: 'StaffDepartment id — can be assigned later' })
+  @IsOptional()
   @IsInt()
-  department_id: number;
+  department_id?: number;
 
   @ApiProperty({ example: 'Mathematics Teacher' })
   @IsString()

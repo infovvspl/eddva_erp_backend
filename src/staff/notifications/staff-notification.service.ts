@@ -67,6 +67,26 @@ export class StaffNotificationService {
     );
   }
 
+  /** Self-service view: a teacher's own targeted notices, plus institute-wide broadcasts (recipient null). */
+  async findForRecipient(instituteId: string, recipientUserId: string, query: NotificationQuery) {
+    const { skip, take, page, limit } = parsePagination(query);
+    const where: Prisma.StaffNotificationWhereInput = {
+      institute_id: instituteId,
+      event_type: query.event_type,
+      OR: [{ recipient: recipientUserId }, { recipient: null }],
+    };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.staffNotification.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.staffNotification.count({ where }),
+    ]);
+    return { data, pagination: buildMeta(total, page, limit) };
+  }
+
   async findAll(instituteId: string, query: NotificationQuery) {
     const { skip, take, page, limit } = parsePagination(query);
     const where: Prisma.StaffNotificationWhereInput = {

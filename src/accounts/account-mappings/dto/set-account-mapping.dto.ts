@@ -14,6 +14,8 @@ export const MAPPING_KEYS = [
   'HOSTEL_FEE_INCOME',
   'INVENTORY_ASSET',
   'SALARY_EXPENSE',
+  'ADMISSION_FEE_INCOME',
+  'TUITION_FEE_INCOME',
 ] as const;
 
 export class SetAccountMappingDto {

@@ -67,7 +67,10 @@ export class LeaveApplicationsService {
     if (to_date < from_date) {
       throw new BadRequestException('to_date cannot be before from_date');
     }
-    const days_count = inclusiveDayCount(from_date, to_date);
+    if (dto.is_half_day && from_date.getTime() !== to_date.getTime()) {
+      throw new BadRequestException('A half-day application must have the same from_date and to_date');
+    }
+    const days_count = dto.is_half_day ? 0.5 : inclusiveDayCount(from_date, to_date);
 
     const overlap = await this.prisma.leaveApplication.findFirst({
       where: {
@@ -114,6 +117,8 @@ export class LeaveApplicationsService {
         from_date,
         to_date,
         days_count,
+        is_half_day: !!dto.is_half_day,
+        half_day_period: dto.is_half_day ? dto.half_day_period : undefined,
         reason: dto.reason,
         applied_by: actor.eddva_user_id,
       },

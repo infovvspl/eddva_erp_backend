@@ -15,6 +15,7 @@ import { CreateStaffMemberDto } from './dto/create-staff-member.dto';
 import { UpdateStaffMemberDto } from './dto/update-staff-member.dto';
 import { QueryStaffMemberDto } from './dto/query-staff-member.dto';
 import { RelieveStaffMemberDto, ReinstateStaffMemberDto } from './dto/relieve-staff-member.dto';
+import { ImportLmsTeacherDto } from './dto/import-lms-teacher.dto';
 import { StaffJwtGuard } from '../auth/staff-jwt.guard';
 import { StaffInstituteAdminViewOnlyGuard } from '../auth/staff-institute-admin-view-only.guard';
 import { StaffPermissionsGuard } from '../auth/staff-permissions.guard';
@@ -34,6 +35,13 @@ export class StaffMembersController {
   @ApiOperation({ summary: 'Add a staff member (teaching or non-teaching) to the directory' })
   create(@StaffUser() actor: StaffPlatformUser, @Body() dto: CreateStaffMemberDto) {
     return this.svc.create(actor, dto);
+  }
+
+  @Post('import-from-lms')
+  @RequirePermission({ resource: 'staff_members', action: 'create' })
+  @ApiOperation({ summary: 'Import an existing LMS teacher (no ERP record yet) as a staff member' })
+  importFromLms(@StaffUser() actor: StaffPlatformUser, @Body() dto: ImportLmsTeacherDto) {
+    return this.svc.importFromLms(actor, dto);
   }
 
   @Get()

@@ -6,6 +6,7 @@ describe('StaffLmsSyncService', () => {
       findUnique: jest.fn(),
       updateMany: jest.fn(),
       update: jest.fn(),
+      findMany: jest.fn(),
     },
   };
   let service: StaffLmsSyncService;
@@ -131,6 +132,63 @@ describe('StaffLmsSyncService', () => {
       (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500, statusText: 'Error', json: async () => ({}) });
 
       await expect(service.pushStatus(1, 'ACTIVE')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('pushDepartment', () => {
+    it('does nothing if the staff member was never synced', async () => {
+      mockPrisma.staffMember.findUnique.mockResolvedValue({ ...teacher, lms_sync_status: 'pending' });
+      await service.pushDepartment(1, 'Science');
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('pushes the department change for a synced teacher', async () => {
+      mockPrisma.staffMember.findUnique.mockResolvedValue({ ...teacher, lms_sync_status: 'synced' });
+      (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({}) });
+
+      await service.pushDepartment(1, 'Science');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://lms.example.com/internal/erp/teachers/department',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ instituteId: 'INST_1', employeeId: 'STF-1', department: 'Science' }),
+        }),
+      );
+    });
+
+    it('swallows a failed department push without throwing', async () => {
+      mockPrisma.staffMember.findUnique.mockResolvedValue({ ...teacher, lms_sync_status: 'synced' });
+      (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500, statusText: 'Error', json: async () => ({}) });
+
+      await expect(service.pushDepartment(1, 'Science')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('listLmsTeachers', () => {
+    it('flags which LMS teachers already have a matching ERP staff record', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [
+            { teacherId: 't-1', employeeId: 'STF-1', name: 'Aarav', email: 'a@x.com', department: 'Science', isActive: true },
+            { teacherId: 't-2', employeeId: 'STF-99', name: 'Priya', email: 'p@x.com', department: null, isActive: true },
+          ],
+        }),
+      });
+      mockPrisma.staffMember.findMany.mockResolvedValue([{ staff_id: 5, staff_code: 'STF-1', full_name: 'Aarav' }]);
+
+      const result = await service.listLmsTeachers('INST_1');
+
+      expect(result).toEqual([
+        { teacherId: 't-1', employeeId: 'STF-1', name: 'Aarav', email: 'a@x.com', department: 'Science', isActive: true, in_erp: true, erp_staff_id: 5, duplicate_employee_id: false },
+        { teacherId: 't-2', employeeId: 'STF-99', name: 'Priya', email: 'p@x.com', department: null, isActive: true, in_erp: false, erp_staff_id: null, duplicate_employee_id: false },
+      ]);
+    });
+
+    it('throws when LMS env is not configured', async () => {
+      process.env.LMS_BASE_URL = '';
+      await expect(service.listLmsTeachers('INST_1')).rejects.toThrow('LMS_BASE_URL / INTERNAL_API_KEY not configured');
     });
   });
 });
