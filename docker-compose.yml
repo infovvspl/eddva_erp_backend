@@ -1,0 +1,62 @@
+# ERP backend stack: NestJS + Prisma API with its own Postgres.
+#
+#   docker compose up -d --build                       # start Postgres + API
+#   docker compose --profile tools run --rm migrate    # apply Prisma migrations
+#
+# Secrets (JWT_*, INTERNAL_API_KEY, ...) come from ./.env. DATABASE_URL is
+# overridden below to point at the bundled Postgres; to use an external
+# database instead, remove the override and the `postgres` service.
+services:
+  erp-backend:
+    build: .
+    image: eddva/erp-backend:latest
+    container_name: eddva-erp-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: postgresql://${ERP_DB_USER:-postgres}:${ERP_DB_PASSWORD:-postgres}@postgres:5432/${ERP_DB_NAME:-eddva_erp}?schema=erp
+      # LMS backend published on the host by eddva_backend's compose file.
+      LMS_BASE_URL: ${LMS_BASE_URL_DOCKER:-http://host.docker.internal:3000/api/v1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${ERP_BACKEND_PORT:-3001}:3001"
+    volumes:
+      - erp_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: eddva-erp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${ERP_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${ERP_DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${ERP_DB_NAME:-eddva_erp}
+    volumes:
+      - erp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ERP_DB_USER:-postgres} -d ${ERP_DB_NAME:-eddva_erp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-shot: applies pending Prisma migrations, then exits.
+  migrate:
+    image: eddva/erp-backend:latest
+    profiles: ["tools"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${ERP_DB_USER:-postgres}:${ERP_DB_PASSWORD:-postgres}@postgres:5432/${ERP_DB_NAME:-eddva_erp}?schema=erp
+    command: ["npx", "prisma", "migrate", "deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  erp_uploads:
+  erp_pgdata:
