@@ -74,6 +74,21 @@ export function parseDateOnly(value: string, name = 'date'): Date {
   return parsed;
 }
 
+const LOCAL_DATETIME_FORMAT = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'UTC',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+  month: 'short',
+  day: 'numeric',
+});
+
+/** Formats an instant as institute-local wall-clock time, e.g. "4:00 PM, Oct 14". */
+export function formatLocalDateTime(date: Date): string {
+  const shifted = new Date(date.getTime() + offsetMs());
+  return LOCAL_DATETIME_FORMAT.format(shifted);
+}
+
 /** Parses an ISO datetime and rejects garbage with a 400. */
 export function parseDateTime(value: string, name = 'datetime'): Date {
   const parsed = new Date(value);

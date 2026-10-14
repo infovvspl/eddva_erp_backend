@@ -4613,9 +4613,9 @@ model HostelResident {
   discipline_records HostelDisciplineRecord[]
 
   @@unique([institute_id, student_ref])
+  @@unique([institute_id, admission_no])
   @@index([institute_id, status])
   @@index([institute_id, student_name])
-  @@index([institute_id, admission_no])
   @@map("hostel_residents")
 }
 

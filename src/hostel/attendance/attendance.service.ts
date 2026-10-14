@@ -108,7 +108,7 @@ export class AttendanceService {
       );
     }
     const record = await orConflict(
-      `Attendance for this resident on ${dateOnlyString(date)} (${dto.session}) is already marked. Use PATCH to correct it.`,
+      `Attendance for this resident on ${dateOnlyString(date)} (${dto.session}) is already marked. Edit the existing record to correct it.`,
       () =>
         this.prisma.hostelAttendance.create({
           data: {

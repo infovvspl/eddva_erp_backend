@@ -18,7 +18,12 @@ import {
   assertTransition,
 } from '../common/hostel-state';
 import { isUniqueViolation } from '../common/unique-violation.util';
-import { dayRange, localToday, parseDateTime } from '../common/time.util';
+import {
+  dayRange,
+  formatLocalDateTime,
+  localToday,
+  parseDateTime,
+} from '../common/time.util';
 import {
   buildDateRange,
   buildMeta,
@@ -291,7 +296,35 @@ export class GatePassesService {
       include: PASS_INCLUDE,
     });
     if (!pass) throw new NotFoundException(`Gate pass #${id} not found`);
-    return this.decorate(pass);
+    const names = await this.resolveUserNames(instituteId, [
+      pass.requested_by,
+      pass.approved_by,
+      pass.rejected_by,
+      pass.scanned_out_by,
+      pass.scanned_in_by,
+    ]);
+    return {
+      ...this.decorate(pass),
+      requested_by_name: names[pass.requested_by] ?? null,
+      approved_by_name: pass.approved_by ? names[pass.approved_by] ?? null : null,
+      rejected_by_name: pass.rejected_by ? names[pass.rejected_by] ?? null : null,
+      scanned_out_by_name: pass.scanned_out_by ? names[pass.scanned_out_by] ?? null : null,
+      scanned_in_by_name: pass.scanned_in_by ? names[pass.scanned_in_by] ?? null : null,
+    };
+  }
+
+  /** Looks up display names for hostel-staff user ids (e.g. requested_by/approved_by on a pass). */
+  private async resolveUserNames(
+    instituteId: string,
+    ids: (string | null | undefined)[],
+  ): Promise<Record<string, string>> {
+    const unique = [...new Set(ids.filter((id): id is string => !!id))];
+    if (unique.length === 0) return {};
+    const rows = await this.prisma.hostelUserDynamicRole.findMany({
+      where: { institute_id: instituteId, eddva_user_id: { in: unique } },
+      select: { eddva_user_id: true, user_name: true },
+    });
+    return Object.fromEntries(rows.map((r) => [r.eddva_user_id, r.user_name]));
   }
 
   private listWhere(
@@ -712,7 +745,7 @@ export class GatePassesService {
         ) {
           throw new BusinessException(
             'PASS_NOT_YET_VALID',
-            `This pass is valid from ${current.requested_out_at.toISOString()}`,
+            `This pass isn't valid yet — the resident can leave starting ${formatLocalDateTime(current.requested_out_at)}`,
             { requested_out_at: current.requested_out_at },
           );
         }

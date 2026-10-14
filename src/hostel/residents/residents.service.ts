@@ -83,6 +83,20 @@ export class ResidentsService {
         409,
       );
     }
+    if (dto.admission_no) {
+      const duplicateAdmissionNo = await this.prisma.hostelResident.findFirst({
+        where: { institute_id: actor.institute_id, admission_no: dto.admission_no },
+        select: { resident_id: true },
+      });
+      if (duplicateAdmissionNo) {
+        throw new BusinessException(
+          'ADMISSION_NO_ALREADY_USED',
+          `Admission number "${dto.admission_no}" is already in use by another resident`,
+          { resident_id: duplicateAdmissionNo.resident_id },
+          409,
+        );
+      }
+    }
     const resident = await orConflict(
       'This student is already registered as a hostel resident',
       () =>
@@ -192,18 +206,40 @@ export class ResidentsService {
         );
       }
     }
-    const updated = await this.prisma.hostelResident.update({
-      where: { resident_id: id },
-      data: {
-        admission_no: dto.admission_no,
-        student_name: dto.student_name,
-        gender: dto.gender,
-        grade: dto.grade,
-        guardian_name: dto.guardian_name,
-        guardian_phone: dto.guardian_phone,
-        guardian_email: dto.guardian_email,
-      },
-    });
+    if (dto.admission_no && dto.admission_no !== before.admission_no) {
+      const duplicateAdmissionNo = await this.prisma.hostelResident.findFirst({
+        where: {
+          institute_id: actor.institute_id,
+          admission_no: dto.admission_no,
+          resident_id: { not: id },
+        },
+        select: { resident_id: true },
+      });
+      if (duplicateAdmissionNo) {
+        throw new BusinessException(
+          'ADMISSION_NO_ALREADY_USED',
+          `Admission number "${dto.admission_no}" is already in use by another resident`,
+          { resident_id: duplicateAdmissionNo.resident_id },
+          409,
+        );
+      }
+    }
+    const updated = await orConflict(
+      `Admission number "${dto.admission_no}" is already in use by another resident`,
+      () =>
+        this.prisma.hostelResident.update({
+          where: { resident_id: id },
+          data: {
+            admission_no: dto.admission_no,
+            student_name: dto.student_name,
+            gender: dto.gender,
+            grade: dto.grade,
+            guardian_name: dto.guardian_name,
+            guardian_phone: dto.guardian_phone,
+            guardian_email: dto.guardian_email,
+          },
+        }),
+    );
     await this.audit.log(actor, {
       entityType: HOSTEL_ENTITY.RESIDENT,
       entityId: String(id),

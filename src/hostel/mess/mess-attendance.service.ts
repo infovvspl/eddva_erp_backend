@@ -96,7 +96,7 @@ export class MessAttendanceService {
       );
     }
     const record = await orConflict(
-      `A ${dto.meal_type} record for this resident on ${dateOnlyString(date)} already exists. Use PATCH to change it.`,
+      `A ${dto.meal_type} record for this resident on ${dateOnlyString(date)} already exists. Edit the existing record to change it.`,
       () =>
         this.prisma.hostelMessAttendance.create({
           data: {
