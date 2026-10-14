@@ -22,12 +22,26 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  @ApiOperation({ summary: 'Exchange an LMS-issued SSO bridge token for a normal ERP session' })
+  @Post('auth/sso')
+  async sso(@Body('token') token: string) {
+    return this.authService.ssoLogin(token);
+  }
+
   @ApiOperation({ summary: 'Get current authenticated user profile' })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('auth/me')
   async getMe(@GetUser() user: any) {
     return this.authService.getMe(user.id || user.userId);
+  }
+
+  @ApiOperation({ summary: 'Mint a short-lived bridge token for switching this admin session to the LMS' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('auth/lms-sso-token')
+  async mintLmsSsoToken(@GetUser() user: any) {
+    return this.authService.mintLmsSsoToken(user);
   }
 }
 

@@ -68,7 +68,11 @@ export class AlumniLmsSyncService {
           'x-internal-key': cfg.key,
         },
         body: JSON.stringify({
-          instituteId: cfg.instituteId || profile.institute_id,
+          // See lms-sync.service.ts (admission) for why this precedence
+          // flipped: the record's own institute_id is now the real LMS id
+          // for SSO-provisioned institutes, so it takes priority over the
+          // single-tenant env var fallback.
+          instituteId: profile.institute_id || cfg.instituteId,
           enrollmentNumber: profile.student_ref,
           status: 'GRADUATED',
         }),

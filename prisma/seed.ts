@@ -234,9 +234,9 @@ async function main() {
 
   // Sample Category & Item
   const canteenCategory = await prisma.canteenMenuCategory.upsert({
-    where: { name: 'Snacks & Beverages' },
+    where: { instituteId_name: { instituteId: instId, name: 'Snacks & Beverages' } },
     update: { displayOrder: 1 },
-    create: { name: 'Snacks & Beverages', displayOrder: 1 },
+    create: { instituteId: instId, name: 'Snacks & Beverages', displayOrder: 1 },
   });
 
   await prisma.canteenMenuItem.upsert({
@@ -256,10 +256,11 @@ async function main() {
 
   // Sample Member & Wallet
   const member = await prisma.canteenMember.upsert({
-    where: { idCardBarcode: 'BC1001' },
+    where: { instituteId_idCardBarcode: { instituteId: instId, idCardBarcode: 'BC1001' } },
     update: { name: 'Alex Student', memberType: 'STUDENT' },
     create: {
       id: 'MEMBER_1001',
+      instituteId: instId,
       externalRefId: 'STU-1001',
       name: 'Alex Student',
       memberType: 'STUDENT',
@@ -280,9 +281,9 @@ async function main() {
 
   // Sample POS Terminal
   await prisma.canteenPosTerminal.upsert({
-    where: { name: 'Counter 1 POS' },
+    where: { instituteId_name: { instituteId: instId, name: 'Counter 1 POS' } },
     update: { location: 'Main Canteen Ground Floor' },
-    create: { name: 'Counter 1 POS', location: 'Main Canteen Ground Floor' },
+    create: { instituteId: instId, name: 'Counter 1 POS', location: 'Main Canteen Ground Floor' },
   });
 
   // Canteen dynamic RBAC (same architecture as Sales & Purchase)

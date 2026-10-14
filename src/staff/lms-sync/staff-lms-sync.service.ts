@@ -64,7 +64,13 @@ export class StaffLmsSyncService {
           'x-internal-key': cfg.key,
         },
         body: JSON.stringify({
-          instituteId: cfg.instituteId || staff.institute_id,
+          // See lms-sync.service.ts (admission) for why this precedence
+          // flipped: the record's own institute_id is now the real LMS id
+          // for SSO-provisioned institutes, so it takes priority over the
+          // single-tenant env var fallback. All three instituteId sites in
+          // this file use the same precedence so a later status/department
+          // push always agrees with what sync() originally used.
+          instituteId: staff.institute_id || cfg.instituteId,
           employeeId: staff.staff_code,
           name: staff.full_name,
           email: staff.email,
@@ -150,7 +156,7 @@ export class StaffLmsSyncService {
           'x-internal-key': cfg.key,
         },
         body: JSON.stringify({
-          instituteId: cfg.instituteId || staff.institute_id,
+          instituteId: staff.institute_id || cfg.instituteId,
           employeeId: staff.staff_code,
           status,
         }),
@@ -184,7 +190,7 @@ export class StaffLmsSyncService {
           'x-internal-key': cfg.key,
         },
         body: JSON.stringify({
-          instituteId: cfg.instituteId || staff.institute_id,
+          instituteId: staff.institute_id || cfg.instituteId,
           employeeId: staff.staff_code,
           department: departmentName,
         }),

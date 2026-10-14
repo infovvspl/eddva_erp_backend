@@ -80,8 +80,13 @@ export class LmsSyncService {
 
     const { applicant, program } = c.application;
     const payload = {
-      // The ERP tenant ID and LMS institute ID are separate identifiers.
-      instituteId: cfg.instituteId || c.application.institute_id,
+      // Prefer the record's own institute_id — for any institute admin
+      // provisioned via the LMS↔ERP SSO bridge (src/auth/auth.service.ts
+      // ssoLogin()), this now genuinely IS the LMS institute ID, which is
+      // what makes one ERP deployment safe to serve multiple schools.
+      // LMS_INSTITUTE_ID is now only a fallback, for institutes set up
+      // directly in ERP with no such mapping yet.
+      instituteId: c.application.institute_id || cfg.instituteId,
       enrollmentNumber: c.enrollment_number,
       name: applicant.name,
       email: applicant.email ?? undefined,
