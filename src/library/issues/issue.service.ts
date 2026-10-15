@@ -186,8 +186,15 @@ export class IssueService {
   }
 
   async findOverdue(instituteId: string) {
+    // Live due-date check, not just the stored status — the nightly cron
+    // (LibSchedulerService) flips `issued` -> `overdue` at midnight, so a
+    // book that just became overdue today would otherwise be invisible here
+    // until the next run.
     return this.prisma.libIssueRecord.findMany({
-      where: { institute_id: requireInstituteId(instituteId), status: 'overdue' },
+      where: {
+        institute_id: requireInstituteId(instituteId),
+        OR: [{ status: 'overdue' }, { status: 'issued', due_date: { lt: new Date() } }],
+      },
       include: {
         copy: { include: { book: { select: { title: true, author: true } } } },
         member: { select: { name: true, library_card_number: true, member_type: true } },

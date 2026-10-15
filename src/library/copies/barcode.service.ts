@@ -29,8 +29,13 @@ export class BarcodeService {
   constructor(private readonly prisma: PrismaService) {}
 
   async resolve(instituteId: string, barcode: string): Promise<ScanResult> {
+    // Printed labels sometimes carry the accession number rather than the
+    // barcode value, so accept either — both are unique per institute.
     const copy = await this.prisma.libBookCopy.findFirst({
-      where: { institute_id: requireInstituteId(instituteId), barcode },
+      where: {
+        institute_id: requireInstituteId(instituteId),
+        OR: [{ barcode }, { accession_number: barcode }],
+      },
       include: {
         book: {
           select: {

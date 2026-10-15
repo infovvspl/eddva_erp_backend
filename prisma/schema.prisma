@@ -74,17 +74,17 @@ enum FinancialYearStatus {
 }
 
 model User {
-  id                      String               @id @default(uuid())
-  instituteId             String?
-  name                    String
-  email                   String               @unique
-  passwordHash            String
-  roleId                  String
-  role                    Role                 @relation(fields: [roleId], references: [id])
-  status                  UserStatus           @default(ACTIVE)
-  createdAt               DateTime             @default(now())
-  updatedAt               DateTime             @updatedAt
-  auditLogs               AuditLog[]
+  id           String     @id @default(uuid())
+  instituteId  String?
+  name         String
+  email        String     @unique
+  passwordHash String
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id])
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  auditLogs    AuditLog[]
 
   @@map("users")
 }
@@ -289,7 +289,7 @@ model CanteenPermission {
 // --- Canteen Menu Models ---
 model CanteenMenuCategory {
   id           String            @id @default(uuid())
-  instituteId String?
+  instituteId  String?
   name         String
   displayOrder Int               @default(0)
   createdAt    DateTime          @default(now())
@@ -303,7 +303,7 @@ model CanteenMenuCategory {
 
 model CanteenMenuItem {
   id            String                @id @default(uuid())
-  instituteId String?
+  instituteId   String?
   categoryId    String
   name          String
   description   String?
@@ -325,15 +325,15 @@ model CanteenMenuItem {
 }
 
 model CanteenMenuSchedule {
-  id        String          @id @default(uuid())
+  id          String          @id @default(uuid())
   instituteId String?
-  itemId    String
-  dayOfWeek String
-  startTime String
-  endTime   String
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  item      CanteenMenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId      String
+  dayOfWeek   String
+  startTime   String
+  endTime     String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  item        CanteenMenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@index([instituteId])
   @@map("canteen_menu_schedules")
@@ -342,7 +342,7 @@ model CanteenMenuSchedule {
 // --- Canteen Member Model ---
 model CanteenMember {
   id            String            @id @default(uuid())
-  instituteId String?
+  instituteId   String?
   externalRefId String?
   name          String
   memberType    CanteenMemberType @default(STUDENT)
@@ -352,23 +352,23 @@ model CanteenMember {
   wallet        CanteenWallet?
   orders        CanteenOrder[]
 
+  @@unique([instituteId, idCardBarcode])
   @@index([idCardBarcode])
   @@index([externalRefId])
-  @@unique([instituteId, idCardBarcode])
   @@index([instituteId])
   @@map("canteen_members")
 }
 
 // --- Canteen POS Models ---
 model CanteenPosTerminal {
-  id        String            @id @default(uuid())
+  id          String            @id @default(uuid())
   instituteId String?
-  name      String
-  location  String?
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-  shifts    CanteenPosShift[]
-  orders    CanteenOrder[]
+  name        String
+  location    String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  shifts      CanteenPosShift[]
+  orders      CanteenOrder[]
 
   @@unique([instituteId, name])
   @@index([instituteId])
@@ -377,7 +377,7 @@ model CanteenPosTerminal {
 
 model CanteenPosShift {
   id           String             @id @default(uuid())
-  instituteId String?
+  instituteId  String?
   terminalId   String
   staffId      String
   openingCash  Decimal            @db.Decimal(12, 2)
@@ -398,7 +398,7 @@ model CanteenPosShift {
 // --- Canteen Order & Payment Models ---
 model CanteenOrder {
   id             String               @id @default(uuid())
-  instituteId String?
+  instituteId    String?
   orderNumber    String
   memberId       String?
   terminalId     String?
@@ -418,24 +418,24 @@ model CanteenOrder {
   items          CanteenOrderItem[]
   payments       CanteenPayment[]
 
+  @@unique([instituteId, orderNumber])
   @@index([orderDate, terminalId])
   @@index([status])
   @@index([paymentStatus])
-  @@unique([instituteId, orderNumber])
   @@index([instituteId])
   @@map("canteen_orders")
 }
 
 model CanteenOrderItem {
-  id        String          @id @default(uuid())
+  id          String          @id @default(uuid())
   instituteId String?
-  orderId   String
-  itemId    String
-  quantity  Int
-  unitPrice Decimal         @db.Decimal(12, 2)
-  subtotal  Decimal         @db.Decimal(12, 2)
-  order     CanteenOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  item      CanteenMenuItem @relation(fields: [itemId], references: [id])
+  orderId     String
+  itemId      String
+  quantity    Int
+  unitPrice   Decimal         @db.Decimal(12, 2)
+  subtotal    Decimal         @db.Decimal(12, 2)
+  order       CanteenOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  item        CanteenMenuItem @relation(fields: [itemId], references: [id])
 
   @@index([orderId])
   @@index([instituteId])
@@ -444,7 +444,7 @@ model CanteenOrderItem {
 
 model CanteenPayment {
   id             String             @id @default(uuid())
-  instituteId String?
+  instituteId    String?
   orderId        String
   paymentMode    CanteenPaymentMode
   amount         Decimal            @db.Decimal(12, 2)
@@ -464,7 +464,7 @@ model CanteenPayment {
 // --- Canteen Wallet Models ---
 model CanteenWallet {
   id              String                     @id @default(uuid())
-  instituteId String?
+  instituteId     String?
   memberId        String                     @unique
   balance         Decimal                    @default(0) @db.Decimal(12, 2)
   status          CanteenWalletStatus        @default(ACTIVE)
@@ -481,7 +481,7 @@ model CanteenWallet {
 
 model CanteenWalletTopup {
   id             String             @id @default(uuid())
-  instituteId String?
+  instituteId    String?
   walletId       String
   amount         Decimal            @db.Decimal(12, 2)
   paymentMode    CanteenTopupMode   @default(CASH)
@@ -500,7 +500,7 @@ model CanteenWalletTopup {
 
 model CanteenWalletTransaction {
   id            String                 @id @default(uuid())
-  instituteId String?
+  instituteId   String?
   walletId      String
   type          CanteenWalletTransType
   amount        Decimal                @db.Decimal(12, 2)
@@ -517,10 +517,10 @@ model CanteenWalletTransaction {
 }
 
 model LibCategory {
-  category_id Int       @id @default(autoincrement())
+  category_id  Int       @id @default(autoincrement())
   institute_id String?
-  name        String
-  books       LibBook[]
+  name         String
+  books        LibBook[]
 
   @@unique([institute_id, name])
   @@index([institute_id])
@@ -529,7 +529,7 @@ model LibCategory {
 
 model LibMember {
   member_id           Int                  @id @default(autoincrement())
-  institute_id String?
+  institute_id        String?
   external_ref_id     String?
   name                String
   member_type         LibMemberType
@@ -561,7 +561,7 @@ model LibUser {
 
 model LibMembershipRule {
   rule_id           Int           @id @default(autoincrement())
-  institute_id String?
+  institute_id      String?
   member_type       LibMemberType
   max_books_allowed Int
   loan_period_days  Int
@@ -578,7 +578,7 @@ model LibMembershipRule {
 
 model LibBook {
   book_id         Int              @id @default(autoincrement())
-  institute_id String?
+  institute_id    String?
   isbn            String?
   title           String
   author          String
@@ -602,25 +602,46 @@ model LibBook {
 }
 
 model LibBookVendor {
-  book_vendor_id      Int      @id @default(autoincrement())
+  book_vendor_id      Int        @id @default(autoincrement())
   book_id             Int
+  vendor_id           Int?
   vendor_name         String
   name                String?
   contact_person      String?
   phone               String?
   email               String?
   address             String?
-  last_purchase_price Decimal? @db.Decimal(10, 2)
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
-  book                LibBook  @relation(fields: [book_id], references: [book_id])
+  last_purchase_price Decimal?   @db.Decimal(10, 2)
+  created_at          DateTime   @default(now())
+  updated_at          DateTime   @updatedAt
+  book                LibBook    @relation(fields: [book_id], references: [book_id])
+  vendor              LibVendor? @relation(fields: [vendor_id], references: [vendor_id])
 
   @@map("library_book_vendors")
 }
 
+/// Institute-wide vendor master so a librarian picks a vendor instead of
+/// retyping the same contact details for every book purchased from them.
+model LibVendor {
+  vendor_id      Int             @id @default(autoincrement())
+  institute_id   String?
+  vendor_name    String
+  contact_person String?
+  phone          String?
+  email          String?
+  address        String?
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+  book_vendors   LibBookVendor[]
+
+  @@unique([institute_id, vendor_name])
+  @@index([institute_id])
+  @@map("library_vendors")
+}
+
 model LibBookCopy {
   copy_id          Int              @id @default(autoincrement())
-  institute_id String?
+  institute_id     String?
   book_id          Int
   barcode          String
   accession_number String
@@ -642,7 +663,7 @@ model LibBookCopy {
 
 model LibIssueRecord {
   issue_id          Int            @id @default(autoincrement())
-  institute_id String?
+  institute_id      String?
   copy_id           Int
   member_id         Int
   issue_date        DateTime       @db.Date
@@ -669,7 +690,7 @@ model LibIssueRecord {
 
 model LibReservation {
   reservation_id Int                  @id @default(autoincrement())
-  institute_id String?
+  institute_id   String?
   book_id        Int
   member_id      Int
   reserved_date  DateTime             @db.Date
@@ -686,7 +707,7 @@ model LibReservation {
 
 model LibFine {
   fine_id       Int              @id @default(autoincrement())
-  institute_id String?
+  institute_id  String?
   issue_id      Int
   member_id     Int
   reason        LibFineReason
@@ -775,15 +796,15 @@ model LibSsoSession {
 }
 
 model SportsSport {
-  sport_id    Int                @id @default(autoincrement())
+  sport_id     Int                @id @default(autoincrement())
   institute_id String?
-  name        String
-  category    SportsCategory
-  description String?
-  created_at  DateTime           @default(now())
-  updated_at  DateTime           @updatedAt
-  records     SportsRecord[]
-  tournaments SportsTournament[]
+  name         String
+  category     SportsCategory
+  description  String?
+  created_at   DateTime           @default(now())
+  updated_at   DateTime           @updatedAt
+  records      SportsRecord[]
+  tournaments  SportsTournament[]
 
   @@unique([institute_id, name])
   @@index([institute_id])
@@ -792,7 +813,7 @@ model SportsSport {
 
 model SportsParticipant {
   participant_id         Int                          @id @default(autoincrement())
-  institute_id String?
+  institute_id           String?
   external_ref_id        String?
   name                   String
   class_section          String?
@@ -807,13 +828,14 @@ model SportsParticipant {
   records                SportsRecord[]
   tournament_memberships SportsTournamentTeamMember[]
 
+  @@unique([institute_id, external_ref_id])
   @@index([institute_id])
   @@map("sports_participants")
 }
 
 model SportsStaff {
   staff_id        Int                    @id @default(autoincrement())
-  institute_id String?
+  institute_id    String?
   external_ref_id String?
   name            String
   role            String
@@ -830,16 +852,16 @@ model SportsStaff {
 }
 
 model SportsVenue {
-  venue_id    Int                @id @default(autoincrement())
+  venue_id     Int                @id @default(autoincrement())
   institute_id String?
-  name        String
-  type        SportsVenueType
-  capacity    Int?
-  location    String?
-  created_at  DateTime           @default(now())
-  updated_at  DateTime           @updatedAt
-  fixtures    SportsFixture[]
-  tournaments SportsTournament[]
+  name         String
+  type         SportsVenueType
+  capacity     Int?
+  location     String?
+  created_at   DateTime           @default(now())
+  updated_at   DateTime           @updatedAt
+  fixtures     SportsFixture[]
+  tournaments  SportsTournament[]
 
   @@unique([institute_id, name])
   @@index([institute_id])
@@ -862,7 +884,7 @@ model SportsUser {
 
 model SportsHouse {
   house_id        Int                     @id @default(autoincrement())
-  institute_id String?
+  institute_id    String?
   name            String
   color_code      String?
   house_master_id Int?
@@ -882,7 +904,7 @@ model SportsHouse {
 
 model SportsHouseMembership {
   membership_id  Int                    @id @default(autoincrement())
-  institute_id String?
+  institute_id   String?
   participant_id Int
   house_id       Int
   academic_year  String
@@ -898,7 +920,7 @@ model SportsHouseMembership {
 
 model SportsHousePoint {
   point_id            Int                   @id @default(autoincrement())
-  institute_id String?
+  institute_id        String?
   house_id            Int
   points              Int
   source_type         SportsPointSourceType
@@ -916,7 +938,7 @@ model SportsHousePoint {
 
 model SportsHouseStanding {
   house_id        Int
-  institute_id String?
+  institute_id    String?
   academic_year   String
   total_points    Int         @default(0)
   rank            Int?
@@ -930,7 +952,7 @@ model SportsHouseStanding {
 
 model SportsTournament {
   tournament_id Int                    @id @default(autoincrement())
-  institute_id String?
+  institute_id  String?
   name          String
   sport_id      Int
   level         SportsTournamentLevel  @default(inter_house)
@@ -955,7 +977,7 @@ model SportsTournament {
 
 model SportsTournamentTeam {
   tournament_team_id Int                          @id @default(autoincrement())
-  institute_id String?
+  institute_id       String?
   tournament_id      Int
   house_id           Int?
   team_name          String
@@ -977,7 +999,7 @@ model SportsTournamentTeam {
 
 model SportsTournamentTeamMember {
   member_id          Int                  @id @default(autoincrement())
-  institute_id String?
+  institute_id       String?
   tournament_team_id Int
   participant_id     Int
   role               String               @default("player")
@@ -992,7 +1014,7 @@ model SportsTournamentTeamMember {
 
 model SportsFixture {
   fixture_id     Int                     @id @default(autoincrement())
-  institute_id String?
+  institute_id   String?
   tournament_id  Int
   round          String
   team_a_id      Int
@@ -1016,7 +1038,7 @@ model SportsFixture {
 
 model SportsFixtureResult {
   result_id      Int                   @id @default(autoincrement())
-  institute_id String?
+  institute_id   String?
   fixture_id     Int                   @unique
   team_a_score   String
   team_b_score   String
@@ -1034,7 +1056,7 @@ model SportsFixtureResult {
 
 model SportsPlayerMatchStat {
   stat_id        Int               @id @default(autoincrement())
-  institute_id String?
+  institute_id   String?
   fixture_id     Int
   participant_id Int
   stat_type      String
@@ -1048,7 +1070,7 @@ model SportsPlayerMatchStat {
 
 model SportsRecord {
   record_id          Int                   @id @default(autoincrement())
-  institute_id String?
+  institute_id       String?
   participant_id     Int?
   tournament_team_id Int?
   sport_id           Int
@@ -1071,7 +1093,7 @@ model SportsRecord {
 
 model SportsAward {
   award_id           Int                   @id @default(autoincrement())
-  institute_id String?
+  institute_id       String?
   participant_id     Int?
   tournament_team_id Int?
   tournament_id      Int
@@ -1311,7 +1333,7 @@ enum SportsRecordType {
 
 model FrontOfficeDepartment {
   department_id Int      @id @default(autoincrement())
-  institute_id String?
+  institute_id  String?
   name          String
   status        Status   @default(ACTIVE)
   created_at    DateTime @default(now())
@@ -1327,7 +1349,7 @@ model FrontOfficeDepartment {
 
 model FrontOfficeEmployee {
   employee_id   Int                   @id @default(autoincrement())
-  institute_id String?
+  institute_id  String?
   name          String
   department_id Int
   department    FrontOfficeDepartment @relation(fields: [department_id], references: [department_id])
@@ -1345,8 +1367,8 @@ model FrontOfficeEmployee {
   availability_slots  FrontOfficeAvailabilitySlot[]
   notifications       FrontOfficeNotification[]
 
-  @@index([department_id])
   @@unique([institute_id, email])
+  @@index([department_id])
   @@index([institute_id])
   @@map("front_office_employees")
 }
@@ -1369,7 +1391,7 @@ model FrontOfficeAvailabilitySlot {
 
 model FrontOfficeVisitor {
   visitor_id      Int      @id @default(autoincrement())
-  institute_id String?
+  institute_id    String?
   full_name       String
   phone           String?
   email           String?
@@ -1398,7 +1420,7 @@ enum FrontOfficeVisitorLogStatus {
 
 model FrontOfficeVisitorLog {
   log_id           Int                         @id @default(autoincrement())
-  institute_id String?
+  institute_id     String?
   visitor_id       Int
   visitor          FrontOfficeVisitor          @relation(fields: [visitor_id], references: [visitor_id])
   host_employee_id Int
@@ -1437,7 +1459,7 @@ enum FrontOfficeEnquiryStatus {
 
 model FrontOfficeEnquiry {
   enquiry_id    Int                      @id @default(autoincrement())
-  institute_id String?
+  institute_id  String?
   enquirer_name String
   phone         String?
   email         String?
@@ -1463,7 +1485,7 @@ model FrontOfficeEnquiry {
 
 model FrontOfficeEnquiryFollowup {
   followup_id        Int                @id @default(autoincrement())
-  institute_id String?
+  institute_id       String?
   enquiry_id         Int
   enquiry            FrontOfficeEnquiry @relation(fields: [enquiry_id], references: [enquiry_id], onDelete: Cascade)
   notes              String
@@ -1488,7 +1510,7 @@ enum FrontOfficeAppointmentStatus {
 
 model FrontOfficeAppointment {
   appointment_id   Int                          @id @default(autoincrement())
-  institute_id String?
+  institute_id     String?
   visitor_id       Int?
   visitor          FrontOfficeVisitor?          @relation(fields: [visitor_id], references: [visitor_id])
   visitor_name     String
@@ -1532,7 +1554,7 @@ enum FrontOfficeComplaintStatus {
 
 model FrontOfficeComplaint {
   complaint_id     Int                          @id @default(autoincrement())
-  institute_id String?
+  institute_id     String?
   complainant_name String
   phone            String?
   email            String?
@@ -1560,7 +1582,7 @@ model FrontOfficeComplaint {
 
 model FrontOfficeComplaintUpdate {
   update_id     Int                  @id @default(autoincrement())
-  institute_id String?
+  institute_id  String?
   complaint_id  Int
   complaint     FrontOfficeComplaint @relation(fields: [complaint_id], references: [complaint_id], onDelete: Cascade)
   notes         String
@@ -1581,7 +1603,7 @@ enum FrontOfficeAttachmentEntityType {
 
 model FrontOfficeAttachment {
   attachment_id Int                             @id @default(autoincrement())
-  institute_id String?
+  institute_id  String?
   entity_type   FrontOfficeAttachmentEntityType
   entity_id     Int
   file_name     String
@@ -1617,7 +1639,7 @@ enum FrontOfficeNotificationStatus {
 
 model FrontOfficeNotification {
   notification_id       Int                               @id @default(autoincrement())
-  institute_id String?
+  institute_id          String?
   entity_type           FrontOfficeNotificationEntityType
   entity_id             Int
   event_type            String
@@ -1724,7 +1746,7 @@ enum InvLocationType {
 
 model InvCategory {
   category_id        Int           @id @default(autoincrement())
-  institute_id String?
+  institute_id       String?
   name               String
   parent_category_id Int?
   parent             InvCategory?  @relation("InvCategoryParent", fields: [parent_category_id], references: [category_id])
@@ -1736,20 +1758,20 @@ model InvCategory {
   items          InvItem[]
   approval_rules InvApprovalRule[]
 
-  @@index([parent_category_id])
   @@unique([institute_id, name])
+  @@index([parent_category_id])
   @@index([institute_id])
   @@map("inv_categories")
 }
 
 model InvLocation {
-  location_id Int             @id @default(autoincrement())
+  location_id  Int             @id @default(autoincrement())
   institute_id String?
-  name        String
-  type        InvLocationType
-  status      Status          @default(ACTIVE)
-  created_at  DateTime        @default(now())
-  updated_at  DateTime        @updatedAt
+  name         String
+  type         InvLocationType
+  status       Status          @default(ACTIVE)
+  created_at   DateTime        @default(now())
+  updated_at   DateTime        @updatedAt
 
   purchases      InvStockPurchase[]
   ledger_entries InvStockLedger[]
@@ -1767,7 +1789,7 @@ model InvLocation {
 
 model InvVendor {
   vendor_id     Int      @id @default(autoincrement())
-  institute_id String?
+  institute_id  String?
   name          String
   contact_phone String?
   email         String?
@@ -1790,7 +1812,7 @@ enum InvItemType {
 
 model InvItem {
   item_id         Int         @id @default(autoincrement())
-  institute_id String?
+  institute_id    String?
   item_code       String
   name            String
   category_id     Int
@@ -1813,17 +1835,17 @@ model InvItem {
   asset_units    InvAssetUnit[]
   issues         InvAssetIssue[]
 
+  @@unique([institute_id, item_code])
   @@index([category_id])
   @@index([item_type])
   @@index([name])
-  @@unique([institute_id, item_code])
   @@index([institute_id])
   @@map("inv_items")
 }
 
 model InvItemVendor {
   id                  Int       @id @default(autoincrement())
-  institute_id String?
+  institute_id        String?
   item_id             Int
   item                InvItem   @relation(fields: [item_id], references: [item_id], onDelete: Cascade)
   vendor_id           Int
@@ -1839,7 +1861,7 @@ model InvItemVendor {
 
 model InvStockPurchase {
   purchase_id    Int         @id @default(autoincrement())
-  institute_id String?
+  institute_id   String?
   item_id        Int
   item           InvItem     @relation(fields: [item_id], references: [item_id])
   vendor_id      Int
@@ -1867,7 +1889,7 @@ model InvStockPurchase {
 
 model InvStockTransfer {
   transfer_id      Int         @id @default(autoincrement())
-  institute_id String?
+  institute_id     String?
   item_id          Int
   item             InvItem     @relation(fields: [item_id], references: [item_id])
   from_location_id Int
@@ -1898,7 +1920,7 @@ enum InvAdjustmentReason {
 
 model InvStockAdjustment {
   adjustment_id  Int                 @id @default(autoincrement())
-  institute_id String?
+  institute_id   String?
   item_id        Int
   item           InvItem             @relation(fields: [item_id], references: [item_id])
   location_id    Int
@@ -1939,7 +1961,7 @@ enum InvReferenceType {
 
 model InvStockLedger {
   ledger_id        Int                 @id @default(autoincrement())
-  institute_id String?
+  institute_id     String?
   item_id          Int
   item             InvItem             @relation(fields: [item_id], references: [item_id])
   location_id      Int
@@ -1971,13 +1993,13 @@ model InvStockLedger {
 }
 
 model InvStockBalance {
-  item_id     Int
+  item_id      Int
   institute_id String?
-  location_id Int
-  item        InvItem     @relation(fields: [item_id], references: [item_id])
-  location    InvLocation @relation(fields: [location_id], references: [location_id])
-  quantity    Int         @default(0)
-  updated_at  DateTime    @updatedAt
+  location_id  Int
+  item         InvItem     @relation(fields: [item_id], references: [item_id])
+  location     InvLocation @relation(fields: [location_id], references: [location_id])
+  quantity     Int         @default(0)
+  updated_at   DateTime    @updatedAt
 
   @@id([item_id, location_id])
   @@index([location_id])
@@ -1995,7 +2017,7 @@ enum InvAssetStatus {
 
 model InvAssetUnit {
   asset_unit_id       Int               @id @default(autoincrement())
-  institute_id String?
+  institute_id        String?
   item_id             Int
   item                InvItem           @relation(fields: [item_id], references: [item_id])
   asset_tag           String
@@ -2015,10 +2037,10 @@ model InvAssetUnit {
   issues      InvAssetIssue[]
   maintenance InvAssetMaintenance[]
 
+  @@unique([institute_id, asset_tag])
   @@index([status])
   @@index([current_holder_id])
   @@index([item_id])
-  @@unique([institute_id, asset_tag])
   @@index([institute_id])
   @@map("inv_asset_units")
 }
@@ -2031,7 +2053,7 @@ enum InvHolderType {
 
 model InvHolder {
   holder_id       Int           @id @default(autoincrement())
-  institute_id String?
+  institute_id    String?
   holder_type     InvHolderType
   name            String
   external_ref_id String? // link to an existing staff/student id if the parent system exposes one
@@ -2066,7 +2088,7 @@ enum InvApprovalStatus {
 
 model InvAssetIssue {
   issue_id             Int               @id @default(autoincrement())
-  institute_id String?
+  institute_id         String?
   item_id              Int
   item                 InvItem           @relation(fields: [item_id], references: [item_id])
   asset_unit_id        Int?
@@ -2111,7 +2133,7 @@ enum InvReturnCondition {
 
 model InvAssetReturn {
   return_id         Int                @id @default(autoincrement())
-  institute_id String?
+  institute_id      String?
   issue_id          Int
   issue             InvAssetIssue      @relation(fields: [issue_id], references: [issue_id])
   quantity_returned Int
@@ -2136,7 +2158,7 @@ enum InvMaintenanceStatus {
 
 model InvAssetMaintenance {
   maintenance_id Int                  @id @default(autoincrement())
-  institute_id String?
+  institute_id   String?
   asset_unit_id  Int
   asset_unit     InvAssetUnit         @relation(fields: [asset_unit_id], references: [asset_unit_id], onDelete: Cascade)
   issue_reported String
@@ -2155,7 +2177,7 @@ model InvAssetMaintenance {
 
 model InvApprovalRule {
   rule_id            Int          @id @default(autoincrement())
-  institute_id String?
+  institute_id       String?
   category_id        Int?
   category           InvCategory? @relation(fields: [category_id], references: [category_id])
   value_threshold    Decimal?     @db.Decimal(14, 2)
@@ -3676,6 +3698,7 @@ model SalesPurchasePermission {
 
   @@map("sales_purchase_permissions_catalog")
 }
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Admission Management
 // Funnel: Enquiry → Application → Test/Interview → Merit List → Offer →
@@ -4284,15 +4307,15 @@ model AdmissionUserDynamicRole {
 }
 
 model AdmissionSsoSession {
-  session_id      Int      @id @default(autoincrement())
-  institute_id    String
-  eddva_user_id   String
-  user_name       String
-  user_email      String?
-  user_role       String
-  token_hash      String   @unique // sha256 of the issued token — the token itself is never stored
-  expires_at      DateTime
-  created_at      DateTime @default(now())
+  session_id    Int      @id @default(autoincrement())
+  institute_id  String
+  eddva_user_id String
+  user_name     String
+  user_email    String?
+  user_role     String
+  token_hash    String   @unique // sha256 of the issued token — the token itself is never stored
+  expires_at    DateTime
+  created_at    DateTime @default(now())
 
   @@map("admission_sso_sessions")
 }
@@ -5772,27 +5795,27 @@ model StaffDepartment {
 
 /// The staff directory — one row per teaching/non-teaching staff member per institute.
 model StaffMember {
-  staff_id         Int             @id @default(autoincrement())
-  institute_id     String
-  staff_code       String
-  staff_type       StaffType
-  full_name        String
-  department_id    Int?
-  department       StaffDepartment? @relation(fields: [department_id], references: [department_id])
-  designation      String
-  employment_type  String?
-  email            String?
-  phone            String?
-  date_of_joining  DateTime        @db.Date
-  reporting_to_id  Int?
-  reporting_to     StaffMember?    @relation("StaffReportingLine", fields: [reporting_to_id], references: [staff_id])
-  reports          StaffMember[]   @relation("StaffReportingLine")
-  status           StaffStatus     @default(active)
-  status_reason    String?
-  relieved_on      DateTime?       @db.Date
-  created_by       String?
-  created_at       DateTime        @default(now())
-  updated_at       DateTime        @updatedAt
+  staff_id        Int              @id @default(autoincrement())
+  institute_id    String
+  staff_code      String
+  staff_type      StaffType
+  full_name       String
+  department_id   Int?
+  department      StaffDepartment? @relation(fields: [department_id], references: [department_id])
+  designation     String
+  employment_type String?
+  email           String?
+  phone           String?
+  date_of_joining DateTime         @db.Date
+  reporting_to_id Int?
+  reporting_to    StaffMember?     @relation("StaffReportingLine", fields: [reporting_to_id], references: [staff_id])
+  reports         StaffMember[]    @relation("StaffReportingLine")
+  status          StaffStatus      @default(active)
+  status_reason   String?
+  relieved_on     DateTime?        @db.Date
+  created_by      String?
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
 
   /// LMS push bookkeeping (section 12/19-style, see AdmissionConfirmation/AlumniProfile):
   /// only teaching staff are pushed as LMS teachers; stays `pending` forever
@@ -5808,10 +5831,10 @@ model StaffMember {
   lms_sync_error      String?
   lms_last_attempt_at DateTime?
 
-  leave_balances LeaveBalance[]
+  leave_balances     LeaveBalance[]
   leave_applications LeaveApplication[]
-  salary_structures StaffSalaryStructure[]
-  payslips Payslip[]
+  salary_structures  StaffSalaryStructure[]
+  payslips           Payslip[]
 
   @@unique([institute_id, staff_code])
   @@index([institute_id, staff_type])
@@ -5900,20 +5923,20 @@ model StaffNumberSequence {
 /// staff_type, or both when null (e.g. a public-holiday-linked leave type that
 /// every staff member gets, regardless of teaching/non-teaching).
 model LeaveType {
-  leave_type_id        Int        @id @default(autoincrement())
-  institute_id         String
-  name                 String
-  code                 String
-  applicable_staff_type StaffType?
-  annual_quota_days    Decimal    @db.Decimal(5, 1)
-  is_paid              Boolean    @default(true)
-  allow_carry_forward  Boolean    @default(false)
-  max_carry_forward_days Decimal? @db.Decimal(5, 1)
-  is_active            Boolean    @default(true)
-  created_at           DateTime   @default(now())
-  updated_at           DateTime   @updatedAt
+  leave_type_id          Int        @id @default(autoincrement())
+  institute_id           String
+  name                   String
+  code                   String
+  applicable_staff_type  StaffType?
+  annual_quota_days      Decimal    @db.Decimal(5, 1)
+  is_paid                Boolean    @default(true)
+  allow_carry_forward    Boolean    @default(false)
+  max_carry_forward_days Decimal?   @db.Decimal(5, 1)
+  is_active              Boolean    @default(true)
+  created_at             DateTime   @default(now())
+  updated_at             DateTime   @updatedAt
 
-  balances LeaveBalance[]
+  balances     LeaveBalance[]
   applications LeaveApplication[]
 
   @@unique([institute_id, code])
@@ -5923,17 +5946,17 @@ model LeaveType {
 
 /// One row per staff member, per leave type, per calendar year.
 model LeaveBalance {
-  balance_id   Int       @id @default(autoincrement())
-  institute_id String
-  staff_id     Int
-  staff        StaffMember @relation(fields: [staff_id], references: [staff_id])
-  leave_type_id Int
-  leave_type   LeaveType @relation(fields: [leave_type_id], references: [leave_type_id])
-  year         Int
-  allocated_days Decimal @db.Decimal(5, 1)
-  used_days    Decimal   @default(0) @db.Decimal(5, 1)
-  created_at   DateTime  @default(now())
-  updated_at   DateTime  @updatedAt
+  balance_id     Int         @id @default(autoincrement())
+  institute_id   String
+  staff_id       Int
+  staff          StaffMember @relation(fields: [staff_id], references: [staff_id])
+  leave_type_id  Int
+  leave_type     LeaveType   @relation(fields: [leave_type_id], references: [leave_type_id])
+  year           Int
+  allocated_days Decimal     @db.Decimal(5, 1)
+  used_days      Decimal     @default(0) @db.Decimal(5, 1)
+  created_at     DateTime    @default(now())
+  updated_at     DateTime    @updatedAt
 
   @@unique([staff_id, leave_type_id, year])
   @@index([institute_id, year])
@@ -6212,16 +6235,16 @@ enum FeeNotificationStatus {
 
 /// Same "log only" convention as every other module's notification outbox here.
 model FeeNotification {
-  notification_id Int                    @id @default(autoincrement())
+  notification_id Int                   @id @default(autoincrement())
   institute_id    String
   entity_type     String
   entity_id       Int
   event_type      String
-  channel         String                 @default("email")
+  channel         String                @default("email")
   recipient       String?
   message         String?
-  status          FeeNotificationStatus  @default(queued)
-  created_at      DateTime               @default(now())
+  status          FeeNotificationStatus @default(queued)
+  created_at      DateTime              @default(now())
 
   @@index([institute_id, event_type])
   @@map("fee_notifications")

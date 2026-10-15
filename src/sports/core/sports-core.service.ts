@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { requireInstituteId } from '../../common/utils/require-institute.util';
+import { orConflict } from '../common/unique-violation.util';
 import { CreateSportDto, UpdateSportDto } from './dto/create-sport.dto';
 import { CreateVenueDto, UpdateVenueDto } from './dto/create-venue.dto';
 import { CreateStaffDto, UpdateStaffDto } from './dto/create-staff.dto';
@@ -12,7 +13,9 @@ export class SportsCoreService {
 
   // ─── Sports Catalog ────────────────────────────────────────────────────────
   async createSport(instituteId: string, dto: CreateSportDto) {
-    return this.prisma.sportsSport.create({ data: { ...dto, institute_id: requireInstituteId(instituteId) } });
+    return orConflict(`A sport named "${dto.name}" already exists`, () =>
+      this.prisma.sportsSport.create({ data: { ...dto, institute_id: requireInstituteId(instituteId) } }),
+    );
   }
 
   async listSports(instituteId: string) {
@@ -27,7 +30,9 @@ export class SportsCoreService {
 
   async updateSport(instituteId: string, id: number, dto: UpdateSportDto) {
     await this.getSport(instituteId, id);
-    return this.prisma.sportsSport.update({ where: { sport_id: id }, data: dto });
+    return orConflict(`A sport named "${dto.name}" already exists`, () =>
+      this.prisma.sportsSport.update({ where: { sport_id: id }, data: dto }),
+    );
   }
 
   async deleteSport(instituteId: string, id: number) {
@@ -87,7 +92,22 @@ export class SportsCoreService {
 
   // ─── Participants ──────────────────────────────────────────────────────────
   async createParticipant(instituteId: string, dto: CreateParticipantDto) {
-    return this.prisma.sportsParticipant.create({ data: { ...dto, institute_id: requireInstituteId(instituteId) } });
+    const instId = requireInstituteId(instituteId);
+    if (dto.external_ref_id) {
+      const duplicate = await this.prisma.sportsParticipant.findFirst({
+        where: { institute_id: instId, external_ref_id: dto.external_ref_id },
+        select: { participant_id: true },
+      });
+      if (duplicate) {
+        throw new ConflictException(
+          `Student ID "${dto.external_ref_id}" is already used by another participant`,
+        );
+      }
+    }
+    return orConflict(
+      `Student ID "${dto.external_ref_id}" is already used by another participant`,
+      () => this.prisma.sportsParticipant.create({ data: { ...dto, institute_id: instId } }),
+    );
   }
 
   async listParticipants(instituteId: string) {
@@ -106,8 +126,23 @@ export class SportsCoreService {
   }
 
   async updateParticipant(instituteId: string, id: number, dto: UpdateParticipantDto) {
-    await this.getParticipant(instituteId, id);
-    return this.prisma.sportsParticipant.update({ where: { participant_id: id }, data: dto });
+    const instId = requireInstituteId(instituteId);
+    await this.getParticipant(instId, id);
+    if (dto.external_ref_id) {
+      const duplicate = await this.prisma.sportsParticipant.findFirst({
+        where: { institute_id: instId, external_ref_id: dto.external_ref_id, participant_id: { not: id } },
+        select: { participant_id: true },
+      });
+      if (duplicate) {
+        throw new ConflictException(
+          `Student ID "${dto.external_ref_id}" is already used by another participant`,
+        );
+      }
+    }
+    return orConflict(
+      `Student ID "${dto.external_ref_id}" is already used by another participant`,
+      () => this.prisma.sportsParticipant.update({ where: { participant_id: id }, data: dto }),
+    );
   }
 
   async deleteParticipant(instituteId: string, id: number) {

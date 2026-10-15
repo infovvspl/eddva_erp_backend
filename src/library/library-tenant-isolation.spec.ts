@@ -165,7 +165,10 @@ describe('Library tenant isolation', () => {
 
     it('a barcode scan never resolves a copy from another institute', async () => {
       await expect(new BarcodeService(prisma).resolve(B, 'BC1')).rejects.toThrow(NotFoundException);
-      expect(prisma.libBookCopy.findFirst.mock.calls[0][0].where).toEqual({ institute_id: B, barcode: 'BC1' });
+      expect(prisma.libBookCopy.findFirst.mock.calls[0][0].where).toEqual({
+        institute_id: B,
+        OR: [{ barcode: 'BC1' }, { accession_number: 'BC1' }],
+      });
     });
 
     it('scopes vendors through their book\'s institute', async () => {
@@ -231,7 +234,10 @@ describe('Library tenant isolation', () => {
       await svc.findAll(B, 'issued');
       await svc.findOverdue(B);
       expect(prisma.libIssueRecord.findMany.mock.calls[0][0].where).toEqual({ institute_id: B, status: 'issued' });
-      expect(prisma.libIssueRecord.findMany.mock.calls[1][0].where).toEqual({ institute_id: B, status: 'overdue' });
+      expect(prisma.libIssueRecord.findMany.mock.calls[1][0].where).toEqual({
+        institute_id: B,
+        OR: [{ status: 'overdue' }, { status: 'issued', due_date: { lt: expect.any(Date) } }],
+      });
     });
 
     it('cannot return another institute\'s loan', async () => {

@@ -382,11 +382,14 @@ export class CanteenMenuService {
       throw new BadRequestException('startTime must be strictly before endTime.');
     }
 
+    const dayOfWeek = dto.dayOfWeek.toUpperCase();
+    await this.assertNoScheduleOverlap(instId, itemId, dayOfWeek, dto.startTime, dto.endTime);
+
     const schedule = await this.prisma.canteenMenuSchedule.create({
       data: {
         instituteId: instId,
         itemId,
-        dayOfWeek: dto.dayOfWeek.toUpperCase(),
+        dayOfWeek,
         startTime: dto.startTime,
         endTime: dto.endTime,
       },
@@ -408,15 +411,18 @@ export class CanteenMenuService {
 
     const startTime = dto.startTime ?? schedule.startTime;
     const endTime = dto.endTime ?? schedule.endTime;
+    const dayOfWeek = dto.dayOfWeek ? dto.dayOfWeek.toUpperCase() : schedule.dayOfWeek;
 
     if (startTime >= endTime) {
       throw new BadRequestException('startTime must be strictly before endTime.');
     }
 
+    await this.assertNoScheduleOverlap(schedule.instituteId, schedule.itemId, dayOfWeek, startTime, endTime, id);
+
     const updated = await this.prisma.canteenMenuSchedule.update({
       where: { id },
       data: {
-        dayOfWeek: dto.dayOfWeek ? dto.dayOfWeek.toUpperCase() : schedule.dayOfWeek,
+        dayOfWeek,
         startTime,
         endTime,
       },
@@ -431,6 +437,31 @@ export class CanteenMenuService {
     });
 
     return updated;
+  }
+
+  /** Rejects a schedule whose [startTime, endTime) window overlaps another schedule already on the same item + day. */
+  private async assertNoScheduleOverlap(
+    instituteId: string | null | undefined,
+    itemId: string,
+    dayOfWeek: string,
+    startTime: string,
+    endTime: string,
+    excludeId?: string,
+  ) {
+    const candidates = await this.prisma.canteenMenuSchedule.findMany({
+      where: {
+        instituteId: instituteId ?? undefined,
+        itemId,
+        dayOfWeek,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+    const overlaps = candidates.some((s) => startTime < s.endTime && s.startTime < endTime);
+    if (overlaps) {
+      throw new BadRequestException(
+        `This schedule overlaps an existing ${dayOfWeek} window for this item.`,
+      );
+    }
   }
 
   async deleteSchedule(instituteId: string, id: string, actorUserId?: string) {

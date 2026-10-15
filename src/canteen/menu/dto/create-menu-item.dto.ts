@@ -7,7 +7,14 @@ import {
   Min,
   IsEnum,
   IsBoolean,
+  Matches,
 } from 'class-validator';
+
+// A comma-separated list of 3-letter day codes (MON..SUN), each at most once,
+// e.g. "MON,WED,FRI". Empty string isn't valid — use IsOptional to allow
+// omitting the field entirely instead.
+const AVAILABLE_DAYS_PATTERN =
+  /^(MON|TUE|WED|THU|FRI|SAT|SUN)(,(MON|TUE|WED|THU|FRI|SAT|SUN))*$/;
 import { CanteenFoodType } from '@prisma/client';
 
 export class CreateMenuItemDto {
@@ -56,5 +63,8 @@ export class CreateMenuItemDto {
   @ApiPropertyOptional({ example: 'MON,TUE,WED,THU,FRI' })
   @IsOptional()
   @IsString()
+  @Matches(AVAILABLE_DAYS_PATTERN, {
+    message: 'availableDays must be a comma-separated list of MON,TUE,WED,THU,FRI,SAT,SUN',
+  })
   availableDays?: string;
 }

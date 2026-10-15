@@ -87,8 +87,10 @@ export class CanteenReportsService {
     if (query.itemId) itemWhere.itemId = query.itemId;
     if (query.categoryId) itemWhere.item = { categoryId: query.categoryId };
 
+    // Match the main Sales report: cancelled orders never count toward sales totals.
+    itemWhere.order = { status: { not: CanteenOrderStatus.CANCELLED } };
     if (query.dateFrom || query.dateTo) {
-      itemWhere.order = { orderDate: {} };
+      itemWhere.order.orderDate = {};
       if (query.dateFrom) itemWhere.order.orderDate.gte = new Date(query.dateFrom);
       if (query.dateTo) itemWhere.order.orderDate.lte = new Date(query.dateTo);
     }

@@ -220,7 +220,8 @@ export async function seedAlumni(prisma: PrismaClient, instId: string): Promise<
   const jobTypes = ['full_time', 'part_time', 'internship', 'contract'] as const;
 
   const JOB_COUNT = 20;
-  for (let i = 0; i < JOB_COUNT; i++) {
+  const existingJobs = await prisma.alumniJob.count({ where: { institute_id: instId } });
+  if (existingJobs === 0) for (let i = 0; i < JOB_COUNT; i++) {
     const postedDate = randomDateBetween(addDays(TODAY, -180), addDays(TODAY, -2));
     let status: 'open' | 'closed' | 'expired';
     let expiryDate: Date | null;
@@ -289,7 +290,8 @@ export async function seedAlumni(prisma: PrismaClient, instId: string): Promise<
   ];
 
   const campaignIds: Array<{ id: number; status: string }> = [];
-  for (const def of campaignDefs) {
+  const existingCampaigns = await prisma.alumniCampaign.count({ where: { institute_id: instId } });
+  if (existingCampaigns === 0) for (const def of campaignDefs) {
     const campaign = await prisma.alumniCampaign.create({
       data: {
         institute_id: instId,
@@ -305,14 +307,19 @@ export async function seedAlumni(prisma: PrismaClient, instId: string): Promise<
     });
     campaignIds.push({ id: campaign.campaign_id, status: def.status });
   }
+  if (existingCampaigns > 0) {
+    const rows = await prisma.alumniCampaign.findMany({ where: { institute_id: instId }, select: { campaign_id: true, status: true } });
+    campaignIds.push(...rows.map((r) => ({ id: r.campaign_id, status: r.status })));
+  }
 
   // Donations spread across the last 6 months (so the 12-month trend chart
   // has real month-over-month shape), mostly against active/closed
   // campaigns, with some unrestricted (general fund, campaign_id = null).
   const DONATION_COUNT = 140;
   let receiptSeq = 1;
+  const existingDonations = await prisma.alumniDonation.count({ where: { institute_id: instId } });
   const donationRows: Prisma.AlumniDonationUncheckedCreateInput[] = [];
-  for (let i = 0; i < DONATION_COUNT; i++) {
+  if (existingDonations === 0) for (let i = 0; i < DONATION_COUNT; i++) {
     const donationDate = randomDateBetween(addDays(TODAY, -180), addDays(TODAY, -1));
     const r = randInt(1, 100);
     const status = r <= 80 ? 'received' : r <= 90 ? 'pending' : r <= 96 ? 'failed' : r <= 99 ? 'cancelled' : 'reversed';

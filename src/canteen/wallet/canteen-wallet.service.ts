@@ -235,7 +235,7 @@ export class CanteenWalletService {
       });
 
       return {
-        topup,
+        ...topup,
         walletBalance: newBal,
         ledgerTransactionId: ledger.id,
       };
@@ -243,9 +243,9 @@ export class CanteenWalletService {
 
     await this.autoPosting.postCanteenWalletTopup({
       instituteId: instId,
-      topupId: result.topup.id,
+      topupId: result.id,
       walletId,
-      topupDate: result.topup.topupDate,
+      topupDate: result.topupDate,
       amount: topupAmount,
       userId: approverUserId ?? 'SYSTEM',
     });

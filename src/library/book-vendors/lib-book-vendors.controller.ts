@@ -17,6 +17,13 @@ import type { LibPlatformUser } from '../auth/lib-auth.service';
 export class LibBookVendorsController {
   constructor(private readonly vendorsService: LibBookVendorsService) {}
 
+  @Get('vendors')
+  @RequirePermission({ resource: 'vendors', action: 'read' })
+  @ApiOperation({ summary: 'List the vendor master list (for a book-vendor picker)' })
+  findAllVendors(@LibUser() user: LibPlatformUser) {
+    return this.vendorsService.findAllVendors(user.institute_id);
+  }
+
   @Post('books/:bookId/vendors')
   @RequirePermission({ resource: 'vendors', action: 'create' })
   @ApiOperation({ summary: 'Add vendor for a book title (admin)' })

@@ -3,6 +3,13 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class CreateBookVendorDto {
+  @ApiPropertyOptional({ example: 1, description: 'Pick an existing vendor from the master list instead of retyping its details' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  vendor_id?: number;
+
   @ApiPropertyOptional({ example: 'Oxford University Press Distributor', description: 'Vendor/Supplier name' })
   @IsOptional()
   @IsString()

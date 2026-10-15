@@ -6,7 +6,11 @@ import {
   Min,
   IsEnum,
   IsBoolean,
+  Matches,
 } from 'class-validator';
+
+const AVAILABLE_DAYS_PATTERN =
+  /^(MON|TUE|WED|THU|FRI|SAT|SUN)(,(MON|TUE|WED|THU|FRI|SAT|SUN))*$/;
 import { CanteenFoodType } from '@prisma/client';
 
 export class UpdateMenuItemDto {
@@ -52,8 +56,11 @@ export class UpdateMenuItemDto {
   @IsBoolean()
   isAvailable?: boolean;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'MON,TUE,WED,THU,FRI' })
   @IsOptional()
   @IsString()
+  @Matches(AVAILABLE_DAYS_PATTERN, {
+    message: 'availableDays must be a comma-separated list of MON,TUE,WED,THU,FRI,SAT,SUN',
+  })
   availableDays?: string;
 }

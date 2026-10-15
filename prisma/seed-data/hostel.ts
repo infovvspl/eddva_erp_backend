@@ -405,7 +405,8 @@ export async function seedHostel(prisma: PrismaClient, instId: string): Promise<
   // ─── Attendance (last 14 days, both sessions) ────────────────────────
   console.log('  [hostel] seeding attendance...');
   const ATTENDANCE_DAYS = 14;
-  for (let d = 0; d < ATTENDANCE_DAYS; d++) {
+  const existingAttendance = await prisma.hostelAttendance.count({ where: { institute_id: instId } });
+  if (existingAttendance === 0) for (let d = 0; d < ATTENDANCE_DAYS; d++) {
     const day = dateOnly(addDays(TODAY, -d));
     for (const resident of activeResidents) {
       for (const session of ['morning', 'night'] as const) {
@@ -428,7 +429,8 @@ export async function seedHostel(prisma: PrismaClient, instId: string): Promise<
   // ─── Visitor logs ─────────────────────────────────────────────────────
   console.log('  [hostel] seeding visitor logs...');
   const visitorRelations = ['Father', 'Mother', 'Uncle', 'Aunt', 'Grandparent', 'Sibling'];
-  for (const resident of activeResidents) {
+  const existingVisitorLogs = await prisma.hostelVisitorLog.count({ where: { institute_id: instId } });
+  if (existingVisitorLogs === 0) for (const resident of activeResidents) {
     const numVisits = rand(3);
     for (let i = 0; i < numVisits; i++) {
       const inTime = randomDateBetween(WINDOW_START, addDays(TODAY, -1));
@@ -496,7 +498,8 @@ export async function seedHostel(prisma: PrismaClient, instId: string): Promise<
   }
 
   const MESS_ATTENDANCE_DAYS = 7;
-  for (let d = 0; d < MESS_ATTENDANCE_DAYS; d++) {
+  const existingMessAttendance = await prisma.hostelMessAttendance.count({ where: { institute_id: instId } });
+  if (existingMessAttendance === 0) for (let d = 0; d < MESS_ATTENDANCE_DAYS; d++) {
     const day = dateOnly(addDays(TODAY, -d));
     for (const resident of activeResidents) {
       for (const meal of mealTypes) {
@@ -530,7 +533,8 @@ export async function seedHostel(prisma: PrismaClient, instId: string): Promise<
   const complaintPriorities: Array<'low' | 'medium' | 'high' | 'urgent'> = ['low', 'medium', 'high', 'urgent'];
   const NUM_COMPLAINTS = 30;
   const allRooms = blocks.flatMap((b) => b.rooms);
-  for (let i = 0; i < NUM_COMPLAINTS; i++) {
+  const existingComplaints = await prisma.hostelComplaint.count({ where: { institute_id: instId } });
+  if (existingComplaints === 0) for (let i = 0; i < NUM_COMPLAINTS; i++) {
     const createdAt = randomDateBetween(WINDOW_START, TODAY);
     const statusRoll = rand(100);
     const status: 'open' | 'in_progress' | 'resolved' | 'closed' =
@@ -585,21 +589,27 @@ export async function seedHostel(prisma: PrismaClient, instId: string): Promise<
     { name: 'Triple Room (with Mess)', room_type: 'triple', includes_mess: true, amount: '8500' },
     { name: 'Dormitory (with Mess)', room_type: 'dormitory', includes_mess: true, amount: '6000' },
   ];
-  const feePlans: Array<Awaited<ReturnType<typeof prisma.hostelFeePlan.create>>> = [];
-  for (const def of feePlanDefs) {
-    const plan = await prisma.hostelFeePlan.create({
-      data: {
-        institute_id: instId,
-        name: def.name,
-        room_type: def.room_type,
-        includes_mess: def.includes_mess,
-        amount: def.amount,
-        billing_cycle: 'monthly',
-        is_active: true,
-        created_by: 'seed-script',
-      },
-    });
-    feePlans.push(plan);
+  type FeePlanRec = { fee_plan_id: number; room_type: 'single' | 'double' | 'triple' | 'dormitory'; includes_mess: boolean; billing_cycle: 'monthly' | 'quarterly' | 'annual'; name: string; amount: string };
+  const feePlans: FeePlanRec[] = [];
+  const existingFeePlans = await prisma.hostelFeePlan.findMany({ where: { institute_id: instId } });
+  if (existingFeePlans.length === 0) {
+    for (const def of feePlanDefs) {
+      const plan = await prisma.hostelFeePlan.create({
+        data: {
+          institute_id: instId,
+          name: def.name,
+          room_type: def.room_type,
+          includes_mess: def.includes_mess,
+          amount: def.amount,
+          billing_cycle: 'monthly',
+          is_active: true,
+          created_by: 'seed-script',
+        },
+      });
+      feePlans.push({ ...plan, amount: plan.amount.toString() });
+    }
+  } else {
+    for (const p of existingFeePlans) feePlans.push({ ...p, amount: p.amount.toString() });
   }
   const planByRoomType = new Map(feePlans.map((p) => [p.room_type, p]));
 
@@ -623,7 +633,8 @@ export async function seedHostel(prisma: PrismaClient, instId: string): Promise<
     { label: '2026-10', start: '2026-10-01', end: '2026-10-14', due: '2026-10-10' },
   ];
 
-  for (const resident of activeResidents) {
+  const existingInvoices = await prisma.hostelFeeInvoice.count({ where: { institute_id: instId } });
+  if (existingInvoices === 0) for (const resident of activeResidents) {
     const roomType = roomTypeByResident.get(resident.resident_id) ?? 'single';
     const plan = planByRoomType.get(roomType)!;
     for (const period of monthPeriods) {
