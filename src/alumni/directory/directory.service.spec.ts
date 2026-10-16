@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { AlumniService } from './alumni.service';
@@ -536,13 +536,13 @@ describe('AlumniService', () => {
       expect(notifications.notifyStaff).toHaveBeenCalled();
     });
 
-    it('portal-only endpoints refuse staff accounts', async () => {
+    it('portal-only endpoints report a staff account has no profile (not a permissions error)', async () => {
       await expect(svc.me(officer as never)).rejects.toThrow(
-        ForbiddenException,
+        NotFoundException,
       );
       await expect(
         svc.submitVerification(officer as never, {}),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('verification history is the verification-related slice of the audit trail', async () => {

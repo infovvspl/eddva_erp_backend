@@ -90,8 +90,12 @@ export class AlumniService {
   /** The alumni id of a portal account; staff accounts have none. */
   private requireOwnId(actor: AlumniPlatformUser): number {
     if (!isAlumniPrincipal(actor)) {
-      throw new ForbiddenException(
-        'This endpoint is for alumni portal accounts only',
+      // Not having an alumni profile isn't a permissions violation (a staff
+      // or admin account is correctly authorized to call this, it just has
+      // no self data), so this is a 404, not a 403 — a 403 trips the
+      // frontend's global "Access denied" security toast on every page load.
+      throw new NotFoundException(
+        'This account has no alumni profile (self-service is for alumni portal accounts only).',
       );
     }
     return actor.alumni_id as number;

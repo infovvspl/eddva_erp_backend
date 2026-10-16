@@ -7,6 +7,9 @@ import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { requireModuleSecret } from '../../common/utils/module-secret.util';
+import { INSTITUTE_ADMIN_ROLE_NAMES } from '../../common/auth/institute-admin-role-names';
+import { verifyErpToken, resolveErpIdentity } from '../../common/auth/erp-token.util';
+import { hashSessionToken } from '../../common/auth/session-hash.util';
 
 export interface SportsPlatformUser {
   eddva_user_id: string;
@@ -24,28 +27,6 @@ export interface SportsPlatformUser {
 export class SportsAuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private verifyErpToken(token: string): any {
-    const secrets = [
-      process.env.SCHOOL_JWT_SECRET,
-      process.env.JWT_SECRET,
-      process.env.JWT_SECRET ? `${process.env.JWT_SECRET}_school` : undefined,
-    ].filter((secret): secret is string => Boolean(secret));
-
-    if (secrets.length === 0) {
-      throw new Error('SCHOOL_JWT_SECRET or JWT_SECRET must be set');
-    }
-
-    for (const secret of [...new Set(secrets)]) {
-      try {
-        return jwt.verify(token, secret);
-      } catch {
-        // Try the next configured ERP signing secret.
-      }
-    }
-
-    throw new UnauthorizedException('Invalid or expired EDDVA session token');
-  }
-
   private get sportsJwtSecret(): string {
     return requireModuleSecret('SPORTS_JWT_SECRET');
   }
@@ -58,22 +39,9 @@ export class SportsAuthService {
     user: SportsPlatformUser;
     redirect: string;
   }> {
-    const decoded = this.verifyErpToken(eddvaToken);
-
-    const eddva_user_id: string = decoded.id || decoded.sub;
-    const user_role: string = (decoded.role || '').toUpperCase();
-    const institute_id: string =
-      decoded.instituteId || decoded.institute_id || decoded.tenantId || '';
-    const user_email: string | undefined = decoded.email;
-    const user_name: string =
-      decoded.name ||
-      decoded.fullName ||
-      decoded.userName ||
-      (user_email ? user_email.split('@')[0] : 'Institute Admin');
-
-    if (!eddva_user_id || !institute_id) {
-      throw new UnauthorizedException('Token missing required fields (user id or institute id)');
-    }
+    const decoded = verifyErpToken(eddvaToken);
+    const { eddva_user_id, institute_id, user_role, user_email, user_name } =
+      resolveErpIdentity(decoded);
 
     const platformUser: SportsPlatformUser = {
       eddva_user_id,
@@ -81,7 +49,7 @@ export class SportsAuthService {
       user_name,
       user_email,
       user_role,
-      is_institute_admin: ['INSTITUTE_ADMIN', 'INSTITUTE ADMINISTRATOR', 'INSTITUTE_ADMINISTRATOR'].includes(user_role),
+      is_institute_admin: (INSTITUTE_ADMIN_ROLE_NAMES as readonly string[]).includes(user_role),
     };
 
     const expiresIn = 60 * 60 * 24; // 24 hours
@@ -100,7 +68,7 @@ export class SportsAuthService {
           user_name,
           user_email,
           user_role,
-          sports_token,
+          token_hash: hashSessionToken(sports_token),
           expires_at,
         },
       });
@@ -220,7 +188,7 @@ export class SportsAuthService {
         user_role,
         is_institute_admin:
           decoded.is_institute_admin === true ||
-          ['INSTITUTE_ADMIN', 'INSTITUTE ADMINISTRATOR', 'INSTITUTE_ADMINISTRATOR'].includes(user_role),
+          (INSTITUTE_ADMIN_ROLE_NAMES as readonly string[]).includes(user_role),
         role_id: typeof decoded.role_id === 'number' ? decoded.role_id : undefined,
         role_name: typeof decoded.role_name === 'string' ? decoded.role_name : undefined,
         permissions: decoded.permissions,

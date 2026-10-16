@@ -2,8 +2,10 @@ import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
-import { INSTITUTE_ADMIN_ROLE_NAMES } from '../common/institute-admin-role-names';
+import { INSTITUTE_ADMIN_ROLE_NAMES } from '../../common/auth/institute-admin-role-names';
 import { requireModuleSecret } from '../../common/utils/module-secret.util';
+import { verifyErpToken, resolveErpIdentity } from '../../common/auth/erp-token.util';
+import { hashSessionToken } from '../../common/auth/session-hash.util';
 
 export interface SalesPurchasePlatformUser {
   eddva_user_id: string;
@@ -28,28 +30,6 @@ export interface SalesPurchasePlatformUser {
 export class SalesPurchaseAuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private verifyErpToken(token: string): any {
-    const secrets = [
-      process.env.SCHOOL_JWT_SECRET,
-      process.env.JWT_SECRET,
-      process.env.JWT_SECRET ? `${process.env.JWT_SECRET}_school` : undefined,
-    ].filter((secret): secret is string => Boolean(secret));
-
-    if (secrets.length === 0) {
-      throw new Error('SCHOOL_JWT_SECRET or JWT_SECRET must be set');
-    }
-
-    for (const secret of [...new Set(secrets)]) {
-      try {
-        return jwt.verify(token, secret);
-      } catch {
-        // Try the next configured ERP signing secret.
-      }
-    }
-
-    throw new UnauthorizedException('Invalid or expired EDDVA session token');
-  }
-
   private get salesPurchaseJwtSecret(): string {
     return requireModuleSecret('SALES_PURCHASE_JWT_SECRET');
   }
@@ -63,24 +43,9 @@ export class SalesPurchaseAuthService {
     user: SalesPurchasePlatformUser;
     redirect: string;
   }> {
-    const decoded = this.verifyErpToken(eddvaToken);
-
-    const eddva_user_id: string = decoded.id || decoded.sub;
-    const user_role: string = (decoded.role || '').toUpperCase();
-    const institute_id: string =
-      decoded.instituteId || decoded.institute_id || decoded.tenantId || '';
-    const user_email: string | undefined = decoded.email;
-    const user_name: string =
-      decoded.name ||
-      decoded.fullName ||
-      decoded.userName ||
-      (user_email ? user_email.split('@')[0] : 'Institute Admin');
-
-    if (!eddva_user_id || !institute_id) {
-      throw new UnauthorizedException(
-        'Token missing required fields (user id or institute id)',
-      );
-    }
+    const decoded = verifyErpToken(eddvaToken);
+    const { eddva_user_id, institute_id, user_role, user_email, user_name } =
+      resolveErpIdentity(decoded);
 
     const platformUser: SalesPurchasePlatformUser = {
       eddva_user_id,
@@ -109,7 +74,7 @@ export class SalesPurchaseAuthService {
           user_name,
           user_email,
           user_role,
-          sp_token: sales_purchase_token,
+          token_hash: hashSessionToken(sales_purchase_token),
           expires_at,
         },
       });

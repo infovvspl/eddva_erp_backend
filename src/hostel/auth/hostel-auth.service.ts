@@ -3,11 +3,13 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHash } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
-import { INSTITUTE_ADMIN_ROLE_NAMES } from '../common/institute-admin-role-names';
+import { INSTITUTE_ADMIN_ROLE_NAMES } from '../../common/auth/institute-admin-role-names';
+import { verifyErpToken, resolveErpIdentity } from '../../common/auth/erp-token.util';
+import { hashSessionToken } from '../../common/auth/session-hash.util';
+import { requireModuleSecret } from '../../common/utils/module-secret.util';
 
 export interface HostelPlatformUser {
   eddva_user_id: string;
@@ -19,20 +21,6 @@ export interface HostelPlatformUser {
   role_id?: number;
   role_name?: string;
   permissions?: unknown;
-}
-
-/** Claims we read from the EDDVA ERP token exchanged at SSO. */
-interface ErpTokenClaims {
-  id?: string;
-  sub?: string;
-  role?: string;
-  instituteId?: string;
-  institute_id?: string;
-  tenantId?: string;
-  email?: string;
-  name?: string;
-  fullName?: string;
-  userName?: string;
 }
 
 /** Claims of a Hostel JWT — untrusted until each field is type-checked. */
@@ -59,42 +47,16 @@ const TOKEN_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 export class HostelAuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private verifyErpToken(token: string): ErpTokenClaims {
-    const secrets = [
-      process.env.SCHOOL_JWT_SECRET,
-      process.env.JWT_SECRET,
-      process.env.JWT_SECRET ? `${process.env.JWT_SECRET}_school` : undefined,
-    ].filter((secret): secret is string => Boolean(secret));
-
-    if (secrets.length === 0) {
-      throw new Error('SCHOOL_JWT_SECRET or JWT_SECRET must be set');
-    }
-
-    for (const secret of [...new Set(secrets)]) {
-      try {
-        return jwt.verify(token, secret) as ErpTokenClaims;
-      } catch {
-        // Try the next configured ERP signing secret.
-      }
-    }
-
-    throw new UnauthorizedException('Invalid or expired EDDVA session token');
-  }
-
   /**
-   * Deliberately has NO fallback to JWT_SECRET: a Hostel secret that
-   * falls back to the shared ERP secret lets a bare core Institute Admin JWT
-   * pass HostelJwtGuard without going through SSO exchange, defeating the
-   * module's auth isolation. Fail closed instead.
+   * No fallback to JWT_SECRET: a Hostel secret that falls back to the
+   * shared ERP secret lets a bare core Institute Admin JWT pass
+   * HostelJwtGuard without going through SSO exchange, defeating the
+   * module's auth isolation. requireModuleSecret fails closed the same way
+   * this used to by hand, plus rejects a secret that collides with
+   * JWT_SECRET/SCHOOL_JWT_SECRET.
    */
   private get hostelJwtSecret(): string {
-    const secret = process.env.HOSTEL_JWT_SECRET;
-    if (!secret) {
-      throw new Error(
-        'HOSTEL_JWT_SECRET must be set (it must differ from JWT_SECRET)',
-      );
-    }
-    return secret;
+    return requireModuleSecret('HOSTEL_JWT_SECRET');
   }
 
   private isAdminRole(role: string): boolean {
@@ -107,24 +69,9 @@ export class HostelAuthService {
     user: HostelPlatformUser;
     redirect: string;
   }> {
-    const decoded = this.verifyErpToken(eddvaToken);
-
-    const eddva_user_id = decoded.id || decoded.sub;
-    const user_role = (decoded.role || '').toUpperCase();
-    const institute_id =
-      decoded.instituteId || decoded.institute_id || decoded.tenantId || '';
-    const user_email = decoded.email;
-    const user_name =
-      decoded.name ||
-      decoded.fullName ||
-      decoded.userName ||
-      (user_email ? user_email.split('@')[0] : 'Institute Admin');
-
-    if (!eddva_user_id || !institute_id) {
-      throw new UnauthorizedException(
-        'Token missing required fields (user id or institute id)',
-      );
-    }
+    const decoded = verifyErpToken(eddvaToken);
+    const { eddva_user_id, institute_id, user_role, user_email, user_name } =
+      resolveErpIdentity(decoded);
 
     const platformUser: HostelPlatformUser = {
       eddva_user_id,
@@ -147,7 +94,7 @@ export class HostelAuthService {
           user_name,
           user_email,
           user_role,
-          token_hash: createHash('sha256').update(hostel_token).digest('hex'),
+          token_hash: hashSessionToken(hostel_token),
           expires_at: new Date(Date.now() + TOKEN_TTL_SECONDS * 1000),
         },
       });

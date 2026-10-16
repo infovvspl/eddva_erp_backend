@@ -170,7 +170,11 @@ describe('PayrollRunsService.finalize / markPaid', () => {
     expect(mockAutoPosting.postPayrollDisbursement).toHaveBeenCalledWith(
       expect.objectContaining({ payslipId: 10, staffId: 1, netSalary: 27000 }),
     );
-    expect(mockNotifications.notify).toHaveBeenCalledTimes(2);
+    // Only the payslip with a known lms_user_id gets notified — the other
+    // must NOT fall back to a broadcast, which would leak its salary amount
+    // to every staff member (recipient: null is treated as "visible to all"
+    // by StaffNotificationService.findForRecipient).
+    expect(mockNotifications.notify).toHaveBeenCalledTimes(1);
     expect(mockNotifications.notify).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'salary_paid' }), ['lms-u1']);
   });
 

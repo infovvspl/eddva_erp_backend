@@ -101,7 +101,7 @@ describe('Inventory tenant isolation', () => {
 
   describe('items', () => {
     it('will not attach an item to another institute\'s category', async () => {
-      const svc = new ItemsService(prisma, audit as any);
+      const svc = new ItemsService(prisma, audit as any, {} as any);
       await expect(svc.create(A, { item_code: 'X1', name: 'x', category_id: 9 } as any)).rejects.toThrow(NotFoundException);
       expect(prisma.invCategory.findFirst).toHaveBeenCalledWith({ where: { category_id: 9, institute_id: A } });
       expect(prisma.invItem.create).not.toHaveBeenCalled();
@@ -110,13 +110,13 @@ describe('Inventory tenant isolation', () => {
     it('checks the item code per institute', async () => {
       prisma.invCategory.findFirst.mockResolvedValue({ category_id: 1 });
       prisma.invItem.create.mockResolvedValue({});
-      await new ItemsService(prisma, audit as any).create(A, { item_code: 'X1', name: 'x', category_id: 1 } as any);
+      await new ItemsService(prisma, audit as any, {} as any).create(A, { item_code: 'X1', name: 'x', category_id: 1 } as any);
       expect(prisma.invItem.findFirst).toHaveBeenCalledWith({ where: { item_code: 'X1', institute_id: A } });
       expect(prisma.invItem.create.mock.calls[0][0].data.institute_id).toBe(A);
     });
 
     it('cannot associate a vendor from another institute', async () => {
-      const svc = new ItemsService(prisma, audit as any);
+      const svc = new ItemsService(prisma, audit as any, {} as any);
       prisma.invItem.findFirst.mockResolvedValue({ item_id: 1 });
       prisma.invVendor.findFirst.mockResolvedValue(null);
       await expect(svc.upsertVendor(A, 1, { vendor_id: 5 } as any)).rejects.toThrow(NotFoundException);

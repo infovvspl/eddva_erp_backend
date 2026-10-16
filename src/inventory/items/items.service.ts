@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { requireInstituteId } from '../../common/utils/require-institute.util';
 import { InventoryAuditService } from '../common/inventory-audit.service';
 import { INV_ENTITY } from '../common/inventory-entities';
+import { IMAGE_RULES, InventoryFileStorageService } from '../common/inventory-file-storage.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 import { UpsertItemVendorDto } from './dto/upsert-item-vendor.dto';
@@ -12,7 +13,31 @@ export class ItemsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: InventoryAuditService,
+    private readonly files: InventoryFileStorageService,
   ) {}
+
+  /**
+   * Units of Measure dropdown source. Inventory has no master of its own —
+   * this reuses Sales & Purchase's `sp_uoms` table (same database, same
+   * institute scoping) rather than maintaining a second, duplicate list.
+   */
+  async listUoms(instituteId: string) {
+    const institute_id = requireInstituteId(instituteId);
+    return this.prisma.spUom.findMany({
+      where: { institute_id },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async uploadImage(instituteId: string, file: Express.Multer.File | undefined) {
+    const institute_id = requireInstituteId(instituteId);
+    const stored = await this.files.save(institute_id, 'item-images', file, IMAGE_RULES);
+    return { path: stored.path };
+  }
+
+  imagePath(instituteId: string, relativePath: string): string {
+    return this.files.resolve(relativePath, requireInstituteId(instituteId));
+  }
 
   private async assertCategoryExists(instituteId: string, categoryId: number) {
     const category = await this.prisma.invCategory.findFirst({ where: { category_id: categoryId, institute_id: instituteId } });
@@ -120,6 +145,10 @@ export class ItemsService {
       if (clash) throw new ConflictException(`Item code "${dto.item_code}" already exists`);
     }
     if (dto.category_id) await this.assertCategoryExists(institute_id, dto.category_id);
+
+    if (dto.image_url !== undefined && dto.image_url !== existing.image_url) {
+      await this.files.remove(existing.image_url);
+    }
 
     const updated = await this.prisma.invItem.update({
       where: { item_id: id },

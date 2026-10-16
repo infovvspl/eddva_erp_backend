@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StaffPlatformUser } from '../auth/staff-auth.service';
-import { INSTITUTE_ADMIN_ROLE_NAMES } from './institute-admin-role-names';
+import { INSTITUTE_ADMIN_ROLE_NAMES } from '../../common/auth/institute-admin-role-names';
 
 interface PermissionRule {
   resource: string;

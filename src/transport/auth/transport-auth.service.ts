@@ -3,6 +3,9 @@ import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { requireModuleSecret } from '../../common/utils/module-secret.util';
+import { INSTITUTE_ADMIN_ROLE_NAMES } from '../../common/auth/institute-admin-role-names';
+import { verifyErpToken, resolveErpIdentity } from '../../common/auth/erp-token.util';
+import { hashSessionToken } from '../../common/auth/session-hash.util';
 
 export interface TransportPlatformUser {
   eddva_user_id: string;
@@ -26,30 +29,12 @@ export interface TransportPlatformUser {
 export class TransportAuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private verifyErpToken(token: string): any {
-    const secrets = [
-      process.env.SCHOOL_JWT_SECRET,
-      process.env.JWT_SECRET,
-      process.env.JWT_SECRET ? `${process.env.JWT_SECRET}_school` : undefined,
-    ].filter((secret): secret is string => Boolean(secret));
-
-    if (secrets.length === 0) {
-      throw new Error('SCHOOL_JWT_SECRET or JWT_SECRET must be set');
-    }
-
-    for (const secret of [...new Set(secrets)]) {
-      try {
-        return jwt.verify(token, secret);
-      } catch {
-        // Try the next configured ERP signing secret.
-      }
-    }
-
-    throw new UnauthorizedException('Invalid or expired EDDVA session token');
-  }
-
   private get transportJwtSecret(): string {
     return requireModuleSecret('TRANSPORT_JWT_SECRET');
+  }
+
+  private isAdminRole(role: string): boolean {
+    return (INSTITUTE_ADMIN_ROLE_NAMES as readonly string[]).includes(role);
   }
 
   /**
@@ -60,22 +45,9 @@ export class TransportAuthService {
     user: TransportPlatformUser;
     redirect: string;
   }> {
-    const decoded = this.verifyErpToken(eddvaToken);
-
-    const eddva_user_id: string = decoded.id || decoded.sub;
-    const user_role: string = (decoded.role || '').toUpperCase();
-    const institute_id: string =
-      decoded.instituteId || decoded.institute_id || decoded.tenantId || '';
-    const user_email: string | undefined = decoded.email;
-    const user_name: string =
-      decoded.name ||
-      decoded.fullName ||
-      decoded.userName ||
-      (user_email ? user_email.split('@')[0] : 'Institute Admin');
-
-    if (!eddva_user_id || !institute_id) {
-      throw new UnauthorizedException('Token missing required fields (user id or institute id)');
-    }
+    const decoded = verifyErpToken(eddvaToken);
+    const { eddva_user_id, institute_id, user_role, user_email, user_name } =
+      resolveErpIdentity(decoded);
 
     const platformUser: TransportPlatformUser = {
       eddva_user_id,
@@ -83,7 +55,7 @@ export class TransportAuthService {
       user_name,
       user_email,
       user_role,
-      is_institute_admin: ['INSTITUTE_ADMIN', 'INSTITUTE ADMINISTRATOR', 'INSTITUTE_ADMINISTRATOR'].includes(user_role),
+      is_institute_admin: this.isAdminRole(user_role),
     };
 
     const expiresIn = 60 * 60 * 24; // 24 hours
@@ -102,7 +74,9 @@ export class TransportAuthService {
           user_name,
           user_email,
           user_role,
-          transport_token,
+          // Hashed, never the raw signed JWT — a leaked DB row must not be
+          // directly usable as a session token (see Phase 1 SSO cleanup).
+          token_hash: hashSessionToken(transport_token),
           expires_at,
         },
       });
@@ -191,10 +165,9 @@ export class TransportAuthService {
    * Verify a Transport Platform JWT (used by TransportJwtGuard).
    *
    * Defensively extracts/validates the payload shape instead of trusting
-   * `jwt.verify`'s return blindly — a token signed with the same secret but
-   * the wrong payload shape (e.g. the core ERP token, since
-   * TRANSPORT_JWT_SECRET falls back to JWT_SECRET) must fail cleanly with
-   * 401 rather than crash a downstream Prisma call with undefined fields.
+   * `jwt.verify`'s return blindly, so a malformed/foreign token fails
+   * cleanly with 401 rather than crashing a downstream Prisma call with
+   * undefined fields.
    */
   verifyTransportToken(token: string): TransportPlatformUser {
     try {
@@ -227,8 +200,7 @@ export class TransportAuthService {
         user_email,
         user_role,
         is_institute_admin:
-          decoded.is_institute_admin === true ||
-          ['INSTITUTE_ADMIN', 'INSTITUTE ADMINISTRATOR', 'INSTITUTE_ADMINISTRATOR'].includes(user_role),
+          decoded.is_institute_admin === true || this.isAdminRole(user_role),
         role_id: typeof decoded.role_id === 'number' ? decoded.role_id : undefined,
         role_name: typeof decoded.role_name === 'string' ? decoded.role_name : undefined,
         permissions: decoded.permissions,

@@ -2,8 +2,8 @@ import {
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
@@ -411,10 +411,12 @@ export class AlumniMeController {
   }
 
   private ownId(user: AlumniPlatformUser): number {
-    // The permissions guard has resolved alumni_id from the database.
+    // The permissions guard has resolved alumni_id from the database. Not
+    // having one isn't a permissions violation (see AlumniService.requireOwnId),
+    // so this is a 404, not a 403.
     if (user.alumni_id === undefined) {
-      throw new ForbiddenException(
-        'This endpoint is for alumni portal accounts only',
+      throw new NotFoundException(
+        'This account has no alumni profile (self-service is for alumni portal accounts only).',
       );
     }
     return user.alumni_id;

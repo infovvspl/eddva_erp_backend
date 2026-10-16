@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { InventoryJwtGuard } from '../auth/inventory-jwt.guard';
 import { InventoryInstituteAdminViewOnlyGuard } from '../auth/inventory-institute-admin-view-only.guard';
 import { InventoryPermissionsGuard } from '../auth/inventory-permissions.guard';
@@ -23,6 +25,33 @@ export class ItemsController {
   @ApiOperation({ summary: 'Create an item master record' })
   create(@Body() dto: CreateItemDto, @InventoryUser() user: InventoryPlatformUser) {
     return this.itemsService.create(user.institute_id, dto, user.eddva_user_id);
+  }
+
+  @Get('uoms')
+  @RequirePermission({ resource: 'items', action: 'read' })
+  @ApiOperation({ summary: 'Units of Measure for the item form dropdown (shared with Sales & Purchase)' })
+  listUoms(@InventoryUser() user: InventoryPlatformUser) {
+    return this.itemsService.listUoms(user.institute_id);
+  }
+
+  @Post('upload-image')
+  @RequirePermission({ resource: 'items', action: 'create' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @ApiOperation({ summary: 'Upload an item photo (JPEG/PNG/WebP, ≤2MB) before/while creating or editing an item' })
+  uploadImage(@InventoryUser() user: InventoryPlatformUser, @UploadedFile() file: Express.Multer.File) {
+    return this.itemsService.uploadImage(user.institute_id, file);
+  }
+
+  @Get('image')
+  @RequirePermission({ resource: 'items', action: 'read' })
+  @ApiOperation({ summary: 'Download a stored item photo by its stored path' })
+  @ApiQuery({ name: 'path', description: 'The relative path returned by upload-image / stored as image_url' })
+  getImage(@InventoryUser() user: InventoryPlatformUser, @Query('path') path: string, @Res() res: Response) {
+    const absolutePath = this.itemsService.imagePath(user.institute_id, path);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.sendFile(absolutePath);
   }
 
   @Get()

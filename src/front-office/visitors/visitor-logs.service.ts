@@ -84,6 +84,11 @@ export class VisitorLogsService {
     const host = await this.prisma.frontOfficeEmployee.findFirst({ where: { employee_id: hostEmployeeId, institute_id } });
     if (!host) throw new NotFoundException(`Employee #${hostEmployeeId} not found`);
 
+    const departmentId = appointment ? host.department_id : dto.department_id;
+    if (departmentId && host.department_id !== departmentId) {
+      throw new BadRequestException('The selected employee does not belong to the selected department');
+    }
+
     // Pre-checks for a friendly error; the partial unique indexes on
     // (badge_number) and (visitor_id) WHERE status='checked_in' are the
     // real concurrency-safe guarantee against a race between two
@@ -95,7 +100,7 @@ export class VisitorLogsService {
       throw new ConflictException(`Visitor #${visitor.visitor_id} already has an active visit (log #${activeVisit.log_id})`);
     }
 
-    const badgeNumber = dto.badge_number || (await this.numbering.generateNextNumber(DocumentType.VISITOR_BADGE));
+    const badgeNumber = await this.numbering.generateNextNumber(DocumentType.VISITOR_BADGE);
     const badgeInUse = await this.prisma.frontOfficeVisitorLog.findFirst({
       where: { badge_number: badgeNumber, status: 'checked_in' },
     });
@@ -109,6 +114,9 @@ export class VisitorLogsService {
         data: {
           institute_id,
           visitor_id: visitor.visitor_id,
+          visitor_type: dto.visitor_type,
+          agency_vendor_name: dto.agency_vendor_name,
+          department_id: departmentId,
           host_employee_id: hostEmployeeId,
           appointment_id: appointment?.appointment_id,
           purpose: dto.purpose ?? appointment?.purpose,
@@ -215,6 +223,7 @@ export class VisitorLogsService {
         include: {
           visitor: { select: { visitor_id: true, full_name: true, phone: true, organization: true } },
           host_employee: { select: { employee_id: true, name: true, department_id: true } },
+          department: { select: { department_id: true, name: true } },
         },
         orderBy: { check_in_time: 'desc' },
         skip: (page - 1) * limit,
@@ -232,6 +241,7 @@ export class VisitorLogsService {
       include: {
         visitor: { select: { visitor_id: true, full_name: true, phone: true, organization: true } },
         host_employee: { select: { employee_id: true, name: true, department_id: true } },
+        department: { select: { department_id: true, name: true } },
       },
       orderBy: { check_in_time: 'asc' },
     });
@@ -245,6 +255,7 @@ export class VisitorLogsService {
         // even encrypted; the dedicated /visitors/:id endpoint is the only sensitive-view path.
         visitor: { select: { visitor_id: true, full_name: true, phone: true, email: true, organization: true, photo_url: true } },
         host_employee: { select: { employee_id: true, name: true, department_id: true } },
+        department: { select: { department_id: true, name: true } },
         appointment: true,
       },
     });

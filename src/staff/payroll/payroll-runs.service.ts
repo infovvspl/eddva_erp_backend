@@ -245,19 +245,24 @@ export class PayrollRunsService {
         userId: actor.eddva_user_id,
       });
 
-      // Targets the teacher's own LMS login when known (set on their first
-      // self-service login or push-sync); otherwise falls back to a
-      // broadcast notice, same as every other StaffNotificationService call.
-      await this.notifications.notify(
-        {
-          instituteId: institute_id,
-          entityType: STAFF_ENTITY.PAYROLL_RUN,
-          entityId: id,
-          eventType: 'salary_paid',
-          message: `Your salary for ${monthLabel} has been paid: ₹${Number(payslip.net_salary).toLocaleString('en-IN')} net.`,
-        },
-        [payslip.staff.lms_user_id],
-      );
+      // Only notify when we know the teacher's own LMS login (set on their
+      // first self-service login or push-sync). Unlike other
+      // StaffNotificationService calls, a null recipient here must NOT fall
+      // back to an institute-wide broadcast — that would leak one person's
+      // salary amount to every staff member viewing their own notifications
+      // (findForRecipient treats recipient=null as "visible to everyone").
+      if (payslip.staff.lms_user_id) {
+        await this.notifications.notify(
+          {
+            instituteId: institute_id,
+            entityType: STAFF_ENTITY.PAYROLL_RUN,
+            entityId: id,
+            eventType: 'salary_paid',
+            message: `Your salary for ${monthLabel} has been paid: ₹${Number(payslip.net_salary).toLocaleString('en-IN')} net.`,
+          },
+          [payslip.staff.lms_user_id],
+        );
+      }
     }
 
     const updated = await this.prisma.payrollRun.update({

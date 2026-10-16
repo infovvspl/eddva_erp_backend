@@ -3,12 +3,13 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHash } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { requireModuleSecret } from '../../common/utils/module-secret.util';
-import { INSTITUTE_ADMIN_ROLE_NAMES } from '../common/institute-admin-role-names';
+import { INSTITUTE_ADMIN_ROLE_NAMES } from '../../common/auth/institute-admin-role-names';
+import { verifyErpToken, resolveErpIdentity } from '../../common/auth/erp-token.util';
+import { hashSessionToken } from '../../common/auth/session-hash.util';
 
 export interface StaffPlatformUser {
   eddva_user_id: string;
@@ -22,20 +23,6 @@ export interface StaffPlatformUser {
   permissions?: unknown;
   /** Set only for a teacher's own self-service session — the StaffMember row they're allowed to act as. Never set for admin/dynamic-role sessions. */
   self_staff_id?: number;
-}
-
-/** Claims we read from the EDDVA ERP token exchanged at SSO. */
-interface ErpTokenClaims {
-  id?: string;
-  sub?: string;
-  role?: string;
-  instituteId?: string;
-  institute_id?: string;
-  tenantId?: string;
-  email?: string;
-  name?: string;
-  fullName?: string;
-  userName?: string;
 }
 
 /** Claims of a Staff JWT — untrusted until each field is type-checked. */
@@ -63,28 +50,6 @@ const TOKEN_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 export class StaffAuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private verifyErpToken(token: string): ErpTokenClaims {
-    const secrets = [
-      process.env.SCHOOL_JWT_SECRET,
-      process.env.JWT_SECRET,
-      process.env.JWT_SECRET ? `${process.env.JWT_SECRET}_school` : undefined,
-    ].filter((secret): secret is string => Boolean(secret));
-
-    if (secrets.length === 0) {
-      throw new Error('SCHOOL_JWT_SECRET or JWT_SECRET must be set');
-    }
-
-    for (const secret of [...new Set(secrets)]) {
-      try {
-        return jwt.verify(token, secret) as ErpTokenClaims;
-      } catch {
-        // Try the next configured ERP signing secret.
-      }
-    }
-
-    throw new UnauthorizedException('Invalid or expired EDDVA session token');
-  }
-
   private get staffJwtSecret(): string {
     return requireModuleSecret('STAFF_JWT_SECRET');
   }
@@ -99,24 +64,9 @@ export class StaffAuthService {
     user: StaffPlatformUser;
     redirect: string;
   }> {
-    const decoded = this.verifyErpToken(eddvaToken);
-
-    const eddva_user_id = decoded.id || decoded.sub;
-    const user_role = (decoded.role || '').toUpperCase();
-    const institute_id =
-      decoded.instituteId || decoded.institute_id || decoded.tenantId || '';
-    const user_email = decoded.email;
-    const user_name =
-      decoded.name ||
-      decoded.fullName ||
-      decoded.userName ||
-      (user_email ? user_email.split('@')[0] : 'Institute Admin');
-
-    if (!eddva_user_id || !institute_id) {
-      throw new UnauthorizedException(
-        'Token missing required fields (user id or institute id)',
-      );
-    }
+    const decoded = verifyErpToken(eddvaToken);
+    const { eddva_user_id, institute_id, user_role, user_email, user_name } =
+      resolveErpIdentity(decoded);
 
     const platformUser: StaffPlatformUser = {
       eddva_user_id,
@@ -139,7 +89,7 @@ export class StaffAuthService {
           user_name,
           user_email,
           user_role,
-          token_hash: createHash('sha256').update(staff_token).digest('hex'),
+          token_hash: hashSessionToken(staff_token),
           expires_at: new Date(Date.now() + TOKEN_TTL_SECONDS * 1000),
         },
       });
@@ -172,7 +122,7 @@ export class StaffAuthService {
     staff_token: string;
     user: StaffPlatformUser;
   }> {
-    const decoded = this.verifyErpToken(lmsToken);
+    const decoded = verifyErpToken(lmsToken);
     const lms_user_id = decoded.sub || decoded.id;
     const role = (decoded.role || '').toUpperCase();
     const institute_id = decoded.instituteId || decoded.institute_id || decoded.tenantId || '';

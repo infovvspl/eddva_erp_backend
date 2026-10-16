@@ -20,6 +20,8 @@ import { AlumniModule } from './alumni/alumni.module';
 import { StaffModule } from './staff/staff.module';
 import { StudentFeesModule } from './student-fees/student-fees.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { ErpModulesModule } from './erp-modules/erp-modules.module';
+import { CoreUsersModule } from './core-users/core-users.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -46,6 +48,8 @@ import { AppService } from './app.service';
     StaffModule,
     StudentFeesModule,
     DashboardModule,
+    ErpModulesModule,
+    CoreUsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -4,6 +4,7 @@ import { InventoryRolesPermissionsModule } from './roles-permissions/inventory-r
 import { InventoryAccessService } from './common/inventory-access.service';
 import { InventoryAuditService } from './common/inventory-audit.service';
 import { InventoryStockLedgerService } from './common/inventory-stock-ledger.service';
+import { InventoryFileStorageService } from './common/inventory-file-storage.service';
 
 import { CategoriesController } from './categories/categories.controller';
 import { CategoriesService } from './categories/categories.service';
@@ -59,6 +60,7 @@ import { AccountsCoreModule } from '../accounts/accounts-core.module';
     InventoryAccessService,
     InventoryAuditService,
     InventoryStockLedgerService,
+    InventoryFileStorageService,
     CategoriesService,
     LocationsService,
     VendorsService,
