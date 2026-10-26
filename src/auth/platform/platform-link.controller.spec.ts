@@ -15,7 +15,7 @@ describe('InternalKeyGuard', () => {
 
   it.each([['wrong', 'a different key'], [undefined, 'no header'], ['', 'an empty key']])(
     'rejects %p (%s)',
-    (provided) => {
+    (provided, _description) => {
       process.env.INTERNAL_API_KEY = 'secret-key';
       expect(() => new InternalKeyGuard().canActivate(ctx({ 'x-internal-key': provided }))).toThrow(UnauthorizedException);
     },

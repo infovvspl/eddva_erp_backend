@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { requireEnv } from '../common/utils/module-secret.util';
 import { PlatformLinkController } from './platform/platform-link.controller';
+import { PlatformInstitutesController } from './platform/platform-institutes.controller';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { PlatformLinkController } from './platform/platform-link.controller';
       }),
     }),
   ],
-  controllers: [AuthController, PlatformLinkController],
+  controllers: [AuthController, PlatformLinkController, PlatformInstitutesController],
   providers: [AuthService, JwtStrategy],
   exports: [AuthService, JwtStrategy, PassportModule, JwtModule],
 })
