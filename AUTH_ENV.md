@@ -11,6 +11,20 @@ makes the service refuse to start (core secrets) or refuse the operation
 | `JWT_SECRET` | Signs and verifies ERP login tokens (`/auth/login`). |
 | `SCHOOL_JWT_SECRET` | Verifies LMS-issued SSO tokens. Must equal the LMS value. Set it explicitly on both sides; the derived `school:<JWT_SECRET>` value is no longer accepted. |
 
+## Platform tokens (optional)
+
+Lets the ERP accept RS256 access tokens issued by `eddva_platform`, alongside the
+legacy HS256 tokens. Off unless **both** are set; setting only one stops startup.
+
+| Variable | Purpose |
+| --- | --- |
+| `PLATFORM_JWKS_URL` | Public keys of the platform, e.g. `https://platform.eddva.in/.well-known/jwks.json`. |
+| `PLATFORM_ISSUER` | Must equal the platform's `iss` claim exactly. |
+| `INTERNAL_API_KEY` | Authenticates the platform's server-to-server `PUT /internal/platform/users/link`. Requests are refused while it is unset. |
+
+A platform token only works for an ERP user that has been linked to it
+(`users.platformUserId`); it is never matched by email or tenant claims.
+
 ## Per-module platform secrets
 
 Each module signs its own JWT after SSO exchange. Each must be set, must

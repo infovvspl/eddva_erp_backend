@@ -79,6 +79,8 @@ model User {
   name                    String
   email                   String               @unique
   passwordHash            String
+  /// Id of this person in eddva_platform. Set only by the platform link endpoint.
+  platformUserId          String?              @unique
   roleId                  String
   role                    Role                 @relation(fields: [roleId], references: [id])
   status                  UserStatus           @default(ACTIVE)

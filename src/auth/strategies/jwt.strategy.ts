@@ -1,8 +1,10 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import * as jwt from 'jsonwebtoken';
+import { decodeProtectedHeader } from 'jose';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PLATFORM_TOKEN_VERIFIER, PlatformTokenVerifier } from '../platform/platform-token.verifier';
 
 export interface JwtPayload {
   id?: string;
@@ -16,7 +18,9 @@ export interface JwtPayload {
   [key: string]: any;
 }
 
+// Legacy tokens (ERP login, LMS SSO) are HS256 only; RS256 is reserved for platform tokens.
 const JWT_ALGORITHMS: jwt.Algorithm[] = ['HS256'];
+const REJECT = () => new UnauthorizedException('Invalid or expired token');
 
 /**
  * Secrets the core ERP guard accepts: the LMS-issued SSO secret and this
@@ -34,21 +38,54 @@ export function resolveCoreJwtSecrets(env: NodeJS.ProcessEnv = process.env): str
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private prisma: PrismaService) {
+  private readonly platformIssuer: string | null;
+
+  constructor(
+    private prisma: PrismaService,
+    @Optional() @Inject(PLATFORM_TOKEN_VERIFIER) platformVerifier?: PlatformTokenVerifier | null,
+  ) {
+    const platform = platformVerifier ?? PlatformTokenVerifier.fromEnv();
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      algorithms: JWT_ALGORITHMS,
-      secretOrKeyProvider: JwtStrategy.buildSecretProvider(resolveCoreJwtSecrets()),
+      algorithms: platform ? [...JWT_ALGORITHMS, 'RS256'] : JWT_ALGORITHMS,
+      secretOrKeyProvider: JwtStrategy.buildSecretProvider(resolveCoreJwtSecrets(), platform),
     });
+    this.platformIssuer = platform?.issuer ?? null;
   }
 
-  private static buildSecretProvider(secrets: string[]) {
+  /**
+   * Picks the verification path from the token's own algorithm, never the other way round:
+   * RS256 is only ever checked against the platform JWKS and HS256 only against the shared
+   * secrets, so neither kind of key can be used to validate the other.
+   */
+  private static buildSecretProvider(secrets: string[], platform: PlatformTokenVerifier | null) {
     return (
       _request: unknown,
       rawJwtToken: string,
       done: (err: any, secret?: string) => void,
     ) => {
+      let alg: string | undefined;
+      try {
+        alg = decodeProtectedHeader(rawJwtToken).alg;
+      } catch {
+        return done(REJECT());
+      }
+
+      if (alg === 'RS256') {
+        if (!platform) return done(REJECT());
+        platform.verify(rawJwtToken).then(
+          ({ publicKeyPem }) => done(null, publicKeyPem),
+          () => done(REJECT()),
+        );
+        return;
+      }
+
+      // A shared-secret token must not be able to pose as a platform token.
+      if (platform && (jwt.decode(rawJwtToken) as jwt.JwtPayload | null)?.iss === platform.issuer) {
+        return done(REJECT());
+      }
+
       for (const secret of secrets) {
         try {
           jwt.verify(rawJwtToken, secret, { algorithms: JWT_ALGORITHMS });
@@ -59,7 +96,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       }
       // No configured secret verifies this token: reject it outright rather
       // than handing passport a key to fail against.
-      return done(new UnauthorizedException('Invalid or expired token'));
+      return done(REJECT());
     };
   }
 
@@ -76,8 +113,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Invalid token payload: missing user ID.');
     }
 
+    // A platform token's `sub` is the platform user id, which only maps to an ERP user through an
+    // explicit link (see PlatformLinkController). It is never matched on email or tenant claims.
+    const isPlatformToken = this.platformIssuer !== null && payload.iss === this.platformIssuer;
     const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+      where: isPlatformToken ? { platformUserId: userId } : { id: userId },
       include: {
         role: {
           include: {
